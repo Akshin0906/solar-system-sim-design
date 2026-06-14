@@ -1,4 +1,6 @@
-import { Rocket, RotateCcw, X } from "lucide-react";
+import { LocateFixed, Rocket, RotateCcw, X } from "lucide-react";
+import { useScaleStore } from "../../simulation/scaleStore";
+import { useSelectionStore } from "../../simulation/selectionStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import { InstrumentSelect } from "../../ui/InstrumentSelect";
 import { destinationGroupOrder, destinationsById, rocketDestinations } from "./destinationCatalog";
@@ -7,6 +9,7 @@ import { categoryLabel, confidenceLabel, rocketCatalog, rocketsById } from "./ro
 import { RocketTelemetry } from "./RocketTelemetry";
 import { RocketTransferPreview } from "./RocketTransferPreview";
 import { useRocketStore } from "./rocketStore";
+import { getCachedRocketView } from "./useRocketView";
 
 type RocketLauncherPanelProps = {
   forceOpen?: boolean;
@@ -34,6 +37,9 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   const launch = useRocketStore((state) => state.launch);
   const clear = useRocketStore((state) => state.clear);
   const setPanelOpen = useRocketStore((state) => state.setPanelOpen);
+  const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const followRocket = useSelectionStore((state) => state.followRocket);
+  const clearRocketTarget = useSelectionStore((state) => state.clearRocketTarget);
 
   if (!panelOpen && !forceOpen) {
     return null;
@@ -80,6 +86,25 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
     launch(selected.id, selectedDestination.id, effectiveMissionMode, simulationDateMs);
   };
 
+  const handleFollowRocket = () => {
+    if (active && launchDateMs !== null) {
+      const view = getCachedRocketView(
+        active,
+        launchDateMs,
+        useTimeStore.getState().simulationDateMs,
+        useScaleStore.getState().mode,
+        activeDestination,
+        activeMissionMode,
+      );
+      followRocket(view.scenePosition);
+    }
+  };
+
+  const handleReset = () => {
+    clear();
+    clearRocketTarget();
+  };
+
   const handleClose = () => {
     if (embedded) {
       onClose?.();
@@ -102,7 +127,17 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
         {active ? "Restart preview" : launchLabel}
       </button>
       {active && (
-        <button type="button" className="rocket-reset-button" onClick={clear}>
+        <button
+          type="button"
+          className={`rocket-reset-button${cameraMode === "rocket-follow" ? " active" : ""}`}
+          onClick={handleFollowRocket}
+        >
+          <LocateFixed size={14} />
+          Follow rocket
+        </button>
+      )}
+      {active && (
+        <button type="button" className="rocket-reset-button" onClick={handleReset}>
           <RotateCcw size={14} />
           Reset rocket
         </button>
@@ -135,6 +170,10 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
 
       <div className="rocket-panel-body">
         {!embedded && conceptNote}
+
+        {!active && effectiveMissionMode === "transfer" && selectedDestination.bodyId && (
+          <RocketTransferPreview destination={selectedDestination} launchDateMs={simulationDateMs} />
+        )}
 
         {/* When a rocket is active, telemetry is the priority — show it first so the
             full readout is visible; the selects (for reconfiguring a relaunch) follow. */}
@@ -184,9 +223,6 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
               </span>
             </div>
             <p className="rocket-blurb">{selected.blurb}</p>
-            {effectiveMissionMode === "transfer" && selectedDestination.bodyId && (
-              <RocketTransferPreview destination={selectedDestination} launchDateMs={simulationDateMs} />
-            )}
           </>
         )}
       </div>

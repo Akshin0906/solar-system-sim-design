@@ -45,6 +45,7 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const selectedId = useSelectionStore((state) => state.selectedId);
+  const rocketTarget = useSelectionStore((state) => state.rocketTarget);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
   const { camera, gl } = useThree();
   const reducedMotion = useReducedMotion();
@@ -55,7 +56,13 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
     selectedBody?.type === "moon" && selectedBody.parentId ? selectedBody.parentId : selectedBody?.id;
   const controlsTargetBody =
     cameraMode === "moons" && moonFocusParentId ? bodiesById.get(moonFocusParentId) ?? selectedBody : selectedBody;
-  const controlsTargetRadius = controlsTargetBody ? getBodySceneRadius(controlsTargetBody, mode) : 0;
+  const controlsTargetRadius =
+    cameraMode === "rocket-follow" && rocketTarget
+      ? rocketTarget.radius
+      : controlsTargetBody
+        ? getBodySceneRadius(controlsTargetBody, mode)
+        : 0;
+  const isFollowMode = cameraMode === "follow" || cameraMode === "rocket-follow";
 
   useEffect(() => {
     cameraModeRef.current = cameraMode;
@@ -69,6 +76,16 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
         const position = positions[id];
         return position ? [asVector(position)] : [];
       });
+
+    if (cameraMode === "rocket-follow" && rocketTarget) {
+      const target = asVector(rocketTarget.position);
+      const focusRadius = Math.max(rocketTarget.radius, 0.35);
+      const distance = Math.min(Math.max(fitDistanceForRadius(focusRadius, 48, 4.2), 4.8), 36);
+      return {
+        target,
+        position: target.clone().add(cameraOffset(distance, "focus")),
+      };
+    }
 
     if (cameraMode === "overview") {
       const overviewPoints = bodies
@@ -148,8 +165,8 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
         controls.target.copy(desired.target);
         camera.position.copy(desired.position);
       } else {
-        const targetAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_TARGET_DAMPING : FOCUS_TARGET_DAMPING, delta);
-        const positionAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
+        const targetAlpha = dampingAlpha(isFollowMode ? FOLLOW_TARGET_DAMPING : FOCUS_TARGET_DAMPING, delta);
+        const positionAlpha = dampingAlpha(isFollowMode ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
         controls.target.lerp(desired.target, targetAlpha);
         camera.position.lerp(desired.position, positionAlpha);
       }
@@ -157,10 +174,10 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
     }
 
     const bodyRelativeControls =
-      cameraMode === "focus" || cameraMode === "follow" || cameraMode === "moons";
+      cameraMode === "focus" || cameraMode === "follow" || cameraMode === "moons" || cameraMode === "rocket-follow";
     const previousControlRange = controlsRangeRef.current;
     const minDistance =
-      bodyRelativeControls && controlsTargetBody
+      bodyRelativeControls && controlsTargetRadius > 0
         ? surfaceMinDistanceForRadius(controlsTargetRadius)
         : cameraMode === "free"
           ? previousControlRange?.minDistance ?? 0.35

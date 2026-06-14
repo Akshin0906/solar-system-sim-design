@@ -1,6 +1,7 @@
 import { Html, Line } from "@react-three/drei";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { AdditiveBlending, DoubleSide, Quaternion, Shape, Vector3 } from "three";
+import { useSelectionStore } from "../../simulation/selectionStore";
 import { SCENE_HTML_Z_INDEX_RANGE } from "../../ui/htmlLayering";
 import type { RocketProfile } from "./rocketCatalog";
 import { getCachedRocketView, useActiveRocketView } from "./useRocketView";
@@ -86,6 +87,20 @@ const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
 
 export const RocketObject = () => {
   const { activeMissionMode, destination, launchDateMs, mode, profile, view } = useActiveRocketView();
+  const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const updateRocketTarget = useSelectionStore((state) => state.updateRocketTarget);
+  const rocketScenePosition = view?.scenePosition ?? null;
+  const transfer = view?.transfer ?? null;
+  const transferArcScenePoints = transfer?.arcScenePoints ?? null;
+  const progressIndex = transferArcScenePoints
+    ? Math.max(
+        1,
+        Math.min(
+          Math.floor((transfer?.progress ?? 0) * (transferArcScenePoints.length - 1)),
+          transferArcScenePoints.length - 1,
+        ),
+      )
+    : 0;
 
   // Orientation is frozen for the whole flight, so it only depends on the launch.
   const orientation = useMemo(() => {
@@ -107,6 +122,20 @@ export const RocketObject = () => {
     return new Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
   }, [profile, launchDateMs, mode, destination, activeMissionMode]);
 
+  const completedTransferPoints = useMemo(() => {
+    if (!transferArcScenePoints || !rocketScenePosition) {
+      return [];
+    }
+
+    return [...transferArcScenePoints.slice(0, progressIndex + 1), rocketScenePosition];
+  }, [progressIndex, rocketScenePosition, transferArcScenePoints]);
+
+  useEffect(() => {
+    if (cameraMode === "rocket-follow" && rocketScenePosition) {
+      updateRocketTarget(rocketScenePosition);
+    }
+  }, [cameraMode, rocketScenePosition, updateRocketTarget]);
+
   if (!profile || launchDateMs === null || !view) {
     return null;
   }
@@ -116,13 +145,6 @@ export const RocketObject = () => {
   const solarSail = isSolarSailProfile(profile);
   const target = view.destination;
   const highlightRadius = target ? Math.max(target.destSceneRadius * 2.4, 0.3) : 0;
-  const transfer = view.transfer;
-  const progressIndex = transfer
-    ? Math.max(1, Math.min(Math.floor(transfer.progress * (transfer.arcScenePoints.length - 1)), transfer.arcScenePoints.length - 1))
-    : 0;
-  const completedTransferPoints = transfer
-    ? [...transfer.arcScenePoints.slice(0, progressIndex + 1), view.scenePosition]
-    : [];
 
   return (
     <group>

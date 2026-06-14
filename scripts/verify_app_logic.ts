@@ -280,6 +280,28 @@ const assertPreLaunchRocketDistance = () => {
   }
 };
 
+const assertDirectRocketArrivalCapsTelemetry = () => {
+  const fusion = rocketsById.get("fusion-drive");
+  const neptune = destinationsById.get("neptune");
+  const launchDateMs = Date.parse("2026-06-14T12:00:00.000Z");
+  const dayMs = DAY_SECONDS * 1_000;
+
+  assert(fusion);
+  assert(neptune);
+
+  const arrivalView = computeRocketView(fusion, launchDateMs, launchDateMs + 30 * dayMs, "compressed", neptune, "direct");
+  const laterView = computeRocketView(fusion, launchDateMs, launchDateMs + 400 * dayMs, "compressed", neptune, "direct");
+
+  assert.equal(laterView.status, "arrived");
+  assert.equal(laterView.speedKmS, 0);
+  assert(
+    laterView.distanceTraveledKm <= arrivalView.distanceTraveledKm + 1_000_000,
+    `direct arrival distance grew from ${(arrivalView.distanceTraveledKm / AU_KM).toFixed(1)} AU to ${(
+      laterView.distanceTraveledKm / AU_KM
+    ).toFixed(1)} AU`,
+  );
+};
+
 const assertPlanetOrbitsUseAppCode = () => {
   for (const bodyId of Object.keys(jplApprox) as Array<keyof typeof jplApprox>) {
     const body = bodiesById.get(bodyId);
@@ -332,6 +354,7 @@ const assertTransferEstimateUsesAppCode = () => {
 
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
+assertDirectRocketArrivalCapsTelemetry();
 assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();

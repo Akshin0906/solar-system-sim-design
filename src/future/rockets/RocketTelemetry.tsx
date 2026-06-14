@@ -75,7 +75,7 @@ export const RocketTelemetry = ({
           <dd>{formatMissionTime(view.elapsedSeconds)}</dd>
         </div>
         <div>
-          <dt>Speed</dt>
+          <dt>{view.missionMode === "transfer" ? "Avg speed" : "Speed"}</dt>
           <dd>{formatSpeed(view.speedKmS)}</dd>
         </div>
         <div>

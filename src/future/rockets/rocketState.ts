@@ -50,9 +50,7 @@ export type MissionStatus =
   | "coast"
   | "transfer"
   | "approach"
-  | "flyby"
-  | "arrived"
-  | "missed";
+  | "arrived";
 
 export const missionStatusLabel: Record<MissionStatus, string> = {
   "pre-launch": "Pre-launch",
@@ -60,9 +58,7 @@ export const missionStatusLabel: Record<MissionStatus, string> = {
   coast: "Coast",
   transfer: "Transfer",
   approach: "Approach",
-  flyby: "Flyby",
   arrived: "Arrived",
-  missed: "Missed",
 };
 
 export type RocketDestinationView = {
@@ -125,6 +121,17 @@ const normalize = (v: Vec3): Vec3 => {
   return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
 };
 
+const setBoundedCacheEntry = <T>(cache: Map<string, T>, key: string, value: T, limit: number) => {
+  if (cache.size >= limit && !cache.has(key)) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) {
+      cache.delete(oldest);
+    }
+  }
+
+  cache.set(key, value);
+};
+
 const interpolatePoints = (points: Vec3[], progress: number): Vec3 => {
   if (points.length === 0) {
     return [0, 0, 0];
@@ -146,29 +153,23 @@ const directionAlongPoints = (points: Vec3[], progress: number): Vec3 => {
   return normalize(sub(points[index + 1], points[index]));
 };
 
-const getArrivalToleranceKm = (targetBody: CelestialBody, journeyDistanceKm: number): number =>
-  Math.max(targetBody.physical.radiusKm * 120, journeyDistanceKm * 0.01);
-
 const getDirectStatus = (
   elapsedSeconds: number,
   burnDurationSeconds: number,
   progress: number,
   closing: boolean,
   distanceToTargetKm: number,
-  closestApproachKm: number,
   aimDistanceKm: number,
   canIntercept: boolean,
   interceptSeconds: number,
-  targetBody: CelestialBody,
 ): MissionStatus => {
-  const arrivalToleranceKm = getArrivalToleranceKm(targetBody, aimDistanceKm);
   const atOrPastIntercept =
     canIntercept &&
     (progress >= ARRIVAL_PROGRESS_THRESHOLD ||
       elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= interceptSeconds);
 
   if (atOrPastIntercept) {
-    return closestApproachKm <= arrivalToleranceKm ? "arrived" : "missed";
+    return "arrived";
   }
   if (closing && distanceToTargetKm < DIRECT_APPROACH_FRACTION * aimDistanceKm) {
     return "approach";
@@ -197,27 +198,8 @@ const distanceToDestAt = (
   return vectorLength(sub(rocketKm, destKm));
 };
 
-const closestDirectApproachSoFar = (
-  profile: RocketProfile,
-  launchOriginKm: Vec3,
-  physicalDir: Vec3,
-  destBody: CelestialBody,
-  launchDateMs: number,
-  elapsedSeconds: number,
-  currentDistanceKm: number,
-): number => {
-  let closestKm = currentDistanceKm;
-  for (let index = 0; index <= CLOSEST_APPROACH_SAMPLES; index += 1) {
-    const tau = (elapsedSeconds * index) / CLOSEST_APPROACH_SAMPLES;
-    const distance = distanceToDestAt(profile, launchOriginKm, physicalDir, destBody, launchDateMs, tau);
-    if (distance < closestKm) {
-      closestKm = distance;
-    }
-  }
-  return closestKm;
-};
-
 const directPlanCache = new Map<string, DirectAimPlan>();
+const directClosestApproachCache = new Map<string, number>();
 
 const buildLaunchTimeDirectPlan = (
   launchOriginKm: Vec3,
@@ -282,17 +264,41 @@ const getDirectAimPlan = (
     };
   }
 
-  if (directPlanCache.size >= DIRECT_CACHE_LIMIT) {
-    const oldest = directPlanCache.keys().next().value;
-    if (oldest !== undefined) {
-      directPlanCache.delete(oldest);
-    }
-  }
-  directPlanCache.set(key, plan);
+  setBoundedCacheEntry(directPlanCache, key, plan, DIRECT_CACHE_LIMIT);
   return plan;
 };
 
+const getPlannedDirectClosestApproach = (
+  profile: RocketProfile,
+  launchOriginKm: Vec3,
+  physicalDir: Vec3,
+  destBody: CelestialBody,
+  launchDateMs: number,
+  directPlan: DirectAimPlan,
+): number => {
+  const key = `${profile.id}|${destBody.id}|${launchDateMs}`;
+  const cached = directClosestApproachCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const endSeconds = directPlan.canIntercept ? directPlan.interceptSeconds : DIRECT_INTERCEPT_MAX_SECONDS;
+  let closestKm = Number.POSITIVE_INFINITY;
+  for (let index = 0; index <= CLOSEST_APPROACH_SAMPLES; index += 1) {
+    const tau = (endSeconds * index) / CLOSEST_APPROACH_SAMPLES;
+    const distance = distanceToDestAt(profile, launchOriginKm, physicalDir, destBody, launchDateMs, tau);
+    if (distance < closestKm) {
+      closestKm = distance;
+    }
+  }
+
+  setBoundedCacheEntry(directClosestApproachCache, key, closestKm, DIRECT_CACHE_LIMIT);
+  return closestKm;
+};
+
 const transferPlanCache = new Map<string, CachedTransferPlan>();
+const transferSceneArcCache = new Map<string, Vec3[]>();
+const transferClosestApproachCache = new Map<string, number>();
 
 const getTransferPlan = (destBody: CelestialBody, launchDateMs: number): CachedTransferPlan | null => {
   const key = `${destBody.id}|${launchDateMs}`;
@@ -311,28 +317,25 @@ const getTransferPlan = (destBody: CelestialBody, launchDateMs: number): CachedT
   }
 
   const plan = { estimate, arc };
-  if (transferPlanCache.size >= TRANSFER_CACHE_LIMIT) {
-    const oldest = transferPlanCache.keys().next().value;
-    if (oldest !== undefined) {
-      transferPlanCache.delete(oldest);
-    }
-  }
-  transferPlanCache.set(key, plan);
+  setBoundedCacheEntry(transferPlanCache, key, plan, TRANSFER_CACHE_LIMIT);
   return plan;
 };
 
-const closestTransferApproachSoFar = (
+const getPlannedTransferClosestApproach = (
   arc: TransferArc,
   estimate: TransferEstimate,
   destBody: CelestialBody,
   launchDateMs: number,
-  elapsedSeconds: number,
-  currentDistanceKm: number,
 ): number => {
-  let closestKm = currentDistanceKm;
-  const cappedElapsed = Math.min(elapsedSeconds, estimate.transferTimeSeconds);
+  const key = `${destBody.id}|${launchDateMs}`;
+  const cached = transferClosestApproachCache.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  let closestKm = Number.POSITIVE_INFINITY;
   for (let index = 0; index <= CLOSEST_APPROACH_SAMPLES; index += 1) {
-    const tau = (cappedElapsed * index) / CLOSEST_APPROACH_SAMPLES;
+    const tau = (estimate.transferTimeSeconds * index) / CLOSEST_APPROACH_SAMPLES;
     const progress = estimate.transferTimeSeconds > 0 ? tau / estimate.transferTimeSeconds : 0;
     const rocketKm = interpolateTransferArcKm(arc, progress);
     const destKm = getBodyPositionKm(destBody, bodiesById, new Date(launchDateMs + tau * 1_000));
@@ -341,6 +344,7 @@ const closestTransferApproachSoFar = (
       closestKm = distance;
     }
   }
+  setBoundedCacheEntry(transferClosestApproachCache, key, closestKm, TRANSFER_CACHE_LIMIT);
   return closestKm;
 };
 
@@ -366,17 +370,26 @@ const getTransferSceneArc = (
   launchDateMs: number,
   mode: ScaleMode,
 ): Vec3[] => {
+  const cacheKey = `${destinationBody.id}|${launchDateMs}|${mode}`;
+  const cached = transferSceneArcCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  let points: Vec3[];
   if (plan.estimate.centralBodyId === "earth") {
     const earth = bodiesById.get(EARTH_ID);
     if (!earth) {
-      return makeLocalTransferSceneArc(
+      points = makeLocalTransferSceneArc(
         scaleVectorFromSun(plan.arc.launchPointKm, mode),
         scaleVectorFromSun(plan.arc.interceptPointKm, mode),
         plan.arc.pointsKm.length - 1,
       );
+      setBoundedCacheEntry(transferSceneArcCache, cacheKey, points, TRANSFER_CACHE_LIMIT);
+      return points;
     }
 
-    return plan.arc.pointsKm.map((point, index) => {
+    points = plan.arc.pointsKm.map((point, index) => {
       const progress = plan.arc.pointsKm.length > 1 ? index / (plan.arc.pointsKm.length - 1) : 0;
       const sampleDate = new Date(launchDateMs + plan.estimate.transferTimeSeconds * 1_000 * progress);
       const earthKm = getBodyPositionKm(earth, bodiesById, sampleDate);
@@ -386,8 +399,12 @@ const getTransferSceneArc = (
         scaleMoonOffset(sub(point, earthKm), mode, { parentBody: earth, moonBody: destinationBody }),
       );
     });
+  } else {
+    points = plan.arc.pointsKm.map((point) => scaleVectorFromSun(point, mode));
   }
-  return plan.arc.pointsKm.map((point) => scaleVectorFromSun(point, mode));
+
+  setBoundedCacheEntry(transferSceneArcCache, cacheKey, points, TRANSFER_CACHE_LIMIT);
+  return points;
 };
 
 const makeDestinationFollowScenePoints = (
@@ -527,16 +544,13 @@ export const computeRocketView = (
       const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
       const rocketHelioKm = arrived ? destNowKm : interpolateTransferArcKm(plan.arc, progress);
       const distanceToTargetKm = arrived ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
-      const closestApproachKm = arrived
-        ? 0
-        : closestTransferApproachSoFar(
-            plan.arc,
-            plan.estimate,
-            destBody,
-            launchDateMs,
-            elapsedSeconds,
-            distanceToTargetKm,
-          );
+      const plannedClosestApproachKm = getPlannedTransferClosestApproach(
+        plan.arc,
+        plan.estimate,
+        destBody,
+        launchDateMs,
+      );
+      const closestApproachKm = arrived ? 0 : Math.min(plannedClosestApproachKm, distanceToTargetKm);
       const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
       const preLaunch = simulationDateMs < launchDateMs;
       const averageSpeedKmS = plan.estimate.meanTransferSpeedKmS;
@@ -620,29 +634,15 @@ export const computeRocketView = (
     ...(arrived ? makeDestinationFollowScenePoints(destBody, interceptDate.getTime(), simulationDateMs, mode) : []),
   ];
   const distanceToTargetKm = arrived ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
-  const sampledClosestApproachKm = arrived
-    ? 0
-    : closestDirectApproachSoFar(
-        profile,
-        earthLaunchKm,
-        physicalDir,
-        destBody,
-        launchDateMs,
-        elapsedSeconds,
-        distanceToTargetKm,
-      );
-  const plannedClosestApproachKm =
-    directPlan.canIntercept && elapsedSeconds >= directPlan.interceptSeconds
-      ? distanceToDestAt(
-          profile,
-          earthLaunchKm,
-          physicalDir,
-          destBody,
-          launchDateMs,
-          directPlan.interceptSeconds,
-        )
-      : Number.POSITIVE_INFINITY;
-  const closestApproachKm = Math.min(sampledClosestApproachKm, plannedClosestApproachKm);
+  const plannedClosestApproachKm = getPlannedDirectClosestApproach(
+    profile,
+    earthLaunchKm,
+    physicalDir,
+    destBody,
+    launchDateMs,
+    directPlan,
+  );
+  const closestApproachKm = arrived ? 0 : Math.min(plannedClosestApproachKm, distanceToTargetKm);
   const previousDistanceKm = distanceToDestAt(
     profile,
     earthLaunchKm,
@@ -661,17 +661,15 @@ export const computeRocketView = (
         progress,
         closing,
         distanceToTargetKm,
-        closestApproachKm,
         aimDistanceKm,
         directPlan.canIntercept,
         directPlan.interceptSeconds,
-        destBody,
       );
 
   return {
     elapsedSeconds,
-    speedKmS: flight.speedKmS,
-    distanceTraveledKm: flight.distanceTraveledKm,
+    speedKmS: arrived ? 0 : flight.speedKmS,
+    distanceTraveledKm: pathDistanceKm,
     distanceFromEarthKm: preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm)),
     status,
     missionMode: "direct",
