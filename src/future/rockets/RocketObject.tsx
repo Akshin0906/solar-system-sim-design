@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { useScaleStore } from "../../simulation/scaleStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import { destinationsById } from "./destinationCatalog";
-import { rocketsById } from "./rocketCatalog";
+import { rocketsById, type RocketProfile } from "./rocketCatalog";
 import { computeRocketView } from "./rocketState";
 import { useRocketStore } from "./rocketStore";
 
@@ -20,6 +20,72 @@ import { useRocketStore } from "./rocketStore";
 const UP = new THREE.Vector3(0, 1, 0);
 const noopRaycast = () => null;
 const TARGET_COLOR = "#9fd2d9";
+const BODY_COLOR = "#e9f0f2";
+const BODY_SHADOW_COLOR = "#61717a";
+const WINDOW_COLOR = "#86d7ff";
+const ENGINE_CORE_COLOR = "#fff6cb";
+const ENGINE_GLOW_COLOR = "#ff8a35";
+const SAIL_COLOR = "#fff2bf";
+const FIN_ROTATIONS = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
+const SOLAR_SAIL_EDGE_POINTS: [number, number, number][] = [
+  [0, 0, 0.24],
+  [0.24, 0, 0],
+  [0, 0, -0.24],
+  [-0.24, 0, 0],
+  [0, 0, 0.24],
+];
+const SOLAR_SAIL_CROSS_POINTS: [number, number, number][][] = [
+  [
+    [-0.24, 0, 0],
+    [0.24, 0, 0],
+  ],
+  [
+    [0, 0, -0.24],
+    [0, 0, 0.24],
+  ],
+];
+const EXHAUST_TRAILS: [number, number, number][][] = [
+  [
+    [0, -0.16, 0],
+    [0, -0.43, 0],
+  ],
+  [
+    [0.018, -0.15, 0],
+    [0.045, -0.36, 0.012],
+  ],
+  [
+    [-0.018, -0.15, 0],
+    [-0.045, -0.36, -0.012],
+  ],
+];
+
+const createFinShape = () => {
+  const shape = new THREE.Shape();
+  shape.moveTo(0.03, -0.085);
+  shape.lineTo(0.092, -0.13);
+  shape.lineTo(0.055, 0.035);
+  shape.lineTo(0.03, 0.055);
+  shape.lineTo(0.03, -0.085);
+  return shape;
+};
+
+const createSolarSailShape = () => {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.24);
+  shape.lineTo(0.24, 0);
+  shape.lineTo(0, -0.24);
+  shape.lineTo(-0.24, 0);
+  shape.lineTo(0, 0.24);
+  return shape;
+};
+
+const FIN_SHAPE = createFinShape();
+const SOLAR_SAIL_SHAPE = createSolarSailShape();
+
+const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
+  const signature = `${profile.id} ${profile.name}`.toLowerCase();
+  return signature.includes("solar") && signature.includes("sail");
+};
 
 export const RocketObject = () => {
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
@@ -53,6 +119,7 @@ export const RocketObject = () => {
   const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, activeMissionMode, activeLaunchMode);
   const markerScale = mode === "real" || mode === "readable" ? 2.4 : 1;
   const accent = profile.accentColor;
+  const solarSail = isSolarSailProfile(profile);
   const target = view.destination;
   const highlightRadius = target ? Math.max(target.destSceneRadius * 2.4, 0.3) : 0;
   const transfer = view.transfer;
@@ -144,25 +211,158 @@ export const RocketObject = () => {
       <group position={view.scenePosition}>
         {/* additive glow so the rocket is findable at any scale mode */}
         <mesh raycast={noopRaycast}>
-          <sphereGeometry args={[0.18 * markerScale, 16, 16]} />
+          <sphereGeometry args={[0.2 * markerScale, 16, 16]} />
           <meshBasicMaterial
             color={accent}
             transparent
-            opacity={0.3}
+            opacity={solarSail ? 0.22 : 0.3}
             blending={THREE.AdditiveBlending}
             depthWrite={false}
           />
         </mesh>
-        {/* nose cone pointing along the flight direction */}
-        <group quaternion={orientation}>
-          <mesh position={[0, 0.02 * markerScale, 0]} raycast={noopRaycast}>
-            <coneGeometry args={[0.045 * markerScale, 0.15 * markerScale, 16]} />
+
+        <group quaternion={orientation} scale={[markerScale, markerScale, markerScale]}>
+          {solarSail && (
+            <group position={[0, -0.01, 0]}>
+              <mesh rotation={[Math.PI / 2, 0, 0]} raycast={noopRaycast}>
+                <shapeGeometry args={[SOLAR_SAIL_SHAPE]} />
+                <meshStandardMaterial
+                  color={SAIL_COLOR}
+                  emissive={accent}
+                  emissiveIntensity={0.18}
+                  roughness={0.24}
+                  metalness={0.05}
+                  transparent
+                  opacity={0.38}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+              <Line
+                points={SOLAR_SAIL_EDGE_POINTS}
+                color={SAIL_COLOR}
+                lineWidth={1.1}
+                transparent
+                opacity={0.76}
+                raycast={noopRaycast}
+              />
+              {SOLAR_SAIL_CROSS_POINTS.map((points, index) => (
+                <Line
+                  key={`solar-sail-spar-${index}`}
+                  points={points}
+                  color={accent}
+                  lineWidth={0.85}
+                  transparent
+                  opacity={0.58}
+                  raycast={noopRaycast}
+                />
+              ))}
+            </group>
+          )}
+
+          <mesh position={[0, 0.015, 0]} raycast={noopRaycast}>
+            <cylinderGeometry args={[0.034, 0.044, 0.21, 24]} />
+            <meshStandardMaterial color={BODY_COLOR} roughness={0.34} metalness={0.38} />
+          </mesh>
+          <mesh position={[0, 0.165, 0]} raycast={noopRaycast}>
+            <coneGeometry args={[0.034, 0.09, 24]} />
             <meshStandardMaterial
               color={accent}
               emissive={accent}
-              emissiveIntensity={0.55}
-              roughness={0.45}
+              emissiveIntensity={0.38}
+              roughness={0.36}
+              metalness={0.16}
+            />
+          </mesh>
+          <mesh position={[0, 0.092, 0.034]} raycast={noopRaycast}>
+            <sphereGeometry args={[0.012, 12, 8]} />
+            <meshStandardMaterial
+              color={WINDOW_COLOR}
+              emissive={WINDOW_COLOR}
+              emissiveIntensity={0.42}
+              roughness={0.12}
               metalness={0.1}
+            />
+          </mesh>
+          <mesh position={[0, 0.052, 0]} rotation={[Math.PI / 2, 0, 0]} raycast={noopRaycast}>
+            <torusGeometry args={[0.039, 0.0032, 8, 32]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.75} />
+          </mesh>
+          <mesh position={[0, -0.046, 0]} rotation={[Math.PI / 2, 0, 0]} raycast={noopRaycast}>
+            <torusGeometry args={[0.043, 0.003, 8, 32]} />
+            <meshBasicMaterial color={BODY_SHADOW_COLOR} transparent opacity={0.72} />
+          </mesh>
+          {FIN_ROTATIONS.map((rotation) => (
+            <group key={`rocket-fin-${rotation}`} rotation={[0, rotation, 0]}>
+              <mesh raycast={noopRaycast}>
+                <shapeGeometry args={[FIN_SHAPE]} />
+                <meshStandardMaterial
+                  color={accent}
+                  emissive={accent}
+                  emissiveIntensity={0.16}
+                  roughness={0.42}
+                  metalness={0.18}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            </group>
+          ))}
+          <mesh position={[0.048, -0.008, 0]} raycast={noopRaycast}>
+            <cylinderGeometry args={[0.008, 0.01, 0.13, 12]} />
+            <meshStandardMaterial color={BODY_SHADOW_COLOR} roughness={0.4} metalness={0.28} />
+          </mesh>
+          <mesh position={[-0.048, -0.008, 0]} raycast={noopRaycast}>
+            <cylinderGeometry args={[0.008, 0.01, 0.13, 12]} />
+            <meshStandardMaterial color={BODY_SHADOW_COLOR} roughness={0.4} metalness={0.28} />
+          </mesh>
+          <mesh position={[0, -0.125, 0]} raycast={noopRaycast}>
+            <coneGeometry args={[0.034, 0.07, 20]} />
+            <meshStandardMaterial color={BODY_SHADOW_COLOR} roughness={0.32} metalness={0.42} />
+          </mesh>
+          <mesh position={[0, -0.16, 0]} raycast={noopRaycast}>
+            <sphereGeometry args={[0.025, 16, 8]} />
+            <meshBasicMaterial
+              color={ENGINE_CORE_COLOR}
+              transparent
+              opacity={0.82}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
+          </mesh>
+          <mesh position={[0, -0.25, 0]} raycast={noopRaycast}>
+            <coneGeometry args={[0.055, 0.18, 24, 1, true]} />
+            <meshBasicMaterial
+              color={ENGINE_GLOW_COLOR}
+              transparent
+              opacity={0.28}
+              blending={THREE.AdditiveBlending}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </mesh>
+          {EXHAUST_TRAILS.map((points, index) => (
+            <Line
+              key={`rocket-exhaust-trail-${index}`}
+              points={points}
+              color={index === 0 ? ENGINE_CORE_COLOR : accent}
+              lineWidth={index === 0 ? 1.35 : 0.8}
+              transparent
+              opacity={index === 0 ? 0.56 : 0.32}
+              raycast={noopRaycast}
+            />
+          ))}
+          <mesh position={[0, -0.22, 0]} raycast={noopRaycast}>
+            <sphereGeometry args={[0.062, 16, 12]} />
+            <meshStandardMaterial
+              color={accent}
+              emissive={accent}
+              emissiveIntensity={0.72}
+              roughness={0.8}
+              metalness={0}
+              transparent
+              opacity={0.18}
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
             />
           </mesh>
         </group>

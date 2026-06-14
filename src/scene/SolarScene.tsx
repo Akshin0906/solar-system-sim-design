@@ -8,6 +8,7 @@ import { computeScenePositions } from "../simulation/units";
 import { BeltCloud } from "./BeltCloud";
 import { BodyMesh } from "./BodyMesh";
 import { CameraRig } from "./CameraRig";
+import { EclipticCues } from "./EclipticCues";
 import { Lighting } from "./Lighting";
 import { MotionTrail } from "./MotionTrail";
 import { OrbitRing } from "./OrbitRing";
@@ -108,11 +109,12 @@ export const SolarScene = () => {
 
   return (
     <>
-      <color attach="background" args={["#090907"]} />
-      <fog attach="fog" args={["#090907", 140, 520]} />
-      <Stars radius={430} depth={70} count={1_700} factor={2.2} saturation={0.2} fade speed={0.22} />
+      <color attach="background" args={["#050609"]} />
+      <fog attach="fog" args={["#050609", 150, 590]} />
+      <Stars radius={500} depth={90} count={2_300} factor={2.35} saturation={0.28} fade speed={0.16} />
       <Lighting />
-      <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.32 : 1} />
+      <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />
+      <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.28 : 1} />
       {showOrbits &&
         bodies.map((body) => (
           <OrbitRing
