@@ -18,6 +18,25 @@ const isEditableTarget = (target: EventTarget | null) => {
   return target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select";
 };
 
+// Any focusable control that should own its own keys (Space/arrows) rather than
+// letting the global transport shortcuts steal them. Editable fields are a subset.
+const isInteractiveTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (isEditableTarget(target) || target.getAttribute("role") === "button") {
+    return true;
+  }
+
+  const tagName = target.tagName.toLowerCase();
+  if (tagName === "a") {
+    return target.hasAttribute("href");
+  }
+
+  return tagName === "button";
+};
+
 const TimeDriver = () => {
   const tick = useTimeStore((state) => state.tick);
   const frameRef = useRef<number | null>(null);
@@ -71,6 +90,12 @@ const KeyboardShortcuts = () => {
       if (event.key === "/") {
         event.preventDefault();
         window.dispatchEvent(new CustomEvent("solar:open-search"));
+        return;
+      }
+
+      // Transport shortcuts belong to the scene; let a focused button/slider/link
+      // handle Space and the arrow keys itself.
+      if (isInteractiveTarget(event.target)) {
         return;
       }
 

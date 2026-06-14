@@ -1,4 +1,4 @@
-import { AU_KM, EARTH_RADIUS_KM } from "../data/constants";
+import { AU_KM, DAY_SECONDS, EARTH_RADIUS_KM } from "../data/constants";
 import type { CelestialBody, Vec3 } from "./orbitalElements";
 import { addVec3, getOrbitPositionKm, vectorLength } from "./solveOrbit";
 
@@ -172,4 +172,50 @@ export const formatPeriod = (days: number) => {
   }
 
   return `${days.toFixed(days < 10 ? 2 : 1)} d`;
+};
+
+// Compact, always-accurate label for the live time scale (sim-seconds per real
+// second). Drives the speed-slider readout so it never disagrees with the clock.
+const timeScaleUnits: Array<[number, string]> = [
+  [DAY_SECONDS * 365.256, "yr"],
+  [DAY_SECONDS * 30.437, "mo"],
+  [DAY_SECONDS * 7, "wk"],
+  [DAY_SECONDS, "day"],
+  [3_600, "hr"],
+  [60, "min"],
+  [1, "sec"],
+];
+
+export const formatTimeScale = (secondsPerSecond: number) => {
+  if (secondsPerSecond < 1.5) {
+    return "real-time";
+  }
+
+  for (const [size, label] of timeScaleUnits) {
+    if (secondsPerSecond >= size) {
+      const value = secondsPerSecond / size;
+      const text = Math.abs(value - Math.round(value)) < 0.05 ? String(Math.round(value)) : value.toFixed(1);
+      return `${text} ${label}/s`;
+    }
+  }
+
+  return `${Math.round(secondsPerSecond)} sec/s`;
+};
+
+// Signed offset of the scrub position from real "now", for the timeline readout.
+export const formatNowDelta = (deltaDays: number) => {
+  const abs = Math.abs(deltaDays);
+  if (abs < 1) {
+    return "now";
+  }
+
+  const sign = deltaDays > 0 ? "+" : "−";
+  if (abs >= 365.256) {
+    return `${sign}${(abs / 365.256).toFixed(1)} yr`;
+  }
+  if (abs >= 30.437) {
+    return `${sign}${(abs / 30.437).toFixed(1)} mo`;
+  }
+
+  return `${sign}${Math.round(abs)} d`;
 };

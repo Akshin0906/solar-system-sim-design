@@ -5,43 +5,57 @@ import {
   computeBodyScenePosition,
   getBodySceneRadius,
   scaleDistanceFromSun,
+  scaleVectorFromSun,
   type ScaleMode,
 } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
 import { sampleFlight } from "./flightModel";
+import { applyLaunchModeToProfile, type RocketLaunchMode, type RocketMissionMode } from "./missionOptions";
 import type { RocketProfile } from "./rocketCatalog";
+import {
+  estimateTransfer,
+  interpolateTransferArcKm,
+  sampleTransferArcKm,
+  type TransferArc,
+  type TransferEstimate,
+} from "./transferModel";
 
-// Composition layer: turns a launched rocket + chosen destination + the current
-// simulation time into a full, scale-independent view. It reads Earth and the
-// destination's positions (never mutates them) and reuses the existing scene-scale
-// utilities. Physical telemetry (km, km/s) is the source of truth; scene positions
-// are derived rendering conveniences.
+// Composition layer: turns a launched rocket, mission mode, destination, launch
+// assumption, and current simulation time into a scale-independent scene/telemetry
+// view. It never mutates celestial body data.
 //
-// This is a straight-line, FIXED-AIM educational model. A destination launch heads
-// toward where the destination was AT LAUNCH (the aim direction does not chase the
-// moving body). Distance-to-destination is still measured against the destination's
-// CURRENT position, so the rocket can "miss" a body it aimed behind — which is the
-// whole point of showing closest approach. It is NOT a transfer-orbit simulation.
+// Direct aim is the original educational model: freeze the target's launch-time
+// position and fly a straight line toward it. Transfer preview is a separate
+// approximate Hohmann-style model: compute transfer-window math once per launch,
+// draw a curved transfer arc, and place the rocket along that arc by elapsed time.
 
 const EARTH_ID = "earth";
 
-// Within this distance from Earth the mission reads as "Departing".
 const DEPART_FROM_EARTH_KM = 1_000_000;
-// Fraction of the aim distance still counted as the departure phase (destination mode).
-const DEPART_PROGRESS = 0.06;
-// Inside this fraction of the aim distance the mission reads as "Approaching".
-const APPROACH_FRACTION = 0.25;
-// Samples used to estimate closest approach so far (destination mode).
+const DIRECT_DEPART_PROGRESS = 0.06;
+const DIRECT_APPROACH_FRACTION = 0.25;
 const CLOSEST_APPROACH_SAMPLES = 40;
+const TRANSFER_CACHE_LIMIT = 16;
 
-export type MissionStatus = "pre-launch" | "departing" | "cruising" | "approaching" | "passed";
+export type MissionStatus =
+  | "pre-launch"
+  | "burn"
+  | "coast"
+  | "transfer"
+  | "approach"
+  | "flyby"
+  | "arrived"
+  | "missed";
 
 export const missionStatusLabel: Record<MissionStatus, string> = {
   "pre-launch": "Pre-launch",
-  departing: "Departing",
-  cruising: "Cruising",
-  approaching: "Approaching",
-  passed: "Passed target",
+  burn: "Burn",
+  coast: "Coast",
+  transfer: "Transfer",
+  approach: "Approach",
+  flyby: "Flyby",
+  arrived: "Arrived",
+  missed: "Missed",
 };
 
 export type RocketDestinationView = {
@@ -50,9 +64,17 @@ export type RocketDestinationView = {
   distanceToTargetKm: number;
   etaSeconds: number | null;
   closestApproachKm: number;
-  /** Current scene position of the destination body (for the highlight + line). */
   destScenePosition: Vec3;
   destSceneRadius: number;
+};
+
+export type RocketTransferView = {
+  estimate: TransferEstimate;
+  arcScenePoints: Vec3[];
+  progress: number;
+  arcLengthKm: number;
+  interceptScenePosition: Vec3;
+  targetArrivalScenePosition: Vec3;
 };
 
 export type RocketView = {
@@ -61,14 +83,18 @@ export type RocketView = {
   distanceTraveledKm: number;
   distanceFromEarthKm: number;
   status: MissionStatus;
-  /** Scene-space position of the rocket. */
+  missionMode: RocketMissionMode;
+  launchMode: RocketLaunchMode;
   scenePosition: Vec3;
-  /** Scene-space position the rocket launched from (Earth at launch). */
   launchScenePosition: Vec3;
-  /** Fixed unit vector the rocket nose points along, in scene space. */
   sceneDirection: Vec3;
-  /** Destination telemetry, or null for free flight. */
   destination: RocketDestinationView | null;
+  transfer: RocketTransferView | null;
+};
+
+type CachedTransferPlan = {
+  estimate: TransferEstimate;
+  arc: TransferArc;
 };
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -79,12 +105,60 @@ const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => [
   a[1] + (b[1] - a[1]) * t,
   a[2] + (b[2] - a[2]) * t,
 ];
+const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 const normalize = (v: Vec3): Vec3 => {
   const length = vectorLength(v);
   return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
 };
 
-/** Straight-line distance from the rocket to the (moving) destination at mission time `tau`. */
+const interpolatePoints = (points: Vec3[], progress: number): Vec3 => {
+  if (points.length === 0) {
+    return [0, 0, 0];
+  }
+  if (points.length === 1) {
+    return points[0];
+  }
+  const scaled = clamp01(progress) * (points.length - 1);
+  const index = Math.min(Math.floor(scaled), points.length - 2);
+  return lerp(points[index], points[index + 1], scaled - index);
+};
+
+const directionAlongPoints = (points: Vec3[], progress: number): Vec3 => {
+  if (points.length < 2) {
+    return [0, 1, 0];
+  }
+  const scaled = clamp01(progress) * (points.length - 1);
+  const index = Math.min(Math.floor(scaled), points.length - 2);
+  return normalize(sub(points[index + 1], points[index]));
+};
+
+const getDirectStatus = (
+  elapsedSeconds: number,
+  burnDurationSeconds: number,
+  progress: number,
+  closing: boolean,
+  distanceToTargetKm: number,
+  closestApproachKm: number,
+  aimDistanceKm: number,
+  targetBody: CelestialBody,
+): MissionStatus => {
+  if (elapsedSeconds < burnDurationSeconds) {
+    return "burn";
+  }
+  if (progress < DIRECT_DEPART_PROGRESS) {
+    return "coast";
+  }
+  if (closing && distanceToTargetKm < DIRECT_APPROACH_FRACTION * aimDistanceKm) {
+    return "approach";
+  }
+  if (progress >= 1) {
+    const closePassKm = Math.max(targetBody.physical.radiusKm * 120, aimDistanceKm * 0.015);
+    return closestApproachKm <= closePassKm ? "flyby" : "missed";
+  }
+  return "coast";
+};
+
+/** Straight-line distance from the rocket to the moving destination at mission time tau. */
 const distanceToDestAt = (
   profile: RocketProfile,
   launchOriginKm: Vec3,
@@ -99,13 +173,7 @@ const distanceToDestAt = (
   return vectorLength(sub(rocketKm, destKm));
 };
 
-/**
- * Estimate the closest approach to the (moving) destination so far by sampling the
- * trajectory from launch to now. Both the rocket and the destination move, so there
- * is no closed form; a coarse sample is good enough for the educational readout.
- * The current instant is always included, so `closestKm <= current distance`.
- */
-const closestApproachSoFar = (
+const closestDirectApproachSoFar = (
   profile: RocketProfile,
   launchOriginKm: Vec3,
   physicalDir: Vec3,
@@ -115,7 +183,7 @@ const closestApproachSoFar = (
   currentDistanceKm: number,
 ): number => {
   let closestKm = currentDistanceKm;
-  for (let index = 0; index < CLOSEST_APPROACH_SAMPLES; index += 1) {
+  for (let index = 0; index <= CLOSEST_APPROACH_SAMPLES; index += 1) {
     const tau = (elapsedSeconds * index) / CLOSEST_APPROACH_SAMPLES;
     const distance = distanceToDestAt(profile, launchOriginKm, physicalDir, destBody, launchDateMs, tau);
     if (distance < closestKm) {
@@ -125,124 +193,296 @@ const closestApproachSoFar = (
   return closestKm;
 };
 
-export const computeRocketView = (
+const transferPlanCache = new Map<string, CachedTransferPlan>();
+
+const getTransferPlan = (destBody: CelestialBody, launchDateMs: number): CachedTransferPlan | null => {
+  const key = `${destBody.id}|${launchDateMs}`;
+  const cached = transferPlanCache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs);
+  if (!estimate) {
+    return null;
+  }
+  const arc = sampleTransferArcKm(estimate, bodiesById, launchDateMs);
+  if (!arc) {
+    return null;
+  }
+
+  const plan = { estimate, arc };
+  if (transferPlanCache.size >= TRANSFER_CACHE_LIMIT) {
+    const oldest = transferPlanCache.keys().next().value;
+    if (oldest !== undefined) {
+      transferPlanCache.delete(oldest);
+    }
+  }
+  transferPlanCache.set(key, plan);
+  return plan;
+};
+
+const closestTransferApproachSoFar = (
+  arc: TransferArc,
+  estimate: TransferEstimate,
+  destBody: CelestialBody,
+  launchDateMs: number,
+  elapsedSeconds: number,
+  currentDistanceKm: number,
+): number => {
+  let closestKm = currentDistanceKm;
+  const cappedElapsed = Math.min(elapsedSeconds, estimate.transferTimeSeconds);
+  for (let index = 0; index <= CLOSEST_APPROACH_SAMPLES; index += 1) {
+    const tau = (cappedElapsed * index) / CLOSEST_APPROACH_SAMPLES;
+    const progress = estimate.transferTimeSeconds > 0 ? tau / estimate.transferTimeSeconds : 0;
+    const rocketKm = interpolateTransferArcKm(arc, progress);
+    const destKm = getBodyPositionKm(destBody, bodiesById, new Date(launchDateMs + tau * 1_000));
+    const distance = vectorLength(sub(rocketKm, destKm));
+    if (distance < closestKm) {
+      closestKm = distance;
+    }
+  }
+  return closestKm;
+};
+
+const makeLocalTransferSceneArc = (launchScene: Vec3, arrivalScene: Vec3, samples: number): Vec3[] => {
+  const chord = sub(arrivalScene, launchScene);
+  const lift = Math.max(vectorLength(chord) * 0.28, 0.36);
+  const control = add(lerp(launchScene, arrivalScene, 0.48), [0, lift, 0]);
+  const points: Vec3[] = [];
+
+  for (let index = 0; index <= samples; index += 1) {
+    const t = index / samples;
+    const ab = lerp(launchScene, control, t);
+    const bc = lerp(control, arrivalScene, t);
+    points.push(lerp(ab, bc, t));
+  }
+
+  return points;
+};
+
+const getTransferSceneArc = (
+  plan: CachedTransferPlan,
+  launchScene: Vec3,
+  arrivalScene: Vec3,
+  mode: ScaleMode,
+): Vec3[] => {
+  if (plan.estimate.centralBodyId === "earth") {
+    return makeLocalTransferSceneArc(launchScene, arrivalScene, plan.arc.pointsKm.length - 1);
+  }
+  return plan.arc.pointsKm.map((point) => scaleVectorFromSun(point, mode));
+};
+
+const buildFreeFlightView = (
   profile: RocketProfile,
+  launchMode: RocketLaunchMode,
   launchDateMs: number,
   simulationDateMs: number,
   mode: ScaleMode,
-  destination: RocketDestination | null,
+  earthLaunchKm: Vec3,
+  earthNowKm: Vec3,
+  earthLaunchScene: Vec3,
 ): RocketView => {
   const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
-  const flight = sampleFlight(profile, elapsedSeconds);
-  const launchDate = new Date(launchDateMs);
-  const simDate = new Date(simulationDateMs);
-
-  const earth = bodiesById.get(EARTH_ID);
-  const earthLaunchKm: Vec3 = earth ? getBodyPositionKm(earth, bodiesById, launchDate) : [0, 0, 0];
-  const earthNowKm: Vec3 = earth ? getBodyPositionKm(earth, bodiesById, simDate) : [0, 0, 0];
-  const earthLaunchScene: Vec3 = earth
-    ? computeBodyScenePosition(earth, bodiesById, launchDate, mode)
-    : [0, 0, 0];
-
-  const destBody = destination?.bodyId ? bodiesById.get(destination.bodyId) : undefined;
-
-  let physicalDir: Vec3;
-  let sceneDirection: Vec3;
-  let scenePosition: Vec3;
-  let aimDistanceKm = 0;
-
-  if (destBody && destination) {
-    const destLaunchKm = getBodyPositionKm(destBody, bodiesById, launchDate);
-    const toTarget = sub(destLaunchKm, earthLaunchKm);
-    aimDistanceKm = vectorLength(toTarget) || 1;
-    physicalDir = normalize(toTarget);
-
-    const destLaunchScene = computeBodyScenePosition(destBody, bodiesById, launchDate, mode);
-    sceneDirection = normalize(sub(destLaunchScene, earthLaunchScene));
-    const progress = flight.distanceTraveledKm / aimDistanceKm;
-    scenePosition = lerp(earthLaunchScene, destLaunchScene, progress);
-  } else {
-    // Free flight: radially outward from the Sun, exactly as before.
-    physicalDir = normalize(earthLaunchKm);
-    sceneDirection = normalize(earthLaunchScene);
-    const launchRadiusKm = vectorLength(earthLaunchKm);
-    const rocketRadiusKm = launchRadiusKm + flight.distanceTraveledKm;
-    scenePosition = mul(physicalDir, scaleDistanceFromSun(rocketRadiusKm, mode));
-  }
-
-  // Honest heliocentric rocket position for distance telemetry.
+  const adjustedProfile = applyLaunchModeToProfile(profile, launchMode);
+  const flight = sampleFlight(adjustedProfile, elapsedSeconds);
+  const physicalDir = normalize(earthLaunchKm);
+  const launchRadiusKm = vectorLength(earthLaunchKm);
+  const rocketRadiusKm = launchRadiusKm + flight.distanceTraveledKm;
+  const scenePosition = mul(physicalDir, scaleDistanceFromSun(rocketRadiusKm, mode));
   const rocketHelioKm = add(earthLaunchKm, mul(physicalDir, flight.distanceTraveledKm));
   const distanceFromEarthKm = vectorLength(sub(rocketHelioKm, earthNowKm));
-
-  let destinationView: RocketDestinationView | null = null;
-  let status: MissionStatus;
-
-  if (simulationDateMs < launchDateMs) {
-    status = "pre-launch";
-  } else if (destBody && destination) {
-    const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
-    const distanceToTargetKm = vectorLength(sub(destNowKm, rocketHelioKm));
-    const closestKm = closestApproachSoFar(
-      profile,
-      earthLaunchKm,
-      physicalDir,
-      destBody,
-      launchDateMs,
-      elapsedSeconds,
-      distanceToTargetKm,
-    );
-
-    // Is the rocket currently closing on the target or falling behind it? Compare with
-    // a slightly earlier instant. (The aim is fixed, so a body the rocket aimed behind
-    // can recede from the start — a wide miss, not a flyby.)
-    const previousDistanceKm = distanceToDestAt(
-      profile,
-      earthLaunchKm,
-      physicalDir,
-      destBody,
-      launchDateMs,
-      elapsedSeconds * 0.985,
-    );
-    const closing = distanceToTargetKm < previousDistanceKm;
-    const madeCloseApproach = closestKm < APPROACH_FRACTION * aimDistanceKm;
-    const progress = flight.distanceTraveledKm / aimDistanceKm;
-
-    if (progress < DEPART_PROGRESS) {
-      status = "departing";
-    } else if (closing && distanceToTargetKm < APPROACH_FRACTION * aimDistanceKm) {
-      status = "approaching";
-    } else if (!closing && madeCloseApproach) {
-      status = "passed";
-    } else {
-      // Still closing from afar, or coasting past a wide miss.
-      status = "cruising";
-    }
-
-    const etaSeconds = closing && flight.speedKmS > 0 ? distanceToTargetKm / flight.speedKmS : null;
-
-    destinationView = {
-      bodyId: destination.bodyId!,
-      label: destination.label,
-      distanceToTargetKm,
-      etaSeconds,
-      closestApproachKm: closestKm,
-      destScenePosition: computeBodyScenePosition(destBody, bodiesById, simDate, mode),
-      destSceneRadius: getBodySceneRadius(destBody, mode),
-    };
-  } else {
-    status = distanceFromEarthKm < DEPART_FROM_EARTH_KM ? "departing" : "cruising";
-  }
+  const preLaunch = simulationDateMs < launchDateMs;
 
   return {
     elapsedSeconds,
     speedKmS: flight.speedKmS,
     distanceTraveledKm: flight.distanceTraveledKm,
     distanceFromEarthKm,
-    status,
+    status: preLaunch ? "pre-launch" : distanceFromEarthKm < DEPART_FROM_EARTH_KM ? "burn" : "coast",
+    missionMode: "direct",
+    launchMode,
     scenePosition,
     launchScenePosition: earthLaunchScene,
-    sceneDirection,
-    destination: destinationView,
+    sceneDirection: normalize(earthLaunchScene),
+    destination: null,
+    transfer: null,
+  };
+};
+
+export const computeRocketView = (
+  profile: RocketProfile,
+  launchDateMs: number,
+  simulationDateMs: number,
+  mode: ScaleMode,
+  destination: RocketDestination | null,
+  missionMode: RocketMissionMode = "direct",
+  launchMode: RocketLaunchMode = "earth-departure",
+): RocketView => {
+  const launchDate = new Date(launchDateMs);
+  const simDate = new Date(simulationDateMs);
+  const earth = bodiesById.get(EARTH_ID);
+  const earthLaunchKm: Vec3 = earth ? getBodyPositionKm(earth, bodiesById, launchDate) : [0, 0, 0];
+  const earthNowKm: Vec3 = earth ? getBodyPositionKm(earth, bodiesById, simDate) : [0, 0, 0];
+  const earthLaunchScene: Vec3 = earth
+    ? computeBodyScenePosition(earth, bodiesById, launchDate, mode)
+    : [0, 0, 0];
+  const destBody = destination?.bodyId ? bodiesById.get(destination.bodyId) : undefined;
+
+  if (!destBody || !destination) {
+    return buildFreeFlightView(
+      profile,
+      launchMode,
+      launchDateMs,
+      simulationDateMs,
+      mode,
+      earthLaunchKm,
+      earthNowKm,
+      earthLaunchScene,
+    );
+  }
+
+  if (missionMode === "transfer") {
+    const plan = getTransferPlan(destBody, launchDateMs);
+    if (plan) {
+      const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
+      const progress = clamp01(elapsedSeconds / plan.estimate.transferTimeSeconds);
+      const arrivalDate = new Date(plan.estimate.arrivalDateMs);
+      const transferTargetBody = bodiesById.get(plan.estimate.transferTargetBodyId) ?? destBody;
+      const targetArrivalScenePosition = computeBodyScenePosition(destBody, bodiesById, arrivalDate, mode);
+      const interceptScenePosition = computeBodyScenePosition(transferTargetBody, bodiesById, arrivalDate, mode);
+      const arcScenePoints = getTransferSceneArc(plan, earthLaunchScene, targetArrivalScenePosition, mode);
+      const scenePosition = interpolatePoints(arcScenePoints, progress);
+      const sceneDirection = directionAlongPoints(arcScenePoints, progress);
+      const rocketHelioKm = interpolateTransferArcKm(plan.arc, progress);
+      const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
+      const distanceToTargetKm = vectorLength(sub(destNowKm, rocketHelioKm));
+      const closestApproachKm = closestTransferApproachSoFar(
+        plan.arc,
+        plan.estimate,
+        destBody,
+        launchDateMs,
+        elapsedSeconds,
+        distanceToTargetKm,
+      );
+      const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
+      const preLaunch = simulationDateMs < launchDateMs;
+      const averageSpeedKmS = plan.arc.arcLengthKm / plan.estimate.transferTimeSeconds;
+      const burnEndSeconds = Math.min(
+        applyLaunchModeToProfile(profile, launchMode).burnDurationSeconds,
+        plan.estimate.transferTimeSeconds * 0.12,
+      );
+      let status: MissionStatus;
+      if (preLaunch) {
+        status = "pre-launch";
+      } else if (elapsedSeconds < burnEndSeconds) {
+        status = "burn";
+      } else if (progress < 0.82) {
+        status = "transfer";
+      } else if (progress < 1) {
+        status = "approach";
+      } else {
+        status = plan.estimate.favorable ? "arrived" : "missed";
+      }
+
+      return {
+        elapsedSeconds,
+        speedKmS: averageSpeedKmS,
+        distanceTraveledKm: plan.arc.arcLengthKm * progress,
+        distanceFromEarthKm: vectorLength(sub(rocketHelioKm, earthNowKm)),
+        status,
+        missionMode,
+        launchMode,
+        scenePosition,
+        launchScenePosition: earthLaunchScene,
+        sceneDirection,
+        destination: {
+          bodyId: destBody.id,
+          label: destination.label,
+          distanceToTargetKm,
+          etaSeconds: remainingSeconds > 0 ? remainingSeconds : null,
+          closestApproachKm,
+          destScenePosition: computeBodyScenePosition(destBody, bodiesById, simDate, mode),
+          destSceneRadius: getBodySceneRadius(destBody, mode),
+        },
+        transfer: {
+          estimate: plan.estimate,
+          arcScenePoints,
+          progress,
+          arcLengthKm: plan.arc.arcLengthKm,
+          interceptScenePosition,
+          targetArrivalScenePosition,
+        },
+      };
+    }
+  }
+
+  const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
+  const adjustedProfile = applyLaunchModeToProfile(profile, launchMode);
+  const flight = sampleFlight(adjustedProfile, elapsedSeconds);
+  const destLaunchKm = getBodyPositionKm(destBody, bodiesById, launchDate);
+  const toTarget = sub(destLaunchKm, earthLaunchKm);
+  const aimDistanceKm = vectorLength(toTarget) || 1;
+  const physicalDir = normalize(toTarget);
+  const destLaunchScene = computeBodyScenePosition(destBody, bodiesById, launchDate, mode);
+  const progress = flight.distanceTraveledKm / aimDistanceKm;
+  const scenePosition = lerp(earthLaunchScene, destLaunchScene, progress);
+  const rocketHelioKm = add(earthLaunchKm, mul(physicalDir, flight.distanceTraveledKm));
+  const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
+  const distanceToTargetKm = vectorLength(sub(destNowKm, rocketHelioKm));
+  const closestApproachKm = closestDirectApproachSoFar(
+    adjustedProfile,
+    earthLaunchKm,
+    physicalDir,
+    destBody,
+    launchDateMs,
+    elapsedSeconds,
+    distanceToTargetKm,
+  );
+  const previousDistanceKm = distanceToDestAt(
+    adjustedProfile,
+    earthLaunchKm,
+    physicalDir,
+    destBody,
+    launchDateMs,
+    elapsedSeconds * 0.985,
+  );
+  const closing = distanceToTargetKm < previousDistanceKm;
+  const preLaunch = simulationDateMs < launchDateMs;
+  const status = preLaunch
+    ? "pre-launch"
+    : getDirectStatus(
+        elapsedSeconds,
+        adjustedProfile.burnDurationSeconds,
+        progress,
+        closing,
+        distanceToTargetKm,
+        closestApproachKm,
+        aimDistanceKm,
+        destBody,
+      );
+
+  return {
+    elapsedSeconds,
+    speedKmS: flight.speedKmS,
+    distanceTraveledKm: flight.distanceTraveledKm,
+    distanceFromEarthKm: vectorLength(sub(rocketHelioKm, earthNowKm)),
+    status,
+    missionMode: "direct",
+    launchMode,
+    scenePosition,
+    launchScenePosition: earthLaunchScene,
+    sceneDirection: normalize(sub(destLaunchScene, earthLaunchScene)),
+    destination: {
+      bodyId: destBody.id,
+      label: destination.label,
+      distanceToTargetKm,
+      etaSeconds: closing && flight.speedKmS > 0 ? distanceToTargetKm / flight.speedKmS : null,
+      closestApproachKm,
+      destScenePosition: computeBodyScenePosition(destBody, bodiesById, simDate, mode),
+      destSceneRadius: getBodySceneRadius(destBody, mode),
+    },
+    transfer: null,
   };
 };
 
@@ -281,3 +521,12 @@ export const formatSpeed = (speedKmS: number): string => {
   }
   return `${speedKmS.toFixed(speedKmS >= 10 ? 1 : 2)} km/s`;
 };
+
+export const formatDeltaV = (deltaVKmS: number | null): string => {
+  if (deltaVKmS === null) {
+    return "--";
+  }
+  return `${deltaVKmS.toFixed(deltaVKmS >= 10 ? 1 : 2)} km/s`;
+};
+
+export const formatPhaseAngle = (degrees: number): string => `${degrees >= 0 ? "+" : ""}${degrees.toFixed(1)} deg`;
