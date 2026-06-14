@@ -59,13 +59,13 @@ export const TopBar = () => {
       </div>
       <div className="top-actions">
         <button
-          className={`icon-button ${searchOpen ? "active" : ""}`}
+          className={`icon-button tooltip-trigger ${searchOpen ? "active" : ""}`}
           type="button"
           onClick={() => {
             setHelpOpen(false);
             toggleSearch();
           }}
-          title={`Search objects (/ or ${commandKey})`}
+          data-tooltip={`Search objects (/ or ${commandKey})`}
           aria-label="Search objects"
           aria-pressed={searchOpen}
         >
@@ -73,14 +73,14 @@ export const TopBar = () => {
         </button>
         {isMobile && (
           <button
-            className={`icon-button ${viewActive ? "active" : ""}`}
+            className={`icon-button tooltip-trigger ${viewActive ? "active" : ""}`}
             type="button"
             onClick={() => {
               closeSearch();
               setHelpOpen(false);
               toggleSheet("view");
             }}
-            title="View settings"
+            data-tooltip="View settings"
             aria-label="View settings"
             aria-pressed={viewActive}
           >
@@ -88,10 +88,10 @@ export const TopBar = () => {
           </button>
         )}
         <button
-          className={`icon-button ${rocketActive ? "active" : ""}`}
+          className={`icon-button tooltip-trigger ${rocketActive ? "active" : ""}`}
           type="button"
           onClick={handleRocket}
-          title="Rocket preview"
+          data-tooltip="Rocket preview"
           aria-label="Rocket preview"
           aria-pressed={rocketActive}
         >
@@ -99,13 +99,13 @@ export const TopBar = () => {
         </button>
         <button
           ref={helpButtonRef}
-          className={`icon-button ${helpOpen ? "active" : ""}`}
+          className={`icon-button tooltip-trigger ${helpOpen ? "active" : ""}`}
           type="button"
           onClick={() => {
             closeSearch();
             setHelpOpen((value) => !value);
           }}
-          title="Help & shortcuts"
+          data-tooltip="Help and shortcuts"
           aria-label="Help and shortcuts"
           aria-haspopup="dialog"
           aria-expanded={helpOpen}

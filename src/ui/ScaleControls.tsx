@@ -3,6 +3,7 @@ import { SCALE_MODES, type LabelDensity, type ScaleMode } from "../simulation/un
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { BottomSheet } from "./BottomSheet";
+import { InstrumentSelect } from "./InstrumentSelect";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 
@@ -83,16 +84,20 @@ export const ScaleControls = () => {
           </span>
         )}
       </div>
-      <label className="compact-select">
-        <Tags size={14} />
-        <select value={labelDensity} onChange={(event) => setLabelDensity(event.target.value as LabelDensity)} aria-label="Label density">
-          {labelOptions.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <InstrumentSelect
+        className="compact-select"
+        value={labelDensity}
+        onChange={(value) => setLabelDensity(value as LabelDensity)}
+        ariaLabel="Label density"
+        label="Labels"
+        icon={<Tags size={14} aria-hidden />}
+        options={labelOptions.map((item) => ({
+          value: item.id,
+          label: item.label,
+          description:
+            item.id === "minimal" ? "Focused names only" : item.id === "standard" ? "Major bodies and context" : "All available labels",
+        }))}
+      />
       <div className="toggle-row">
         <label>
           <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />

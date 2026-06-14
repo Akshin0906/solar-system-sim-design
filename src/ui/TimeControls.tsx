@@ -1,4 +1,5 @@
 import { CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
+import type { CSSProperties } from "react";
 import { DAY_MS, TIME_PRESETS, type TimePresetId } from "../data/constants";
 import {
   MAX_TIME_SCALE,
@@ -10,6 +11,7 @@ import {
 } from "../simulation/timeStore";
 import { formatNowDelta, formatTimeScale } from "../simulation/units";
 import { BottomSheet } from "./BottomSheet";
+import { InstrumentSelect } from "./InstrumentSelect";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 
@@ -37,6 +39,11 @@ const sliderToSpeed = (slider: number) => {
   return 10 ** (min + (slider / 100) * (max - min));
 };
 
+const rangeProgressStyle = (progress: number) =>
+  ({
+    "--range-progress": `${Math.min(Math.max(progress, 0), 100)}%`,
+  }) as CSSProperties;
+
 export const TimeControls = () => {
   const isPaused = useTimeStore((state) => state.isPaused);
   const direction = useTimeStore((state) => state.direction);
@@ -58,27 +65,43 @@ export const TimeControls = () => {
   const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
   const absoluteDateLabel = scrubDateFormatter.format(new Date(simulationDateMs));
 
+  const presetOptions = [
+    ...(preset === "custom"
+      ? [
+          {
+            value: "custom",
+            label: "Custom",
+            description: "Set by the slider",
+            disabled: true,
+          },
+        ]
+      : []),
+    ...TIME_PRESETS.map((item) => ({
+      value: item.id,
+      label: item.label,
+      description: item.id === "real-time" ? "Clock speed" : "Simulation speed",
+    })),
+  ];
+  const speedProgress = speedToSlider(timeScale);
+  const timelineProgress = ((scrubDays - minScrubDays) / (maxScrubDays - minScrubDays)) * 100;
+
   const presetSelect = (
-    <select
+    <InstrumentSelect
+      className="time-preset-select"
       value={preset}
-      onChange={(event) => {
-        if (event.target.value !== "custom") {
-          setPreset(event.target.value as TimePresetId);
+      onChange={(value) => {
+        if (value !== "custom") {
+          setPreset(value as TimePresetId);
         }
       }}
-      aria-label="Speed preset"
-    >
-      {preset === "custom" && <option value="custom">Custom</option>}
-      {TIME_PRESETS.map((item) => (
-        <option key={item.id} value={item.id}>
-          {item.label}
-        </option>
-      ))}
-    </select>
+      ariaLabel="Speed preset"
+      side="auto"
+      options={presetOptions}
+    />
   );
 
   const speedSlider = (
-    <label className="range-shell speed-range">
+    <label className="range-shell speed-range" style={rangeProgressStyle(speedProgress)}>
       <Gauge size={14} aria-hidden />
       <input
         type="range"
@@ -95,7 +118,7 @@ export const TimeControls = () => {
   );
 
   const timelineSlider = (
-    <label className="range-shell scrub-range">
+    <label className="range-shell scrub-range" style={rangeProgressStyle(timelineProgress)}>
       <CalendarClock size={14} aria-hidden />
       <input
         type="range"
