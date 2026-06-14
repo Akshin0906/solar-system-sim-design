@@ -84,14 +84,28 @@ const normalize = (v: Vec3): Vec3 => {
   return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
 };
 
+/** Straight-line distance from the rocket to the (moving) destination at mission time `tau`. */
+const distanceToDestAt = (
+  profile: RocketProfile,
+  launchOriginKm: Vec3,
+  physicalDir: Vec3,
+  destBody: CelestialBody,
+  launchDateMs: number,
+  tau: number,
+): number => {
+  const traveled = sampleFlight(profile, tau).distanceTraveledKm;
+  const rocketKm = add(launchOriginKm, mul(physicalDir, traveled));
+  const destKm = getBodyPositionKm(destBody, bodiesById, new Date(launchDateMs + tau * 1_000));
+  return vectorLength(sub(rocketKm, destKm));
+};
+
 /**
  * Estimate the closest approach to the (moving) destination so far by sampling the
  * trajectory from launch to now. Both the rocket and the destination move, so there
  * is no closed form; a coarse sample is good enough for the educational readout.
  * The current instant is always included, so `closestKm <= current distance`.
- * `passed` is true once an earlier sample was strictly closer than now.
  */
-const sampleClosestApproach = (
+const closestApproachSoFar = (
   profile: RocketProfile,
   launchOriginKm: Vec3,
   physicalDir: Vec3,
@@ -99,25 +113,16 @@ const sampleClosestApproach = (
   launchDateMs: number,
   elapsedSeconds: number,
   currentDistanceKm: number,
-): { closestKm: number; passed: boolean } => {
+): number => {
   let closestKm = currentDistanceKm;
-  let closestAtEnd = true;
-
   for (let index = 0; index < CLOSEST_APPROACH_SAMPLES; index += 1) {
     const tau = (elapsedSeconds * index) / CLOSEST_APPROACH_SAMPLES;
-    const traveled = sampleFlight(profile, tau).distanceTraveledKm;
-    const rocketKm = add(launchOriginKm, mul(physicalDir, traveled));
-    const destKm = getBodyPositionKm(destBody, bodiesById, new Date(launchDateMs + tau * 1_000));
-    const distance = vectorLength(sub(rocketKm, destKm));
+    const distance = distanceToDestAt(profile, launchOriginKm, physicalDir, destBody, launchDateMs, tau);
     if (distance < closestKm) {
       closestKm = distance;
-      closestAtEnd = false;
     }
   }
-
-  // "Passed" when the minimum happened strictly before now (the planet is receding).
-  const passed = !closestAtEnd && closestKm < currentDistanceKm - 1;
-  return { closestKm, passed };
+  return closestKm;
 };
 
 export const computeRocketView = (
@@ -177,7 +182,7 @@ export const computeRocketView = (
   } else if (destBody && destination) {
     const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
     const distanceToTargetKm = vectorLength(sub(destNowKm, rocketHelioKm));
-    const { closestKm, passed } = sampleClosestApproach(
+    const closestKm = closestApproachSoFar(
       profile,
       earthLaunchKm,
       physicalDir,
@@ -186,19 +191,34 @@ export const computeRocketView = (
       elapsedSeconds,
       distanceToTargetKm,
     );
+
+    // Is the rocket currently closing on the target or falling behind it? Compare with
+    // a slightly earlier instant. (The aim is fixed, so a body the rocket aimed behind
+    // can recede from the start — a wide miss, not a flyby.)
+    const previousDistanceKm = distanceToDestAt(
+      profile,
+      earthLaunchKm,
+      physicalDir,
+      destBody,
+      launchDateMs,
+      elapsedSeconds * 0.985,
+    );
+    const closing = distanceToTargetKm < previousDistanceKm;
+    const madeCloseApproach = closestKm < APPROACH_FRACTION * aimDistanceKm;
     const progress = flight.distanceTraveledKm / aimDistanceKm;
 
-    if (passed) {
-      status = "passed";
-    } else if (progress < DEPART_PROGRESS) {
+    if (progress < DEPART_PROGRESS) {
       status = "departing";
-    } else if (distanceToTargetKm < APPROACH_FRACTION * aimDistanceKm) {
+    } else if (closing && distanceToTargetKm < APPROACH_FRACTION * aimDistanceKm) {
       status = "approaching";
+    } else if (!closing && madeCloseApproach) {
+      status = "passed";
     } else {
+      // Still closing from afar, or coasting past a wide miss.
       status = "cruising";
     }
 
-    const etaSeconds = !passed && flight.speedKmS > 0 ? distanceToTargetKm / flight.speedKmS : null;
+    const etaSeconds = closing && flight.speedKmS > 0 ? distanceToTargetKm / flight.speedKmS : null;
 
     destinationView = {
       bodyId: destination.bodyId!,
