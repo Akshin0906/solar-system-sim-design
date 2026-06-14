@@ -8,7 +8,7 @@ export type LabelDensity = "minimal" | "standard" | "full";
 export const SCALE_MODES: Array<{ id: ScaleMode; label: string; note: string }> = [
   { id: "real", label: "Real", note: "True distance and true radius" },
   { id: "readable", label: "Bodies", note: "True distance with readable bodies" },
-  { id: "compressed", label: "Compressed", note: "Compressed distance and readable bodies" },
+  { id: "compressed", label: "Compact", note: "Compressed distance and readable bodies" },
   { id: "overview", label: "Map", note: "System overview scale" },
 ];
 
