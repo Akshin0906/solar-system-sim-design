@@ -1,6 +1,14 @@
 import * as THREE from "three";
+import type { CelestialBody } from "../simulation/orbitalElements";
 
 export const CAMERA_FOV_DEG = 48;
+export const MIN_FIT_RADIUS = 0.00001;
+export const MIN_SURFACE_DISTANCE = 0.0001;
+export const SURFACE_DISTANCE_RADIUS_MULTIPLIER = 1.2;
+export const PREFERRED_CAMERA_NEAR = 0.00001;
+export const MIN_CAMERA_NEAR = 0.000001;
+export const MAX_CAMERA_NEAR = 0.1;
+export const FOCUS_FRAMING_SAFETY = 1.9;
 
 export type Bounds = {
   center: THREE.Vector3;
@@ -9,7 +17,39 @@ export type Bounds = {
 
 export const fitDistanceForRadius = (radius: number, fovDeg = CAMERA_FOV_DEG, safety = 1.55) => {
   const halfFovRad = THREE.MathUtils.degToRad(fovDeg / 2);
-  return Math.max(0.01, (Math.max(radius, 0.01) / Math.tan(halfFovRad)) * safety);
+  return Math.max(MIN_FIT_RADIUS, (Math.max(radius, MIN_FIT_RADIUS) / Math.tan(halfFovRad)) * safety);
+};
+
+export const visualRadiusForBody = (body: CelestialBody, radius: number) => {
+  const visibleRadius = Math.max(radius, MIN_FIT_RADIUS);
+
+  if (body.id === "saturn") {
+    return visibleRadius * 2.68;
+  }
+
+  if (body.id === "uranus") {
+    return visibleRadius * 2.05;
+  }
+
+  if (body.type === "star") {
+    return visibleRadius * 1.2;
+  }
+
+  return visibleRadius * 1.1;
+};
+
+export const surfaceMinDistanceForRadius = (radius: number) =>
+  Math.max(radius * SURFACE_DISTANCE_RADIUS_MULTIPLIER, MIN_SURFACE_DISTANCE);
+
+export const cameraNearForTarget = (distanceToTarget: number, targetRadius = 0) => {
+  const distanceBasedNear = THREE.MathUtils.clamp(distanceToTarget * 0.02, PREFERRED_CAMERA_NEAR, MAX_CAMERA_NEAR);
+  const surfaceClearance = distanceToTarget - targetRadius;
+
+  if (surfaceClearance <= 0) {
+    return MIN_CAMERA_NEAR;
+  }
+
+  return Math.max(Math.min(distanceBasedNear, surfaceClearance * 0.48), MIN_CAMERA_NEAR);
 };
 
 export const boundsForPoints = (points: THREE.Vector3[]): Bounds => {

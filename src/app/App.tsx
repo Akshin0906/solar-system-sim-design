@@ -133,9 +133,9 @@ export const App = () => {
       <KeyboardShortcuts />
       <Canvas
         className="solar-canvas"
-        camera={{ position: [24, 18, 36], fov: 48, near: 0.01, far: 2_000 }}
+        camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
         dpr={[1, 1.65]}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+        gl={{ antialias: true, alpha: false, powerPreference: "high-performance", logarithmicDepthBuffer: true }}
       >
         <Suspense fallback={null}>
           <SolarScene />

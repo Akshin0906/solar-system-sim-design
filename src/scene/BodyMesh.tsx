@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
+import { MIN_FIT_RADIUS, visualRadiusForBody } from "./cameraFraming";
 import { getBodyLabelScale } from "./labelScaling";
 import {
   createCloudTexture,
@@ -45,6 +46,14 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
   const cloudTexture = useMemo(() => createCloudTexture(body), [body]);
   const emphasisOpacity = getEmphasisOpacity(emphasis);
   const isTransparent = emphasisOpacity < 1;
+  const renderRadius = Math.max(radius, MIN_FIT_RADIUS);
+  const visualRadius = visualRadiusForBody(body, renderRadius);
+  const cloudRadius = renderRadius * 1.018;
+  const atmosphereRadius = renderRadius * 1.08;
+  const selectionRingRadius = visualRadius * 1.12;
+  const selectionTubeRadius = Math.max(visualRadius * 0.018, MIN_FIT_RADIUS * 0.06);
+  const selectionHaloRadius = visualRadius * 1.34;
+  const labelOffset = visualRadius * 1.45;
   const labelClassName = [
     "body-label",
     selected ? "selected" : "",
@@ -88,7 +97,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
       {body.type === "star" && (
         <>
           <mesh>
-            <sphereGeometry args={[radius * 2.6, 48, 48]} />
+            <sphereGeometry args={[renderRadius * 2.6, 48, 48]} />
             <meshBasicMaterial
               color="#f7b260"
               transparent
@@ -98,7 +107,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
             />
           </mesh>
           <mesh>
-            <sphereGeometry args={[radius * 1.55, 48, 48]} />
+            <sphereGeometry args={[renderRadius * 1.55, 48, 48]} />
             <meshBasicMaterial
               color="#ffd08a"
               transparent
@@ -111,7 +120,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
       )}
       <group rotation={[0, 0, tiltRad]}>
         <mesh ref={meshRef}>
-          <sphereGeometry args={[Math.max(radius, 0.002), body.type === "moon" ? 24 : 48, 32]} />
+          <sphereGeometry args={[renderRadius, body.type === "moon" ? 24 : 48, 32]} />
           {body.type === "star" ? (
             <meshBasicMaterial
               map={surfaceTexture}
@@ -135,7 +144,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
         </mesh>
         {cloudTexture && (
           <mesh ref={cloudRef}>
-            <sphereGeometry args={[Math.max(radius * 1.018, 0.002), 48, 32]} />
+            <sphereGeometry args={[cloudRadius, 48, 32]} />
             <meshStandardMaterial
               map={cloudTexture}
               color="#ffffff"
@@ -148,7 +157,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
         )}
         {visual.atmosphereColor && (
           <mesh>
-            <sphereGeometry args={[Math.max(radius * 1.08, 0.002), 48, 32]} />
+            <sphereGeometry args={[atmosphereRadius, 48, 32]} />
             <meshBasicMaterial
               color={visual.atmosphereColor}
               transparent
@@ -161,7 +170,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
         )}
         {ringIds.has(body.id) && (
           <mesh rotation={[Math.PI / 2, 0, body.id === "uranus" ? Math.PI / 2.8 : 0]}>
-            <ringGeometry args={[radius * 1.35, radius * (body.id === "saturn" ? 1.82 : 2.05), 128]} />
+            <ringGeometry args={[renderRadius * 1.35, renderRadius * (body.id === "saturn" ? 1.82 : 2.05), 128]} />
             <meshStandardMaterial
               color={body.id === "saturn" ? "#d8c493" : "#b7d4d3"}
               side={THREE.DoubleSide}
@@ -174,7 +183,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
         )}
         {body.id === "saturn" && (
           <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[radius * 1.98, radius * 2.68, 128]} />
+            <ringGeometry args={[renderRadius * 1.98, renderRadius * 2.68, 128]} />
             <meshStandardMaterial
               color="#cbb37e"
               side={THREE.DoubleSide}
@@ -189,11 +198,11 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
       {selected && (
         <>
           <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[Math.max(radius * 1.85, 0.18), Math.max(radius * 0.025, 0.008), 12, 96]} />
+            <torusGeometry args={[selectionRingRadius, selectionTubeRadius, 12, 96]} />
             <meshBasicMaterial color="#f1dfb8" transparent opacity={0.72} />
           </mesh>
           <mesh>
-            <sphereGeometry args={[Math.max(radius * 2.15, 0.24), 32, 20]} />
+            <sphereGeometry args={[selectionHaloRadius, 32, 20]} />
             <meshBasicMaterial
               color="#f1dfb8"
               transparent
@@ -207,7 +216,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
       {showLabel && (
         <Html
           ref={labelRef}
-          position={[0, radius * 1.85 + 0.16, 0]}
+          position={[0, labelOffset, 0]}
           center
           distanceFactor={mode === "real" ? undefined : 10}
           className={labelClassName}

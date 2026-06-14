@@ -6,7 +6,15 @@ import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import type { Vec3 } from "../simulation/orbitalElements";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
-import { boundsForPoints, cameraOffset, fitDistanceForRadius } from "./cameraFraming";
+import {
+  FOCUS_FRAMING_SAFETY,
+  cameraNearForTarget,
+  boundsForPoints,
+  cameraOffset,
+  fitDistanceForRadius,
+  surfaceMinDistanceForRadius,
+  visualRadiusForBody,
+} from "./cameraFraming";
 
 type CameraRigProps = {
   positions: Record<string, Vec3>;
@@ -17,19 +25,36 @@ const asVector = (value: Vec3) => new THREE.Vector3(value[0], value[1], value[2]
 
 const distanceBetween = (a: THREE.Vector3, b: THREE.Vector3) => a.distanceTo(b);
 
+const shouldUpdateRange = (current: number, next: number, absoluteEpsilon: number, relativeEpsilon: number) =>
+  Math.abs(current - next) > Math.max(absoluteEpsilon, Math.abs(next) * relativeEpsilon);
+
+const FOCUS_TARGET_DAMPING = 4.677692;
+const FOCUS_POSITION_DAMPING = 3.394221;
+const FOLLOW_TARGET_DAMPING = 10.461203;
+const FOLLOW_POSITION_DAMPING = 6.321631;
+
+const dampingAlpha = (ratePerSecond: number, deltaSeconds: number) =>
+  1 - Math.exp(-ratePerSecond * Math.min(deltaSeconds, 0.12));
+
 export const CameraRig = ({ positions, mode }: CameraRigProps) => {
   const controlsRef = useRef<any>(null);
+  const cameraRangeRef = useRef<{ near: number; far: number } | null>(null);
+  const controlsRangeRef = useRef<{ minDistance: number; maxDistance: number } | null>(null);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const selectedId = useSelectionStore((state) => state.selectedId);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
   const { camera } = useThree();
 
   const selectedBody = bodiesById.get(selectedId);
-  const moonCount = childBodiesByParentId[selectedId]?.filter((body) => body.type === "moon").length ?? 0;
+  const selectedRadius = selectedBody ? getBodySceneRadius(selectedBody, mode) : 0.4;
+  const moonFocusParentId =
+    selectedBody?.type === "moon" && selectedBody.parentId ? selectedBody.parentId : selectedBody?.id;
+  const controlsTargetBody =
+    cameraMode === "moons" && moonFocusParentId ? bodiesById.get(moonFocusParentId) ?? selectedBody : selectedBody;
+  const controlsTargetRadius = controlsTargetBody ? getBodySceneRadius(controlsTargetBody, mode) : 0;
 
   const desired = useMemo(() => {
     const selectedPosition = positions[selectedId] ? asVector(positions[selectedId]) : new THREE.Vector3();
-    const selectedRadius = selectedBody ? getBodySceneRadius(selectedBody, mode) : 0.4;
     const pointsForIds = (ids: string[]) =>
       ids.flatMap((id) => {
         const position = positions[id];
@@ -89,22 +114,68 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
       };
     }
 
-    const baseRadius = selectedBody?.type === "moon" ? selectedRadius * 5.5 : selectedRadius * (moonCount > 0 ? 8 : 6);
-    const distance = Math.min(Math.max(fitDistanceForRadius(baseRadius, 48, 1.65), 3.2), 46);
+    const focusRadius = selectedBody ? visualRadiusForBody(selectedBody, selectedRadius) : selectedRadius;
+    const distance = Math.min(
+      Math.max(fitDistanceForRadius(focusRadius, 48, FOCUS_FRAMING_SAFETY), selectedRadius * 1.3),
+      46,
+    );
     return {
       target: selectedPosition,
       position: selectedPosition.clone().add(cameraOffset(distance, "focus")),
     };
-  }, [cameraMode, mode, moonCount, positions, selectedBody, selectedId]);
+  }, [cameraMode, mode, positions, selectedBody, selectedId, selectedRadius]);
 
-  useFrame(() => {
-    if (!controlsRef.current || cameraMode === "free") {
+  useFrame((_, delta) => {
+    const controls = controlsRef.current;
+
+    if (!controls) {
       return;
     }
 
-    controlsRef.current.target.lerp(desired.target, cameraMode === "follow" ? 0.16 : 0.075);
-    camera.position.lerp(desired.position, cameraMode === "follow" ? 0.1 : 0.055);
-    controlsRef.current.update();
+    if (cameraMode !== "free") {
+      const targetAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_TARGET_DAMPING : FOCUS_TARGET_DAMPING, delta);
+      const positionAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
+
+      controls.target.lerp(desired.target, targetAlpha);
+      camera.position.lerp(desired.position, positionAlpha);
+      controls.update();
+    }
+
+    const bodyRelativeControls =
+      cameraMode === "focus" || cameraMode === "follow" || cameraMode === "moons";
+    const previousControlRange = controlsRangeRef.current;
+    const minDistance =
+      bodyRelativeControls && controlsTargetBody
+        ? surfaceMinDistanceForRadius(controlsTargetRadius)
+        : cameraMode === "free"
+          ? previousControlRange?.minDistance ?? 0.35
+          : 0.35;
+    const maxDistance = 520;
+
+    if (
+      !previousControlRange ||
+      shouldUpdateRange(previousControlRange.minDistance, minDistance, 0.000001, 0.01) ||
+      shouldUpdateRange(previousControlRange.maxDistance, maxDistance, 0.1, 0.01)
+    ) {
+      controls.minDistance = minDistance;
+      controls.maxDistance = maxDistance;
+      controlsRangeRef.current = { minDistance, maxDistance };
+    }
+
+    const targetDistance = Math.max(camera.position.distanceTo(controls.target), 0.000001);
+    const nextNear = cameraNearForTarget(targetDistance, controlsTargetRadius);
+    const nextFar = Math.max(targetDistance * 6, 600);
+    const currentRange = cameraRangeRef.current ?? { near: camera.near, far: camera.far };
+
+    if (
+      shouldUpdateRange(currentRange.near, nextNear, 0.000001, 0.08) ||
+      shouldUpdateRange(currentRange.far, nextFar, 1, 0.06)
+    ) {
+      camera.near = nextNear;
+      camera.far = nextFar;
+      camera.updateProjectionMatrix();
+      cameraRangeRef.current = { near: nextNear, far: nextFar };
+    }
   });
 
   return (
@@ -115,8 +186,6 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
       rotateSpeed={0.42}
       zoomSpeed={0.62}
       panSpeed={0.45}
-      minDistance={0.35}
-      maxDistance={520}
       onStart={() => {
         if (cameraMode !== "free") {
           setCameraMode("free");
