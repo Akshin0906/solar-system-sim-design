@@ -7,7 +7,9 @@ import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
 import { getBodyLabelScale } from "./labelScaling";
 import {
+  createBodyBumpTexture,
   createCloudTexture,
+  createRingTexture,
   createSurfaceTexture,
   getEmphasisOpacity,
   getVisualProfile,
@@ -24,11 +26,52 @@ type BodyMeshProps = {
   emphasis: BodyEmphasis;
 };
 
-const ringIds = new Set(["saturn", "uranus"]);
+const ringConfigById = {
+  saturn: {
+    innerRadius: 1.32,
+    outerRadius: 2.72,
+    opacity: 0.54,
+    rotationZ: 0,
+  },
+  uranus: {
+    innerRadius: 1.42,
+    outerRadius: 2.1,
+    opacity: 0.34,
+    rotationZ: Math.PI / 2.8,
+  },
+} as const;
+
 const labelStyle = {
   transform: "translate3d(-50%, -50%, 0) scale(var(--body-label-scale, 1))",
   transformOrigin: "center center",
 };
+
+const atmosphereVertexShader = `
+  varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+
+  void main() {
+    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+    vWorldPosition = worldPosition.xyz;
+    vNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * worldPosition;
+  }
+`;
+
+const atmosphereFragmentShader = `
+  uniform vec3 glowColor;
+  uniform float opacity;
+  uniform float power;
+  varying vec3 vNormal;
+  varying vec3 vWorldPosition;
+
+  void main() {
+    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+    float rim = pow(1.0 - abs(dot(normalize(vNormal), viewDirection)), power);
+    float fade = smoothstep(0.02, 0.88, rim);
+    gl_FragColor = vec4(glowColor, fade * opacity);
+  }
+`;
 
 export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabel, emphasis }: BodyMeshProps) => {
   const groupRef = useRef<THREE.Group>(null);
@@ -42,9 +85,26 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
   const visual = useMemo(() => getVisualProfile(body), [body]);
   const surfaceTexture = useMemo(() => createSurfaceTexture(body), [body]);
+  const bumpTexture = useMemo(() => createBodyBumpTexture(body), [body]);
   const cloudTexture = useMemo(() => createCloudTexture(body), [body]);
   const emphasisOpacity = getEmphasisOpacity(emphasis);
   const isTransparent = emphasisOpacity < 1;
+  const ringConfig = ringConfigById[body.id as keyof typeof ringConfigById];
+  const ringTexture = useMemo(
+    () => (ringConfig ? createRingTexture(body, ringConfig.innerRadius / ringConfig.outerRadius) : undefined),
+    [body, ringConfig],
+  );
+  const atmosphereUniforms = useMemo(
+    () =>
+      visual.atmosphereColor
+        ? {
+            glowColor: { value: new THREE.Color(visual.atmosphereColor) },
+            opacity: { value: (visual.atmosphereOpacity ?? 0.12) * emphasisOpacity },
+            power: { value: body.id === "earth" ? 2.55 : 2.25 },
+          }
+        : undefined,
+    [body.id, emphasisOpacity, visual.atmosphereColor, visual.atmosphereOpacity],
+  );
   const labelClassName = [
     "body-label",
     selected ? "selected" : "",
@@ -111,7 +171,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
       )}
       <group rotation={[0, 0, tiltRad]}>
         <mesh ref={meshRef}>
-          <sphereGeometry args={[Math.max(radius, 0.002), body.type === "moon" ? 24 : 48, 32]} />
+          <sphereGeometry args={[Math.max(radius, 0.002), body.type === "moon" ? 40 : 64, body.type === "moon" ? 24 : 40]} />
           {body.type === "star" ? (
             <meshBasicMaterial
               map={surfaceTexture}
@@ -126,6 +186,9 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
               color="#ffffff"
               roughness={visual.roughness}
               metalness={visual.metalness ?? 0.015}
+              bumpMap={bumpTexture}
+              bumpScale={(visual.bumpScale ?? 0) * emphasisOpacity}
+              roughnessMap={bumpTexture}
               emissive={visual.emissive ?? (body.type === "dwarfPlanet" ? "#080806" : "#000000")}
               transparent={isTransparent}
               opacity={emphasisOpacity}
@@ -143,44 +206,36 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
               transparent
               opacity={(visual.cloudOpacity ?? 0.16) * emphasisOpacity}
               depthWrite={false}
+              alphaTest={0.02}
             />
           </mesh>
         )}
-        {visual.atmosphereColor && (
+        {visual.atmosphereColor && atmosphereUniforms && (
           <mesh>
-            <sphereGeometry args={[Math.max(radius * 1.08, 0.002), 48, 32]} />
-            <meshBasicMaterial
-              color={visual.atmosphereColor}
+            <sphereGeometry args={[Math.max(radius * 1.11, 0.002), 64, 40]} />
+            <shaderMaterial
+              uniforms={atmosphereUniforms}
+              vertexShader={atmosphereVertexShader}
+              fragmentShader={atmosphereFragmentShader}
               transparent
-              opacity={(visual.atmosphereOpacity ?? 0.12) * emphasisOpacity}
               side={THREE.BackSide}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
         )}
-        {ringIds.has(body.id) && (
-          <mesh rotation={[Math.PI / 2, 0, body.id === "uranus" ? Math.PI / 2.8 : 0]}>
-            <ringGeometry args={[radius * 1.35, radius * (body.id === "saturn" ? 1.82 : 2.05), 128]} />
+        {ringConfig && (
+          <mesh rotation={[Math.PI / 2, 0, ringConfig.rotationZ]}>
+            <ringGeometry args={[radius * ringConfig.innerRadius, radius * ringConfig.outerRadius, 192, 3]} />
             <meshStandardMaterial
-              color={body.id === "saturn" ? "#d8c493" : "#b7d4d3"}
+              map={ringTexture}
+              color="#ffffff"
               side={THREE.DoubleSide}
               transparent
-              opacity={(body.id === "saturn" ? 0.42 : 0.25) * emphasisOpacity}
-              roughness={0.9}
-              depthWrite={false}
-            />
-          </mesh>
-        )}
-        {body.id === "saturn" && (
-          <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <ringGeometry args={[radius * 1.98, radius * 2.68, 128]} />
-            <meshStandardMaterial
-              color="#cbb37e"
-              side={THREE.DoubleSide}
-              transparent
-              opacity={0.34 * emphasisOpacity}
-              roughness={0.92}
+              opacity={ringConfig.opacity * emphasisOpacity}
+              roughness={0.94}
+              metalness={0.02}
+              alphaTest={0.015}
               depthWrite={false}
             />
           </mesh>
@@ -189,15 +244,23 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
       {selected && (
         <>
           <mesh rotation={[Math.PI / 2, 0, 0]}>
-            <torusGeometry args={[Math.max(radius * 1.85, 0.18), Math.max(radius * 0.025, 0.008), 12, 96]} />
-            <meshBasicMaterial color="#f1dfb8" transparent opacity={0.72} />
+            <torusGeometry args={[Math.max(radius * 1.9, 0.18), Math.max(radius * 0.01, 0.004), 8, 128]} />
+            <meshBasicMaterial color="#f3dfb6" transparent opacity={0.62} depthWrite={false} />
+          </mesh>
+          <mesh rotation={[0, Math.PI / 2, 0]}>
+            <torusGeometry args={[Math.max(radius * 1.92, 0.19), Math.max(radius * 0.006, 0.003), 8, 128]} />
+            <meshBasicMaterial color="#f3dfb6" transparent opacity={0.28} depthWrite={false} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, Math.PI / 2]}>
+            <torusGeometry args={[Math.max(radius * 1.92, 0.19), Math.max(radius * 0.006, 0.003), 8, 128]} />
+            <meshBasicMaterial color="#f3dfb6" transparent opacity={0.2} depthWrite={false} />
           </mesh>
           <mesh>
-            <sphereGeometry args={[Math.max(radius * 2.15, 0.24), 32, 20]} />
+            <sphereGeometry args={[Math.max(radius * 2.22, 0.24), 48, 28]} />
             <meshBasicMaterial
               color="#f1dfb8"
               transparent
-              opacity={0.035}
+              opacity={0.025}
               blending={THREE.AdditiveBlending}
               depthWrite={false}
             />
