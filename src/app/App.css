@@ -1036,6 +1036,7 @@ input[type="range"] {
   color: #f3d49a;
 }
 
+.rocket-status.preview,
 .rocket-status.transfer,
 .rocket-status.approach,
 .rocket-status.arrived {

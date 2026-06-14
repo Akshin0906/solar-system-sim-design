@@ -9,18 +9,18 @@ import {
 } from "./missionOptions";
 
 // Rocket state is intentionally separate from celestial body state. It stores only
-// the launch identity, the chosen destination, and the launch instant. The full
-// flight state (speed, distance, position, mission status) is DERIVED from this plus
-// the current simulation time in `rocketState.ts`, so it stays in sync with time
-// scrubbing for free and never mutates any planet/moon data.
+// the selected mission identity, destination, and activation instant. The full
+// flight/preview state (speed, distance, position, mission status) is DERIVED from
+// this plus the current simulation time in `rocketState.ts`, so it stays in sync
+// with time scrubbing for free and never mutates any planet/moon data.
 
 type RocketState = {
   selectedRocketId: string; // the profile chosen in the launcher (not yet launched)
   selectedDestinationId: string; // the destination chosen in the launcher
   selectedMissionMode: RocketMissionMode; // direct aim or transfer preview
   selectedLaunchMode: RocketLaunchMode; // educational launch assumption
-  activeRocketId: string | null; // the profile currently in flight, if any
-  activeDestinationId: string | null; // the destination locked in at launch
+  activeRocketId: string | null; // the profile currently in flight/preview, if any
+  activeDestinationId: string | null; // the destination active for the flight/preview
   activeMissionMode: RocketMissionMode;
   activeLaunchMode: RocketLaunchMode;
   launchDateMs: number | null; // simulation time at launch

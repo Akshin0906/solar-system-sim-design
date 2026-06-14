@@ -1,5 +1,4 @@
 import { Html, Line } from "@react-three/drei";
-import { useMemo } from "react";
 import * as THREE from "three";
 import { useScaleStore } from "../../simulation/scaleStore";
 import { useTimeStore } from "../../simulation/timeStore";
@@ -20,8 +19,22 @@ import { useRocketStore } from "./rocketStore";
 const UP = new THREE.Vector3(0, 1, 0);
 const noopRaycast = () => null;
 const TARGET_COLOR = "#9fd2d9";
+const identityQuaternion = [0, 0, 0, 1] as const;
+
+const makeOrientation = (direction: [number, number, number]): [number, number, number, number] => {
+  const dir = new THREE.Vector3(...direction);
+  if (dir.lengthSq() === 0) {
+    return [...identityQuaternion];
+  }
+  return new THREE.Quaternion().setFromUnitVectors(UP, dir.normalize()).toArray() as [number, number, number, number];
+};
 
 export const RocketObject = () => {
+  const panelOpen = useRocketStore((state) => state.panelOpen);
+  const selectedRocketId = useRocketStore((state) => state.selectedRocketId);
+  const selectedDestinationId = useRocketStore((state) => state.selectedDestinationId);
+  const selectedMissionMode = useRocketStore((state) => state.selectedMissionMode);
+  const selectedLaunchMode = useRocketStore((state) => state.selectedLaunchMode);
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
   const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
   const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
@@ -30,27 +43,25 @@ export const RocketObject = () => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
 
-  const profile = activeRocketId ? rocketsById.get(activeRocketId) : undefined;
-  const destination = activeDestinationId ? destinationsById.get(activeDestinationId) ?? null : null;
+  const selectedDestination = destinationsById.get(selectedDestinationId) ?? null;
+  const selectedTransferPreview = panelOpen && selectedMissionMode === "transfer" && Boolean(selectedDestination?.bodyId);
+  const profileId = selectedTransferPreview ? selectedRocketId : activeRocketId;
+  const destinationId = selectedTransferPreview ? selectedDestinationId : activeDestinationId;
+  const missionMode = selectedTransferPreview ? "transfer" : activeMissionMode;
+  const launchMode = selectedTransferPreview ? selectedLaunchMode : activeLaunchMode;
+  const viewLaunchDateMs = selectedTransferPreview ? simulationDateMs : launchDateMs;
+  const profile = profileId ? rocketsById.get(profileId) : undefined;
+  const destination = destinationId ? destinationsById.get(destinationId) ?? null : null;
 
-  // Orientation is frozen for the whole flight, so it only depends on the launch.
-  const orientation = useMemo(() => {
-    if (!profile || launchDateMs === null) {
-      return [0, 0, 0, 1] as const;
-    }
-    const view = computeRocketView(profile, launchDateMs, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode);
-    const dir = new THREE.Vector3(...view.sceneDirection);
-    if (dir.lengthSq() === 0) {
-      return [0, 0, 0, 1] as const;
-    }
-    return new THREE.Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
-  }, [profile, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode]);
-
-  if (!profile || launchDateMs === null) {
+  if (!profile || viewLaunchDateMs === null) {
     return null;
   }
 
-  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, activeMissionMode, activeLaunchMode);
+  const liveTransferPreview = missionMode === "transfer";
+  const view = computeRocketView(profile, viewLaunchDateMs, simulationDateMs, mode, destination, missionMode, launchMode, {
+    liveTransferPreview,
+  });
+  const orientation = makeOrientation(view.sceneDirection);
   const markerScale = mode === "real" || mode === "readable" ? 2.4 : 1;
   const accent = profile.accentColor;
   const target = view.destination;
@@ -59,7 +70,7 @@ export const RocketObject = () => {
   const progressIndex = transfer
     ? Math.max(1, Math.min(Math.floor(transfer.progress * (transfer.arcScenePoints.length - 1)), transfer.arcScenePoints.length - 1))
     : 0;
-  const completedTransferPoints = transfer
+  const completedTransferPoints = transfer && transfer.progress > 0
     ? [...transfer.arcScenePoints.slice(0, progressIndex + 1), view.scenePosition]
     : [];
 
@@ -75,14 +86,16 @@ export const RocketObject = () => {
             opacity={0.34}
             raycast={noopRaycast}
           />
-          <Line
-            points={completedTransferPoints}
-            color={accent}
-            lineWidth={1.5}
-            transparent
-            opacity={0.78}
-            raycast={noopRaycast}
-          />
+          {completedTransferPoints.length >= 2 && (
+            <Line
+              points={completedTransferPoints}
+              color={accent}
+              lineWidth={1.5}
+              transparent
+              opacity={0.78}
+              raycast={noopRaycast}
+            />
+          )}
           <mesh position={view.launchScenePosition} raycast={noopRaycast}>
             <sphereGeometry args={[0.055 * markerScale, 12, 12]} />
             <meshBasicMaterial color={accent} transparent opacity={0.78} depthWrite={false} />

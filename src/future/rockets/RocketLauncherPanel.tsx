@@ -45,7 +45,14 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   const selectedDestination = destinationsById.get(selectedDestinationId) ?? rocketDestinations[0];
   const active = activeRocketId ? rocketsById.get(activeRocketId) : undefined;
   const activeDestination = activeDestinationId ? destinationsById.get(activeDestinationId) ?? null : null;
+  const activeTransferPreview = activeMissionMode === "transfer";
   const effectiveMissionMode = selectedDestination.bodyId ? selectedMissionMode : "direct";
+  const selectedTransferPreview = effectiveMissionMode === "transfer" && Boolean(selectedDestination.bodyId);
+  const telemetryProfile = selectedTransferPreview ? selected : active;
+  const telemetryDestination = selectedTransferPreview ? selectedDestination : activeDestination;
+  const telemetryMissionMode = selectedTransferPreview ? effectiveMissionMode : activeMissionMode;
+  const telemetryLaunchMode = selectedTransferPreview ? selectedLaunchMode : activeLaunchMode;
+  const telemetryLaunchDateMs = selectedTransferPreview ? simulationDateMs : launchDateMs;
   const destinationGroups = destinationGroupOrder
     .map((group) => ({
       group,
@@ -55,6 +62,18 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
 
   const handleLaunch = () => {
     launch(selected.id, selectedDestination.id, effectiveMissionMode, selectedLaunchMode, simulationDateMs);
+  };
+
+  const handleClear = () => {
+    if (selectedTransferPreview) {
+      selectMissionMode("direct");
+      if (activeTransferPreview) {
+        clear();
+      }
+      return;
+    }
+
+    clear();
   };
 
   const handleClose = () => {
@@ -71,6 +90,8 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
     : effectiveMissionMode === "transfer"
       ? `Preview transfer to ${selectedDestination.label}`
       : `Launch to ${selectedDestination.label}`;
+  const primaryActionLabel = active && !selectedTransferPreview && !activeTransferPreview ? `Relaunch ${selected.name}` : launchLabel;
+  const showSecondaryAction = selectedTransferPreview || active;
 
   return (
     <section className={`rocket-panel${embedded ? " rocket-panel-sheet" : ""}`} aria-label="Rocket launcher">
@@ -95,13 +116,13 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
       <div className="rocket-panel-body">
         {/* When a rocket is active, telemetry is the priority — show it first so the
             full readout is visible; the selects (for reconfiguring a relaunch) follow. */}
-        {active && launchDateMs !== null && (
+        {telemetryProfile && telemetryLaunchDateMs !== null && (
           <RocketTelemetry
-            profile={active}
-            destination={activeDestination}
-            missionMode={activeMissionMode}
-            launchMode={activeLaunchMode}
-            launchDateMs={launchDateMs}
+            profile={telemetryProfile}
+            destination={telemetryDestination}
+            missionMode={telemetryMissionMode}
+            launchMode={telemetryLaunchMode}
+            launchDateMs={telemetryLaunchDateMs}
           />
         )}
 
@@ -170,7 +191,7 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
           </select>
         </label>
 
-        {!active && (
+        {!active && !selectedTransferPreview && (
           <>
             <div className="rocket-meta">
               <span className="rocket-kicker">{categoryLabel[selected.category]}</span>
@@ -189,12 +210,12 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
       <div className="rocket-panel-actions">
         <button type="button" className="rocket-launch-button" onClick={handleLaunch}>
           <Rocket size={15} />
-          {active ? `Relaunch ${selected.name}` : launchLabel}
+          {primaryActionLabel}
         </button>
-        {active && (
-          <button type="button" className="rocket-reset-button" onClick={clear}>
+        {showSecondaryAction && (
+          <button type="button" className="rocket-reset-button" onClick={handleClear}>
             <RotateCcw size={14} />
-            Reset rocket
+            {selectedTransferPreview || activeTransferPreview ? "Clear preview" : "Reset rocket"}
           </button>
         )}
       </div>

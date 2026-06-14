@@ -14,11 +14,11 @@ mid-course guidance.
 - Adds a compact rocket panel from the top bar.
 - Lets you choose a rocket profile, destination, mission mode, and launch assumption.
 - Supports free flight, direct destination aim, and approximate transfer preview.
-- Renders one active rocket with scene cues and live telemetry.
+- Renders one active rocket or live transfer preview with scene cues and telemetry.
 - Keeps all physical readouts in real units while the 3D scene uses the app's existing
   scale modes.
 - Preserves pause, reverse, and time scrubbing because rocket state is derived from
-  launch identity plus the current simulation time.
+  mission identity plus the current simulation time.
 
 ## Mission Modes
 
@@ -49,6 +49,12 @@ planets it estimates a Hohmann-style heliocentric transfer between Earth's orbit
 the destination orbit. For major moons outside Earth, the transfer targets the parent
 planet's heliocentric orbit and clearly notes that local moon capture is not modeled.
 For the Moon, it uses a simplified Earth-centered parking-orbit transfer estimate.
+Unlike direct aim, transfer preview is a live planning view: while time runs or is
+scrubbed, the preview recomputes from Earth's and the destination's current positions
+so the displayed arc changes with the moving planets.
+When the rocket panel is open and Transfer preview is selected, the preview uses the
+currently selected profile, destination, and launch assumption even if an older direct
+rocket was already active.
 
 The transfer model estimates:
 
@@ -61,10 +67,10 @@ The transfer model estimates:
 - approximate intercept date,
 - whether the current launch date is favorable.
 
-The scene renders transfer missions as curved arcs with a launch marker, progress
-line, intercept marker, current rocket marker, and target highlight. The rocket's
-position on the arc is based on elapsed mission time divided by the estimated transfer
-time.
+The scene renders transfer previews as curved arcs with a current Earth launch marker,
+intercept marker, current rocket marker, and target highlight. Because this mode is a
+live preview rather than a committed flight, the rocket marker stays at the current
+launch point while the arc, intercept, and telemetry update with simulation time.
 
 ## Launch Assumptions
 

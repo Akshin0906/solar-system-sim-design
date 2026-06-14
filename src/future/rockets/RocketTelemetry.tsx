@@ -40,8 +40,11 @@ export const RocketTelemetry = ({
 }: RocketTelemetryProps) => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
-  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode, launchMode);
-  const preLaunch = simulationDateMs < launchDateMs;
+  const liveTransferPreview = missionMode === "transfer";
+  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode, launchMode, {
+    liveTransferPreview,
+  });
+  const preLaunch = !liveTransferPreview && simulationDateMs < launchDateMs;
   const target = view.destination;
   const transfer = view.transfer;
   const launchModeOption = getLaunchModeOption(view.launchMode);
@@ -57,7 +60,8 @@ export const RocketTelemetry = ({
 
       {transfer && (
         <p className="rocket-note">
-          Approximate transfer preview. {transfer.estimate.notes[0]} It is not a professional mission planner.
+          Live transfer preview from current planet positions. {transfer.estimate.notes[0]} It is not a professional
+          mission planner.
         </p>
       )}
 

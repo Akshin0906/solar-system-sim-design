@@ -71,6 +71,21 @@ const measurePolylineKm = (points: Vec3[]) =>
     return distance + vectorLength(sub(point, points[index - 1]));
   }, 0);
 
+const correctArcEndpoints = (points: Vec3[], launchPointKm: Vec3, interceptPointKm: Vec3): Vec3[] => {
+  if (points.length < 2) {
+    return points;
+  }
+
+  const startCorrection = sub(launchPointKm, points[0]);
+  const endCorrection = sub(interceptPointKm, points[points.length - 1]);
+  const lastIndex = points.length - 1;
+
+  return points.map((point, index) => {
+    const t = index / lastIndex;
+    return add(add(point, mul(startCorrection, 1 - t)), mul(endCorrection, t));
+  });
+};
+
 const qualityFromPhaseOffset = (phaseOffsetDeg: number): LaunchWindowQuality => {
   const abs = Math.abs(phaseOffsetDeg);
   if (abs <= 5) {
@@ -279,13 +294,14 @@ export const sampleTransferArcKm = (
   const parameter = semiMajorAxis * (1 - eccentricity * eccentricity);
   const periapsisAngle = outward ? launchAngle : launchAngle - Math.PI;
 
-  const pointsKm = Array.from({ length: samples + 1 }, (_value, index) => {
+  const idealPointsKm = Array.from({ length: samples + 1 }, (_value, index) => {
     const t = index / samples;
     const trueAnomaly = outward ? t * Math.PI : Math.PI - t * Math.PI;
     const radiusKm = parameter / (1 + eccentricity * Math.cos(trueAnomaly));
     const angle = periapsisAngle + trueAnomaly;
     return [Math.cos(angle) * radiusKm, 0, Math.sin(angle) * radiusKm] as Vec3;
   });
+  const pointsKm = correctArcEndpoints(idealPointsKm, launchPointKm, interceptPointKm);
 
   return {
     pointsKm,

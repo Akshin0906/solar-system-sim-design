@@ -26,8 +26,9 @@ import {
 //
 // Direct aim is the original educational model: freeze the target's launch-time
 // position and fly a straight line toward it. Transfer preview is a separate
-// approximate Hohmann-style model: compute transfer-window math once per launch,
-// draw a curved transfer arc, and place the rocket along that arc by elapsed time.
+// approximate Hohmann-style model. It can either show a flown transfer from the
+// stored launch instant or a live "launch now" planning arc from the current
+// simulation time.
 
 const EARTH_ID = "earth";
 
@@ -38,6 +39,7 @@ const CLOSEST_APPROACH_SAMPLES = 40;
 const TRANSFER_CACHE_LIMIT = 16;
 
 export type MissionStatus =
+  | "preview"
   | "pre-launch"
   | "burn"
   | "coast"
@@ -48,6 +50,7 @@ export type MissionStatus =
   | "missed";
 
 export const missionStatusLabel: Record<MissionStatus, string> = {
+  preview: "Preview",
   "pre-launch": "Pre-launch",
   burn: "Burn",
   coast: "Coast",
@@ -95,6 +98,10 @@ export type RocketView = {
 type CachedTransferPlan = {
   estimate: TransferEstimate;
   arc: TransferArc;
+};
+
+type RocketViewOptions = {
+  liveTransferPreview?: boolean;
 };
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -318,8 +325,11 @@ export const computeRocketView = (
   destination: RocketDestination | null,
   missionMode: RocketMissionMode = "direct",
   launchMode: RocketLaunchMode = "earth-departure",
+  options: RocketViewOptions = {},
 ): RocketView => {
-  const launchDate = new Date(launchDateMs);
+  const liveTransferPreview = missionMode === "transfer" && options.liveTransferPreview === true;
+  const planningDateMs = liveTransferPreview ? simulationDateMs : launchDateMs;
+  const launchDate = new Date(planningDateMs);
   const simDate = new Date(simulationDateMs);
   const earth = bodiesById.get(EARTH_ID);
   const earthLaunchKm: Vec3 = earth ? getBodyPositionKm(earth, bodiesById, launchDate) : [0, 0, 0];
@@ -343,9 +353,9 @@ export const computeRocketView = (
   }
 
   if (missionMode === "transfer") {
-    const plan = getTransferPlan(destBody, launchDateMs);
+    const plan = getTransferPlan(destBody, planningDateMs);
     if (plan) {
-      const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
+      const elapsedSeconds = liveTransferPreview ? 0 : Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
       const progress = clamp01(elapsedSeconds / plan.estimate.transferTimeSeconds);
       const arrivalDate = new Date(plan.estimate.arrivalDateMs);
       const transferTargetBody = bodiesById.get(plan.estimate.transferTargetBodyId) ?? destBody;
@@ -361,19 +371,21 @@ export const computeRocketView = (
         plan.arc,
         plan.estimate,
         destBody,
-        launchDateMs,
-        elapsedSeconds,
+        planningDateMs,
+        liveTransferPreview ? plan.estimate.transferTimeSeconds : elapsedSeconds,
         distanceToTargetKm,
       );
       const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
-      const preLaunch = simulationDateMs < launchDateMs;
+      const preLaunch = !liveTransferPreview && simulationDateMs < launchDateMs;
       const averageSpeedKmS = plan.arc.arcLengthKm / plan.estimate.transferTimeSeconds;
       const burnEndSeconds = Math.min(
         applyLaunchModeToProfile(profile, launchMode).burnDurationSeconds,
         plan.estimate.transferTimeSeconds * 0.12,
       );
       let status: MissionStatus;
-      if (preLaunch) {
+      if (liveTransferPreview) {
+        status = "preview";
+      } else if (preLaunch) {
         status = "pre-launch";
       } else if (elapsedSeconds < burnEndSeconds) {
         status = "burn";
