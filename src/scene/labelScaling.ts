@@ -8,6 +8,7 @@ export const DEFAULT_LABEL_CAMERA_FOV_DEG = 48;
 export const MIN_PROJECTED_LABEL_DISTANCE = 0.05;
 export const MIN_PROJECTED_LABEL_SCALE = 0.78;
 export const MAX_PROJECTED_LABEL_SCALE = 1.08;
+export const SCENE_HTML_Z_INDEX_RANGE: [number, number] = [4, 3];
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value));
 

@@ -1,6 +1,7 @@
 import { Html, Line } from "@react-three/drei";
 import { useMemo } from "react";
 import { AdditiveBlending, DoubleSide, Quaternion, Shape, Vector3 } from "three";
+import { SCENE_HTML_Z_INDEX_RANGE } from "../../scene/labelScaling";
 import type { RocketProfile } from "./rocketCatalog";
 import { getCachedRocketView, useActiveRocketView } from "./useRocketView";
 
@@ -361,7 +362,13 @@ export const RocketObject = () => {
             />
           </mesh>
         </group>
-        <Html position={[0, 0.28 * markerScale, 0]} center distanceFactor={10} className="rocket-scene-label">
+        <Html
+          position={[0, 0.28 * markerScale, 0]}
+          center
+          distanceFactor={10}
+          zIndexRange={SCENE_HTML_Z_INDEX_RANGE}
+          className="rocket-scene-label"
+        >
           {profile.name}
         </Html>
       </group>

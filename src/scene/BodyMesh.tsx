@@ -15,7 +15,7 @@ import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
 import { MIN_FIT_RADIUS, visualRadiusForBody } from "./cameraFraming";
-import { BODY_LABEL_DISTANCE_FACTOR, getBodyLabelScale } from "./labelScaling";
+import { BODY_LABEL_DISTANCE_FACTOR, SCENE_HTML_Z_INDEX_RANGE, getBodyLabelScale } from "./labelScaling";
 import {
   createBodyBumpTexture,
   createCloudTexture,
@@ -292,6 +292,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
           position={[0, labelOffset, 0]}
           center
           distanceFactor={mode === "real" ? undefined : BODY_LABEL_DISTANCE_FACTOR}
+          zIndexRange={SCENE_HTML_Z_INDEX_RANGE}
           className={labelClassName}
           style={labelStyle}
         >
