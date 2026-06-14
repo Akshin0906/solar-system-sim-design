@@ -5,9 +5,11 @@ import { ObjectInspector } from "../ui/ObjectInspector";
 import { ScaleControls } from "../ui/ScaleControls";
 import { TimeControls } from "../ui/TimeControls";
 import { TopBar } from "../ui/TopBar";
+import { BottomSheet } from "../ui/BottomSheet";
 import { RocketLauncherPanel } from "../future/rockets/RocketLauncherPanel";
 import { useRocketStore } from "../future/rockets/rocketStore";
 import { useTimeStore } from "../simulation/timeStore";
+import { useUiStore } from "../ui/uiStore";
 import { useIsMobile } from "../ui/useMediaQuery";
 
 const isEditableTarget = (target: EventTarget | null) => {
@@ -128,6 +130,8 @@ const KeyboardShortcuts = () => {
 export const App = () => {
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const isMobile = useIsMobile();
+  const activeSheet = useUiStore((state) => state.activeSheet);
+  const closeSheet = useUiStore((state) => state.closeSheet);
 
   // On phones the panels become dismissible bottom sheets that manage their own
   // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
@@ -152,7 +156,13 @@ export const App = () => {
         <TopBar />
         <ScaleControls />
         <ObjectInspector />
-        <RocketLauncherPanel />
+        {isMobile ? (
+          <BottomSheet open={activeSheet === "rocket"} onClose={closeSheet} label="Rocket launcher" title="Rocket launch">
+            <RocketLauncherPanel forceOpen embedded onClose={closeSheet} />
+          </BottomSheet>
+        ) : (
+          <RocketLauncherPanel />
+        )}
         <TimeControls />
       </div>
     </main>

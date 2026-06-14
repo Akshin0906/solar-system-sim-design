@@ -7,11 +7,17 @@ import { RocketTelemetry } from "./RocketTelemetry";
 import { RocketTransferPreview } from "./RocketTransferPreview";
 import { useRocketStore } from "./rocketStore";
 
+type RocketLauncherPanelProps = {
+  forceOpen?: boolean;
+  embedded?: boolean;
+  onClose?: () => void;
+};
+
 // Compact launch panel. Hidden by default (toggled from the top bar) so the
 // default solar-system view stays uncluttered. When a rocket is in flight it shows
 // live telemetry. The header and the action buttons stay pinned while the selects
 // and telemetry scroll, so Launch/Reset are always reachable on short viewports.
-export const RocketLauncherPanel = () => {
+export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClose }: RocketLauncherPanelProps) => {
   const panelOpen = useRocketStore((state) => state.panelOpen);
   const selectedRocketId = useRocketStore((state) => state.selectedRocketId);
   const selectedDestinationId = useRocketStore((state) => state.selectedDestinationId);
@@ -31,7 +37,7 @@ export const RocketLauncherPanel = () => {
   const clear = useRocketStore((state) => state.clear);
   const setPanelOpen = useRocketStore((state) => state.setPanelOpen);
 
-  if (!panelOpen) {
+  if (!panelOpen && !forceOpen) {
     return null;
   }
 
@@ -51,6 +57,15 @@ export const RocketLauncherPanel = () => {
     launch(selected.id, selectedDestination.id, effectiveMissionMode, selectedLaunchMode, simulationDateMs);
   };
 
+  const handleClose = () => {
+    if (embedded) {
+      onClose?.();
+      return;
+    }
+
+    setPanelOpen(false);
+  };
+
   const launchLabel = !selectedDestination.bodyId
     ? "Launch from Earth"
     : effectiveMissionMode === "transfer"
@@ -58,22 +73,24 @@ export const RocketLauncherPanel = () => {
       : `Launch to ${selectedDestination.label}`;
 
   return (
-    <section className="rocket-panel" aria-label="Rocket launcher">
-      <header className="rocket-panel-head">
-        <div className="rocket-panel-title">
-          <Rocket size={15} />
-          <span>Rocket launch</span>
-        </div>
-        <button
-          type="button"
-          className="rocket-icon-button"
-          onClick={() => setPanelOpen(false)}
-          title="Close rocket panel"
-          aria-label="Close rocket panel"
-        >
-          <X size={15} />
-        </button>
-      </header>
+    <section className={`rocket-panel${embedded ? " rocket-panel-sheet" : ""}`} aria-label="Rocket launcher">
+      {!embedded && (
+        <header className="rocket-panel-head">
+          <div className="rocket-panel-title">
+            <Rocket size={15} />
+            <span>Rocket launch</span>
+          </div>
+          <button
+            type="button"
+            className="rocket-icon-button"
+            onClick={handleClose}
+            title="Close rocket panel"
+            aria-label="Close rocket panel"
+          >
+            <X size={15} />
+          </button>
+        </header>
+      )}
 
       <div className="rocket-panel-body">
         {/* When a rocket is active, telemetry is the priority — show it first so the
