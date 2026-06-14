@@ -4,6 +4,17 @@ import { createHash } from "node:crypto";
 
 const distDir = new URL("../dist/", import.meta.url);
 const cacheableExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".txt", ".webmanifest", ".wasm"]);
+const normalizeBasePath = (value) => {
+  if (!value || value === ".") {
+    return "/";
+  }
+
+  const withLeadingSlash = value.startsWith("/") ? value : `/${value}`;
+  return withLeadingSlash.endsWith("/") ? withLeadingSlash : `${withLeadingSlash}/`;
+};
+
+const basePath = normalizeBasePath(process.argv[2]);
+const toPublicPath = (path) => `${basePath}${path}`;
 
 const walk = async (directory) => {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -33,18 +44,19 @@ const files = await walk(distDir.pathname);
 const records = await Promise.all(
   files.map(async (file) => {
     const metadata = await stat(file);
-    const publicPath = `/${relative(distDir.pathname, file).split(sep).join("/")}`;
+    const publicPath = toPublicPath(relative(distDir.pathname, file).split(sep).join("/"));
     return { publicPath, size: metadata.size, modified: metadata.mtimeMs };
   }),
 );
 
-const precacheUrls = ["/", ...records.map((record) => record.publicPath)].sort();
+const precacheUrls = [basePath, ...records.map((record) => record.publicPath)].sort();
 const cacheHash = createHash("sha256")
   .update(records.map((record) => `${record.publicPath}:${record.size}:${record.modified}`).sort().join("|"))
   .digest("hex")
   .slice(0, 12);
 
 const serviceWorker = `const CACHE_NAME = "solar-system-sim-${cacheHash}";
+const BASE_PATH = ${JSON.stringify(basePath)};
 const PRECACHE_URLS = ${JSON.stringify(precacheUrls, null, 2)};
 
 self.addEventListener("install", (event) => {
@@ -77,7 +89,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.mode === "navigate") {
-    event.respondWith(fetch(event.request).catch(() => caches.match("/index.html")));
+    event.respondWith(fetch(event.request).catch(() => caches.match(\`\${BASE_PATH}index.html\`)));
     return;
   }
 
