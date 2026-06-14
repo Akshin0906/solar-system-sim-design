@@ -1,5 +1,6 @@
 import { Rocket, RotateCcw, X } from "lucide-react";
 import { useTimeStore } from "../../simulation/timeStore";
+import { InstrumentSelect } from "../../ui/InstrumentSelect";
 import { destinationGroupOrder, destinationsById, rocketDestinations } from "./destinationCatalog";
 import { rocketLaunchModes, rocketMissionModes } from "./missionOptions";
 import { categoryLabel, confidenceLabel, rocketCatalog, rocketsById } from "./rocketCatalog";
@@ -52,6 +53,36 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
       destinations: rocketDestinations.filter((destination) => destination.group === group),
     }))
     .filter(({ destinations }) => destinations.length > 0);
+  const rocketOptions = rocketCatalog.map((rocket) => ({
+    value: rocket.id,
+    label: rocket.name,
+    description: `${categoryLabel[rocket.category]} · ${confidenceLabel[rocket.sourceConfidence]}`,
+    meta: (
+      <span
+        className={`rocket-dot ${rocket.sourceConfidence}`}
+        style={{ backgroundColor: rocket.accentColor, color: rocket.accentColor }}
+        aria-hidden
+      />
+    ),
+  }));
+  const destinationOptions = destinationGroups.map(({ group, destinations }) => ({
+    label: group,
+    options: destinations.map((destination) => ({
+      value: destination.id,
+      label: destination.label,
+      description: destination.bodyId ? "Track an existing body" : "Outward cruise preview",
+    })),
+  }));
+  const missionOptions = rocketMissionModes.map((modeOption) => ({
+    value: modeOption.id,
+    label: modeOption.label,
+    description: modeOption.note,
+  }));
+  const launchOptions = rocketLaunchModes.map((modeOption) => ({
+    value: modeOption.id,
+    label: modeOption.shortLabel,
+    description: modeOption.note,
+  }));
 
   const handleLaunch = () => {
     launch(selected.id, selectedDestination.id, effectiveMissionMode, selectedLaunchMode, simulationDateMs);
@@ -125,70 +156,42 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
           />
         )}
 
-        <label className="rocket-select">
-          <span className="rocket-select-label">Profile</span>
-          <select
-            value={selectedRocketId}
-            onChange={(event) => selectRocket(event.target.value)}
-            aria-label="Rocket profile"
-          >
-            {rocketCatalog.map((rocket) => (
-              <option key={rocket.id} value={rocket.id}>
-                {rocket.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <InstrumentSelect
+          className="rocket-select"
+          value={selectedRocketId}
+          onChange={selectRocket}
+          ariaLabel="Rocket profile"
+          label="Profile"
+          options={rocketOptions}
+        />
 
-        <label className="rocket-select">
-          <span className="rocket-select-label">Target</span>
-          <select
-            value={selectedDestinationId}
-            onChange={(event) => selectDestination(event.target.value)}
-            aria-label="Destination"
-          >
-            {destinationGroups.map(({ group, destinations }) => (
-              <optgroup key={group} label={group}>
-                {destinations.map((destination) => (
-                  <option key={destination.id} value={destination.id}>
-                    {destination.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
+        <InstrumentSelect
+          className="rocket-select"
+          value={selectedDestinationId}
+          onChange={selectDestination}
+          ariaLabel="Destination"
+          label="Target"
+          groups={destinationOptions}
+        />
 
-        <label className="rocket-select">
-          <span className="rocket-select-label">Mode</span>
-          <select
-            value={effectiveMissionMode}
-            onChange={(event) => selectMissionMode(event.target.value as typeof selectedMissionMode)}
-            aria-label="Mission mode"
-            disabled={!selectedDestination.bodyId}
-          >
-            {rocketMissionModes.map((modeOption) => (
-              <option key={modeOption.id} value={modeOption.id}>
-                {modeOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <InstrumentSelect
+          className="rocket-select"
+          value={effectiveMissionMode}
+          onChange={(value) => selectMissionMode(value as typeof selectedMissionMode)}
+          ariaLabel="Mission mode"
+          label="Mode"
+          disabled={!selectedDestination.bodyId}
+          options={missionOptions}
+        />
 
-        <label className="rocket-select">
-          <span className="rocket-select-label">Launch</span>
-          <select
-            value={selectedLaunchMode}
-            onChange={(event) => selectLaunchMode(event.target.value as typeof selectedLaunchMode)}
-            aria-label="Launch assumption"
-          >
-            {rocketLaunchModes.map((modeOption) => (
-              <option key={modeOption.id} value={modeOption.id}>
-                {modeOption.shortLabel}
-              </option>
-            ))}
-          </select>
-        </label>
+        <InstrumentSelect
+          className="rocket-select"
+          value={selectedLaunchMode}
+          onChange={(value) => selectLaunchMode(value as typeof selectedLaunchMode)}
+          ariaLabel="Launch assumption"
+          label="Launch"
+          options={launchOptions}
+        />
 
         {!active && (
           <>
