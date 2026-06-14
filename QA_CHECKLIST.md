@@ -159,13 +159,15 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Transfer preview renders a curved transfer arc instead of only a straight line.
 - [ ] The arc shows a launch marker, current rocket marker, and intercept/arrival cue.
 - [ ] Rocket progress advances along the arc as time runs and updates when time is scrubbed.
+- [ ] After the transfer arrival date, the rocket remains visually attached to the current destination
+      and the target distance reads 0 km instead of drifting from the old intercept point.
 - [ ] Telemetry shows Mission mode, Phase, Launch mode, Transfer time, Intercept date,
       Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
 - [ ] Transfer math is clearly labeled approximate and not a professional mission planner.
 - [ ] Launch-window quality changes with target/date and includes a phase offset.
 - [ ] Transfer preview to a major moon explains that local moon capture is not modeled,
       except the Moon's simplified Earth-centered estimate.
-- [ ] Direct aim still uses the fixed launch-time target and can miss a moving body.
+- [ ] Direct aim predicts a moving-target straight-line intercept and can report Arrived near the target.
 - [ ] Low Earth orbit launch mode changes the direct/free-flight speed readout without
       changing planet or moon data.
 

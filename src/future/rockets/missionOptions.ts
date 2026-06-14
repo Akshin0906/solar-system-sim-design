@@ -12,7 +12,7 @@ export const rocketMissionModes: RocketMissionModeOption[] = [
   {
     id: "direct",
     label: "Direct aim",
-    note: "Straight line toward the target's launch-time position.",
+    note: "Straight-line intercept toward the target's predicted position.",
   },
   {
     id: "transfer",
