@@ -1,9 +1,8 @@
 import { formatDistance } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
 import {
-  getLaunchModeOption,
+  earthDepartureLaunchMode,
   missionModeLabel,
-  type RocketLaunchMode,
   type RocketMissionMode,
 } from "./missionOptions";
 import { confidenceLabel, type RocketProfile } from "./rocketCatalog";
@@ -20,7 +19,6 @@ type RocketTelemetryProps = {
   profile: RocketProfile;
   destination: RocketDestination | null;
   missionMode: RocketMissionMode;
-  launchMode: RocketLaunchMode;
   launchDateMs: number;
 };
 
@@ -33,14 +31,12 @@ export const RocketTelemetry = ({
   profile,
   destination,
   missionMode,
-  launchMode,
   launchDateMs,
 }: RocketTelemetryProps) => {
-  const view = useRocketView(profile, destination, missionMode, launchMode, launchDateMs);
+  const view = useRocketView(profile, destination, missionMode, launchDateMs);
   const preLaunch = view.status === "pre-launch";
   const target = view.destination;
   const transfer = view.transfer;
-  const launchModeOption = getLaunchModeOption(view.launchMode);
 
   return (
     <div className="rocket-telemetry">
@@ -69,8 +65,8 @@ export const RocketTelemetry = ({
           <dd>{missionStatusLabel[view.status]}</dd>
         </div>
         <div>
-          <dt>Launch mode</dt>
-          <dd>{launchModeOption.shortLabel}</dd>
+          <dt>Launch</dt>
+          <dd>{earthDepartureLaunchMode.shortLabel}</dd>
         </div>
         <div>
           <dt>Mission time</dt>
@@ -135,7 +131,7 @@ export const RocketTelemetry = ({
         )}
       </dl>
 
-      <p className="rocket-note">{launchModeOption.note}</p>
+      <p className="rocket-note">{earthDepartureLaunchMode.note}</p>
     </div>
   );
 };

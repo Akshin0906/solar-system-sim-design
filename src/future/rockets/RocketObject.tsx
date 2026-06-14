@@ -85,8 +85,7 @@ const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
 };
 
 export const RocketObject = () => {
-  const { activeLaunchMode, activeMissionMode, destination, launchDateMs, mode, profile, view } =
-    useActiveRocketView();
+  const { activeMissionMode, destination, launchDateMs, mode, profile, view } = useActiveRocketView();
 
   // Orientation is frozen for the whole flight, so it only depends on the launch.
   const orientation = useMemo(() => {
@@ -100,14 +99,13 @@ export const RocketObject = () => {
       mode,
       destination,
       activeMissionMode,
-      activeLaunchMode,
     );
     const dir = new Vector3(...launchView.sceneDirection);
     if (dir.lengthSq() === 0) {
       return [0, 0, 0, 1] as const;
     }
     return new Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
-  }, [profile, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode]);
+  }, [profile, launchDateMs, mode, destination, activeMissionMode]);
 
   if (!profile || launchDateMs === null || !view) {
     return null;

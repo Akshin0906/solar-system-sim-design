@@ -1,7 +1,7 @@
 import { Rocket, RotateCcw, X } from "lucide-react";
 import { useTimeStore } from "../../simulation/timeStore";
 import { destinationGroupOrder, destinationsById, rocketDestinations } from "./destinationCatalog";
-import { rocketLaunchModes, rocketMissionModes } from "./missionOptions";
+import { rocketMissionModes } from "./missionOptions";
 import { categoryLabel, confidenceLabel, rocketCatalog, rocketsById } from "./rocketCatalog";
 import { RocketTelemetry } from "./RocketTelemetry";
 import { RocketTransferPreview } from "./RocketTransferPreview";
@@ -22,17 +22,14 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   const selectedRocketId = useRocketStore((state) => state.selectedRocketId);
   const selectedDestinationId = useRocketStore((state) => state.selectedDestinationId);
   const selectedMissionMode = useRocketStore((state) => state.selectedMissionMode);
-  const selectedLaunchMode = useRocketStore((state) => state.selectedLaunchMode);
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
   const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
   const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
-  const activeLaunchMode = useRocketStore((state) => state.activeLaunchMode);
   const launchDateMs = useRocketStore((state) => state.launchDateMs);
   const selectRocket = useRocketStore((state) => state.selectRocket);
   const selectDestination = useRocketStore((state) => state.selectDestination);
   const selectMissionMode = useRocketStore((state) => state.selectMissionMode);
-  const selectLaunchMode = useRocketStore((state) => state.selectLaunchMode);
   const launch = useRocketStore((state) => state.launch);
   const clear = useRocketStore((state) => state.clear);
   const setPanelOpen = useRocketStore((state) => state.setPanelOpen);
@@ -54,7 +51,7 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
     .filter(({ destinations }) => destinations.length > 0);
 
   const handleLaunch = () => {
-    launch(selected.id, selectedDestination.id, effectiveMissionMode, selectedLaunchMode, simulationDateMs);
+    launch(selected.id, selectedDestination.id, effectiveMissionMode, simulationDateMs);
   };
 
   const handleClose = () => {
@@ -120,7 +117,6 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
             profile={active}
             destination={activeDestination}
             missionMode={activeMissionMode}
-            launchMode={activeLaunchMode}
             launchDateMs={launchDateMs}
           />
         )}
@@ -170,21 +166,6 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
             {rocketMissionModes.map((modeOption) => (
               <option key={modeOption.id} value={modeOption.id}>
                 {modeOption.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="rocket-select">
-          <span className="rocket-select-label">Launch</span>
-          <select
-            value={selectedLaunchMode}
-            onChange={(event) => selectLaunchMode(event.target.value as typeof selectedLaunchMode)}
-            aria-label="Launch assumption"
-          >
-            {rocketLaunchModes.map((modeOption) => (
-              <option key={modeOption.id} value={modeOption.id}>
-                {modeOption.shortLabel}
               </option>
             ))}
           </select>
