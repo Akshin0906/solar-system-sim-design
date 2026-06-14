@@ -1,5 +1,6 @@
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useRef } from "react";
+import * as THREE from "three";
 import { SolarScene } from "../scene/SolarScene";
 import { ObjectInspector } from "../ui/ObjectInspector";
 import { ScaleControls } from "../ui/ScaleControls";
@@ -147,6 +148,11 @@ export const App = () => {
         camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
         dpr={[1, 1.65]}
         gl={{ antialias: true, alpha: false, powerPreference: "high-performance", logarithmicDepthBuffer: true }}
+        onCreated={({ gl }) => {
+          gl.toneMapping = THREE.ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1.08;
+          gl.outputColorSpace = THREE.SRGBColorSpace;
+        }}
       >
         <Suspense fallback={null}>
           <SolarScene />
