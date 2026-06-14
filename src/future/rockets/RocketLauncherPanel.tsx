@@ -67,18 +67,33 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   };
 
   const launchLabel = !selectedDestination.bodyId
-    ? "Launch from Earth"
+    ? "Preview free flight"
     : effectiveMissionMode === "transfer"
       ? `Preview transfer to ${selectedDestination.label}`
-      : `Launch to ${selectedDestination.label}`;
+      : `Preview direct aim to ${selectedDestination.label}`;
+  const conceptNote = <p className="rocket-note rocket-concept-note">Educational concept preview, not mission planning.</p>;
+  const panelActions = (
+    <div className="rocket-panel-actions">
+      <button type="button" className="rocket-launch-button" onClick={handleLaunch}>
+        <Rocket size={15} />
+        {active ? "Restart preview" : launchLabel}
+      </button>
+      {active && (
+        <button type="button" className="rocket-reset-button" onClick={clear}>
+          <RotateCcw size={14} />
+          Reset rocket
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <section className={`rocket-panel${embedded ? " rocket-panel-sheet" : ""}`} aria-label="Rocket launcher">
+    <section className={`rocket-panel${embedded ? " rocket-panel-sheet" : ""}`} aria-label="Rocket preview">
       {!embedded && (
         <header className="rocket-panel-head">
           <div className="rocket-panel-title">
             <Rocket size={15} />
-            <span>Rocket launch</span>
+            <span>Rocket preview</span>
           </div>
           <button
             type="button"
@@ -92,7 +107,12 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
         </header>
       )}
 
+      {embedded && conceptNote}
+      {embedded && panelActions}
+
       <div className="rocket-panel-body">
+        {!embedded && conceptNote}
+
         {/* When a rocket is active, telemetry is the priority — show it first so the
             full readout is visible; the selects (for reconfiguring a relaunch) follow. */}
         {active && launchDateMs !== null && (
@@ -186,18 +206,7 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
         )}
       </div>
 
-      <div className="rocket-panel-actions">
-        <button type="button" className="rocket-launch-button" onClick={handleLaunch}>
-          <Rocket size={15} />
-          {active ? `Relaunch ${selected.name}` : launchLabel}
-        </button>
-        {active && (
-          <button type="button" className="rocket-reset-button" onClick={clear}>
-            <RotateCcw size={14} />
-            Reset rocket
-          </button>
-        )}
-      </div>
+      {!embedded && panelActions}
     </section>
   );
 };

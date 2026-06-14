@@ -1,4 +1,5 @@
 import { bodiesById } from "../../data";
+import { DAY_SECONDS } from "../../data/constants";
 import type { RocketDestination } from "./destinationCatalog";
 import { formatDeltaV, formatMissionTime, formatPhaseAngle } from "./rocketState";
 import { estimateTransfer, type LaunchWindowQuality } from "./transferModel";
@@ -13,6 +14,20 @@ const qualityLabel: Record<LaunchWindowQuality, string> = {
   good: "Good",
   fair: "Fair",
   poor: "Poor",
+};
+
+const AVERAGE_YEAR_SECONDS = DAY_SECONDS * 365.256;
+const AVERAGE_MONTH_SECONDS = DAY_SECONDS * 30.437;
+
+const formatArrivalDuration = (seconds: number) => {
+  const safeSeconds = Math.max(0, seconds);
+  const years = Math.floor(safeSeconds / AVERAGE_YEAR_SECONDS);
+  const afterYearsSeconds = safeSeconds - years * AVERAGE_YEAR_SECONDS;
+  const months = Math.floor(afterYearsSeconds / AVERAGE_MONTH_SECONDS);
+  const afterMonthsSeconds = afterYearsSeconds - months * AVERAGE_MONTH_SECONDS;
+  const days = Math.round(afterMonthsSeconds / DAY_SECONDS);
+
+  return `${years} yr ${months} mo ${days} d`;
 };
 
 export const RocketTransferPreview = ({ destination, launchDateMs }: RocketTransferPreviewProps) => {
@@ -40,7 +55,7 @@ export const RocketTransferPreview = ({ destination, launchDateMs }: RocketTrans
   return (
     <div className="rocket-telemetry rocket-transfer-preview">
       <div className="rocket-preview-head">
-        <span>Transfer window</span>
+        <span>Concept transfer</span>
         <span className={`rocket-window ${estimate.launchWindowQuality}`}>
           {qualityLabel[estimate.launchWindowQuality]}
         </span>
@@ -51,8 +66,16 @@ export const RocketTransferPreview = ({ destination, launchDateMs }: RocketTrans
           <dd>{formatMissionTime(estimate.transferTimeSeconds)}</dd>
         </div>
         <div>
+          <dt>Arrival time</dt>
+          <dd>{formatArrivalDuration(estimate.transferTimeSeconds)}</dd>
+        </div>
+        <div>
           <dt>Phase offset</dt>
           <dd>{formatPhaseAngle(estimate.phaseOffsetDeg)}</dd>
+        </div>
+        <div>
+          <dt>Ideal phase</dt>
+          <dd>{formatPhaseAngle(estimate.idealPhaseAngleDeg)}</dd>
         </div>
         <div>
           <dt>Delta-v total</dt>

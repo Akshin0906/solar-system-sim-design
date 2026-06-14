@@ -17,6 +17,14 @@ export type Orbit = {
   orbitalPeriodDays: number;
   epoch: string;
   retrograde?: boolean;
+  elementRatesPerCentury?: {
+    semiMajorAxisAu?: number;
+    eccentricity?: number;
+    inclinationDeg?: number;
+    longitudeOfAscendingNodeDeg?: number;
+    longitudeOfPeriapsisDeg?: number;
+    meanLongitudeDeg?: number;
+  };
 };
 
 export type CelestialBody = {

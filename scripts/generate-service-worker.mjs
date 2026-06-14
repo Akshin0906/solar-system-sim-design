@@ -3,7 +3,20 @@ import { extname, join, relative, sep } from "node:path";
 import { createHash } from "node:crypto";
 
 const distDir = new URL("../dist/", import.meta.url);
-const cacheableExtensions = new Set([".css", ".html", ".js", ".json", ".svg", ".txt", ".webmanifest", ".wasm"]);
+const cacheableExtensions = new Set([
+  ".css",
+  ".html",
+  ".jpeg",
+  ".jpg",
+  ".js",
+  ".json",
+  ".png",
+  ".svg",
+  ".txt",
+  ".webmanifest",
+  ".webp",
+  ".wasm",
+]);
 const normalizeBasePath = (value) => {
   if (!value || value === ".") {
     return "/";

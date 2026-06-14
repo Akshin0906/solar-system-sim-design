@@ -13,6 +13,7 @@ const moon = (
   color: string,
   extras: Partial<NonNullable<CelestialBody["orbit"]>> = {},
   rotationPeriodHours?: number,
+  texture?: string,
 ): CelestialBody => ({
   id,
   name,
@@ -23,6 +24,7 @@ const moon = (
     meanDistanceKm: semiMajorAxisKm,
     color,
     rotationPeriodHours,
+    texture,
   },
   orbit: {
     semiMajorAxisKm,
@@ -42,6 +44,9 @@ const moon = (
   },
 });
 
+// Moon orbit values are rounded mean elements for visual scale and relative
+// motion. They intentionally avoid full satellite ephemerides and local capture
+// dynamics; see DATA_SOURCES.md for source and accuracy notes.
 export const majorMoons: CelestialBody[] = [
   moon("moon", "Moon", "earth", 1_737.4, 384_400, 27.3217, "#d5d0c7", {
     eccentricity: 0.0549,
@@ -49,7 +54,7 @@ export const majorMoons: CelestialBody[] = [
     longitudeOfAscendingNodeDeg: 125.08,
     argumentOfPeriapsisDeg: 318.15,
     meanAnomalyAtEpochDeg: 115.365,
-  }),
+  }, undefined, "textures/moon.jpg"),
   moon("io", "Io", "jupiter", 1_821.6, 421_700, 1.769, "#d6bd71", {
     eccentricity: 0.0041,
     inclinationDeg: 0.04,

@@ -172,6 +172,14 @@ type CelestialBody = {
     meanAnomalyAtEpochDeg: number;
     orbitalPeriodDays: number;
     epoch: string;
+    elementRatesPerCentury?: {
+      semiMajorAxisAu?: number;
+      eccentricity?: number;
+      inclinationDeg?: number;
+      longitudeOfAscendingNodeDeg?: number;
+      longitudeOfPeriapsisDeg?: number;
+      meanLongitudeDeg?: number;
+    };
   };
 
   render: {
@@ -214,7 +222,9 @@ MVP should use Keplerian orbital elements rather than dynamic n-body gravity.
 Each object with an orbit should be positioned by:
 
 1. Compute elapsed simulation time from epoch.
-2. Convert elapsed time to mean anomaly using orbital period.
+2. For major planets with JPL rates, resolve date-specific elements from J2000
+   plus per-century rates; otherwise convert elapsed time to mean anomaly using
+   orbital period.
 3. Solve Kepler's equation for eccentric anomaly.
 4. Convert to true anomaly.
 5. Compute orbital plane position using semi-major axis and eccentricity.
@@ -581,4 +591,3 @@ The MVP is successful when:
 - Favor a calm, high-quality interface over dense controls.
 - Make sure text never overlaps controls or labels in common viewport sizes.
 - Verify visually in desktop and mobile-sized browser viewports.
-

@@ -4,8 +4,9 @@ import type { CelestialBody } from "../simulation/orbitalElements";
 const planetOrbitColor = "#d8c7a4";
 const dwarfOrbitColor = "#9fb7be";
 
-// Planetary orbit elements are JPL SSD approximate elements at J2000,
-// valid for visual/educational use rather than high-precision ephemerides.
+// Planetary orbit elements are JPL SSD approximate elements at J2000 plus
+// Table 1 per-century rates, valid for visual/educational use rather than
+// high-precision ephemerides.
 const sun: CelestialBody = {
   id: "sun",
   name: "Sun",
@@ -48,6 +49,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 174.792_527_22,
       orbitalPeriodDays: 87.969,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: 0.000_000_37,
+        eccentricity: 0.000_019_06,
+        inclinationDeg: -0.005_947_49,
+        longitudeOfAscendingNodeDeg: -0.125_340_81,
+        longitudeOfPeriapsisDeg: 0.160_476_89,
+        meanLongitudeDeg: 149_472.674_111_75,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#c3b6a4" },
   },
@@ -60,6 +69,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 6_051.8,
       meanDistanceKm: 0.723_335_66 * AU_KM,
       color: "#d7b482",
+      texture: "textures/venus.jpg",
       axialTiltDeg: 177.36,
       rotationPeriodHours: -5_832.5,
     },
@@ -72,6 +82,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 50.376_632_32,
       orbitalPeriodDays: 224.701,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: 0.000_003_9,
+        eccentricity: -0.000_041_07,
+        inclinationDeg: -0.000_788_9,
+        longitudeOfAscendingNodeDeg: -0.277_694_18,
+        longitudeOfPeriapsisDeg: 0.002_683_29,
+        meanLongitudeDeg: 58_517.815_387_29,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#d7b482" },
   },
@@ -84,6 +102,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 6_371,
       meanDistanceKm: 1.000_002_61 * AU_KM,
       color: "#76a9b7",
+      texture: "textures/earth.jpg",
       axialTiltDeg: 23.44,
       rotationPeriodHours: 23.934,
       gravitationalParameterKm3S2: 398_600.435,
@@ -97,6 +116,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 357.526_889_73,
       orbitalPeriodDays: 365.256,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: 0.000_005_62,
+        eccentricity: -0.000_043_92,
+        inclinationDeg: -0.012_946_68,
+        longitudeOfAscendingNodeDeg: 0,
+        longitudeOfPeriapsisDeg: 0.323_273_64,
+        meanLongitudeDeg: 35_999.372_449_81,
+      },
     },
     render: { showLabelDefault: true, orbitColor: "#9fd2d9", trailColor: "#76a9b7" },
   },
@@ -109,6 +136,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 3_389.5,
       meanDistanceKm: 1.523_710_34 * AU_KM,
       color: "#c9745c",
+      texture: "textures/mars.jpg",
       axialTiltDeg: 25.19,
       rotationPeriodHours: 24.623,
       gravitationalParameterKm3S2: 42_828.375,
@@ -122,6 +150,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 19.390_197_54,
       orbitalPeriodDays: 686.98,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: 0.000_018_47,
+        eccentricity: 0.000_078_82,
+        inclinationDeg: -0.008_131_31,
+        longitudeOfAscendingNodeDeg: -0.292_573_43,
+        longitudeOfPeriapsisDeg: 0.444_410_88,
+        meanLongitudeDeg: 19_140.302_684_99,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#c9745c" },
   },
@@ -134,6 +170,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 69_911,
       meanDistanceKm: 5.202_887 * AU_KM,
       color: "#d1aa7b",
+      texture: "textures/jupiter.jpg",
       axialTiltDeg: 3.13,
       rotationPeriodHours: 9.925,
       gravitationalParameterKm3S2: 126_686_534,
@@ -147,6 +184,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 19.667_960_68,
       orbitalPeriodDays: 4_332.589,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: -0.000_116_07,
+        eccentricity: -0.000_132_53,
+        inclinationDeg: -0.001_837_14,
+        longitudeOfAscendingNodeDeg: 0.204_691_06,
+        longitudeOfPeriapsisDeg: 0.212_526_68,
+        meanLongitudeDeg: 3_034.746_127_75,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#d1aa7b" },
   },
@@ -159,6 +204,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 58_232,
       meanDistanceKm: 9.536_675_94 * AU_KM,
       color: "#d9c59b",
+      texture: "textures/saturn.jpg",
       axialTiltDeg: 26.73,
       rotationPeriodHours: 10.656,
       gravitationalParameterKm3S2: 37_931_207.8,
@@ -172,6 +218,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 317.355_365_92,
       orbitalPeriodDays: 10_759.22,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: -0.001_250_6,
+        eccentricity: -0.000_509_91,
+        inclinationDeg: 0.001_936_09,
+        longitudeOfAscendingNodeDeg: -0.288_677_94,
+        longitudeOfPeriapsisDeg: -0.418_972_16,
+        meanLongitudeDeg: 1_222.493_622_01,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#d9c59b" },
   },
@@ -197,6 +251,14 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 142.283_828_21,
       orbitalPeriodDays: 30_685.4,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: -0.001_961_76,
+        eccentricity: -0.000_043_97,
+        inclinationDeg: -0.002_429_39,
+        longitudeOfAscendingNodeDeg: 0.042_405_89,
+        longitudeOfPeriapsisDeg: 0.408_052_81,
+        meanLongitudeDeg: 428.482_027_85,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#9cd3cf" },
   },
@@ -209,6 +271,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 24_622,
       meanDistanceKm: 30.069_922_76 * AU_KM,
       color: "#5d84c6",
+      texture: "textures/neptune.jpg",
       axialTiltDeg: 28.32,
       rotationPeriodHours: 16.11,
       gravitationalParameterKm3S2: 6_836_529,
@@ -222,11 +285,22 @@ export const majorBodies: CelestialBody[] = [
       meanAnomalyAtEpochDeg: 259.915_208_04,
       orbitalPeriodDays: 60_190,
       epoch: J2000_EPOCH,
+      elementRatesPerCentury: {
+        semiMajorAxisAu: 0.000_262_91,
+        eccentricity: 0.000_051_05,
+        inclinationDeg: 0.000_353_72,
+        longitudeOfAscendingNodeDeg: -0.005_086_64,
+        longitudeOfPeriapsisDeg: -0.322_414_64,
+        meanLongitudeDeg: 218.459_453_25,
+      },
     },
     render: { showLabelDefault: true, orbitColor: planetOrbitColor, trailColor: "#5d84c6" },
   },
 ];
 
+// Dwarf planet values are rounded, approximate Kepler elements for education and
+// scale context. They are not date-fitted ephemerides; use JPL Horizons or the
+// JPL Small-Body Database for precision work.
 export const dwarfPlanets: CelestialBody[] = [
   {
     id: "ceres",

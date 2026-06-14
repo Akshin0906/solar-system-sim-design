@@ -470,7 +470,7 @@ option {
 
 .object-inspector dl div {
   display: grid;
-  grid-template-columns: minmax(72px, 0.72fr) minmax(0, 1fr);
+  grid-template-columns: minmax(88px, 0.82fr) minmax(0, 1fr);
   align-items: baseline;
   gap: 10px;
 }
@@ -764,6 +764,10 @@ input[type="range"] {
   backdrop-filter: blur(18px) saturate(125%);
   padding-bottom: env(safe-area-inset-bottom);
   animation: sheet-in 180ms ease-out;
+}
+
+.sheet:focus {
+  outline: none;
 }
 
 .sheet.dragging {
@@ -1199,6 +1203,14 @@ input[type="range"] {
   line-height: 1.3;
 }
 
+.rocket-concept-note {
+  padding: 7px 8px;
+  border: 1px solid rgba(143, 199, 204, 0.24);
+  border-radius: 7px;
+  background: rgba(143, 199, 204, 0.08);
+  color: var(--muted);
+}
+
 .rocket-readout {
   display: grid;
   gap: 6px;
@@ -1385,10 +1397,12 @@ input[type="range"] {
   }
 
   .rocket-panel-sheet .rocket-panel-actions {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    padding-top: 2px;
-    background: linear-gradient(transparent, var(--surface-strong) 18%);
+    position: static;
+    margin: 0 0 10px;
+    padding: 10px 0;
+    border-top: 1px solid var(--hairline);
+    border-bottom: 1px solid var(--hairline);
+    background: transparent;
+    box-shadow: none;
   }
 }

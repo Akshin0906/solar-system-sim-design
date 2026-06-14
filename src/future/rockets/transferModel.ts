@@ -1,6 +1,11 @@
 import { DAY_SECONDS, EARTH_RADIUS_KM } from "../../data/constants";
 import type { CelestialBody, Vec3 } from "../../simulation/orbitalElements";
-import { getBodyPositionKm, getOrbitPositionKm, vectorLength } from "../../simulation/solveOrbit";
+import {
+  getBodyPositionKm,
+  getOrbitElementsAtDate,
+  getOrbitPositionKm,
+  vectorLength,
+} from "../../simulation/solveOrbit";
 
 const EARTH_ID = "earth";
 const SUN_ID = "sun";
@@ -123,8 +128,10 @@ const estimateLocalMoonTransfer = (
     return null;
   }
 
+  const launchDate = new Date(launchDateMs);
+  const destinationOrbit = getOrbitElementsAtDate(destinationBody.orbit, launchDate);
   const originRadiusKm = EARTH_RADIUS_KM + LEO_ALTITUDE_KM;
-  const destinationRadiusKm = destinationBody.orbit.semiMajorAxisKm;
+  const destinationRadiusKm = destinationOrbit.semiMajorAxisKm;
   const transferSemiMajorAxisKm = (originRadiusKm + destinationRadiusKm) / 2;
   const transferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muEarth);
   const departureDeltaVKmS = Math.abs(
@@ -191,14 +198,16 @@ export const estimateTransfer = (
     return null;
   }
 
-  const originRadiusKm = earth.orbit.semiMajorAxisKm;
-  const destinationRadiusKm = transferTarget.orbit.semiMajorAxisKm;
+  const launchDate = new Date(launchDateMs);
+  const earthOrbit = getOrbitElementsAtDate(earth.orbit, launchDate);
+  const transferTargetOrbit = getOrbitElementsAtDate(transferTarget.orbit, launchDate);
+  const originRadiusKm = earthOrbit.semiMajorAxisKm;
+  const destinationRadiusKm = transferTargetOrbit.semiMajorAxisKm;
   const transferSemiMajorAxisKm = (originRadiusKm + destinationRadiusKm) / 2;
   const transferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muSun);
-  const targetMeanMotion = TWO_PI / (Math.abs(transferTarget.orbit.orbitalPeriodDays) * DAY_SECONDS);
+  const targetMeanMotion = TWO_PI / (Math.abs(transferTargetOrbit.orbitalPeriodDays) * DAY_SECONDS);
   const idealPhaseAngleRad = normalizeSignedRadians(Math.PI - targetMeanMotion * transferTimeSeconds);
 
-  const launchDate = new Date(launchDateMs);
   const earthKm = getBodyPositionKm(earth, bodiesById, launchDate);
   const targetKm = getBodyPositionKm(transferTarget, bodiesById, launchDate);
   const currentPhaseAngleRad = normalizeSignedRadians(angleFromSun(targetKm) - angleFromSun(earthKm));

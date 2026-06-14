@@ -12,12 +12,12 @@ export const rocketMissionModes: RocketMissionModeOption[] = [
   {
     id: "direct",
     label: "Direct aim",
-    note: "Straight-line intercept toward the target's predicted position.",
+    note: "Educational straight-line intercept toward the target's predicted position.",
   },
   {
     id: "transfer",
     label: "Transfer preview",
-    note: "Approximate Hohmann-style transfer window and curved path.",
+    note: "Educational Hohmann-style transfer window and curved path.",
   },
 ];
 
@@ -43,21 +43,21 @@ export const rocketLaunchModes: RocketLaunchModeOption[] = [
     id: "earth-departure",
     label: "Earth departure",
     shortLabel: "Earth departure",
-    note: "Current behavior: the tracked cruise begins after Earth departure.",
+    note: "Concept baseline: the tracked cruise begins after Earth departure.",
     initialSpeedBonusKmS: 0,
   },
   {
     id: "low-earth-orbit",
     label: "Low Earth orbit",
     shortLabel: "LEO",
-    note: "Educational parking-orbit baseline; adds a simplified 7.8 km/s orbital offset.",
+    note: "Concept parking-orbit baseline; adds a simplified 7.8 km/s orbital offset.",
     initialSpeedBonusKmS: 7.8,
   },
   {
     id: "surface-launch",
     label: "Surface launch",
     shortLabel: "Surface",
-    note: "Simplified surface start; atmosphere and gravity losses are not modeled.",
+    note: "Concept surface start; atmosphere and gravity losses are not modeled.",
     initialSpeedBonusKmS: 0,
   },
 ];

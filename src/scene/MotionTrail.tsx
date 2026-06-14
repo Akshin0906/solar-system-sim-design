@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry, Line, LineBasicMaterial, type Material } from "three";
 import { bodiesById } from "../data";
 import type { CelestialBody } from "../simulation/orbitalElements";
+import { getOrbitElementsAtDate } from "../simulation/solveOrbit";
 import { computeBodyScenePosition, type ScaleMode } from "../simulation/units";
 
 type MotionTrailProps = {
@@ -38,7 +39,9 @@ export const MotionTrail = memo(({ body, dateMs, mode, selected }: MotionTrailPr
 
     const positionAttribute = line.geometry.getAttribute("position") as BufferAttribute;
     const positions = positionAttribute.array as Float32Array;
-    const trailSpanMs = body.orbit.orbitalPeriodDays * 86_400_000 * (body.type === "moon" ? 0.35 : 0.08);
+    const date = new Date(dateMs);
+    const orbit = getOrbitElementsAtDate(body.orbit, date);
+    const trailSpanMs = orbit.orbitalPeriodDays * 86_400_000 * (body.type === "moon" ? 0.35 : 0.08);
 
     for (let sampleIndex = 0; sampleIndex <= samples; sampleIndex += 1) {
       const ageIndex = samples - sampleIndex;

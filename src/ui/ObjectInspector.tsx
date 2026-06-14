@@ -56,7 +56,7 @@ export const ObjectInspector = () => {
           <dd>{formatRadius(body.physical.radiusKm)}</dd>
         </div>
         <div>
-          <dt>Distance</dt>
+          <dt>Distance (est.)</dt>
           <dd>{distance ? formatDistance(distance) : "Center"}</dd>
         </div>
         <div>
@@ -64,7 +64,7 @@ export const ObjectInspector = () => {
           <dd>{body.orbit ? formatPeriod(body.orbit.orbitalPeriodDays) : "N/A"}</dd>
         </div>
         <div>
-          <dt>Speed</dt>
+          <dt>Speed (Kepler)</dt>
           <dd>{speed ? `${speed.toFixed(speed > 10 ? 1 : 2)} km/s` : "N/A"}</dd>
         </div>
         {body.physical.rotationPeriodHours && (

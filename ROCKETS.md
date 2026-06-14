@@ -1,8 +1,9 @@
 # Rockets - Educational Mission Preview
 
-The rocket feature is an educational layer on top of the solar-system simulator. It
-lets you launch one active rocket from Earth, compare propulsion profiles, and preview
-simple destination missions without changing any planet or moon data.
+The rocket feature is an educational concept-preview layer on top of the solar-system
+simulator. It lets you launch one active preview rocket from Earth, compare propulsion
+profiles, and inspect simple destination previews without changing any planet or moon
+data.
 
 This is still not a professional mission planner. The numbers are approximate, the
 visuals are scaled for comprehension, and the model intentionally avoids full n-body
@@ -13,7 +14,7 @@ mid-course guidance.
 
 - Adds a compact rocket panel from the top bar.
 - Lets you choose a rocket profile, destination, mission mode, and launch assumption.
-- Supports free flight, direct destination aim, and approximate transfer preview.
+- Supports conceptual free flight, direct destination aim, and approximate transfer preview.
 - Renders one active rocket with scene cues and live telemetry.
 - Keeps all physical readouts in real units while the 3D scene uses the app's existing
   scale modes.
@@ -25,19 +26,21 @@ mid-course guidance.
 ### Free Flight
 
 Free flight launches radially outward from Earth's heliocentric position at launch
-time. It has no destination cue, no target line, and no transfer math.
+time as a conceptual outbound cruise preview. It has no destination cue, no target
+line, and no transfer math.
 
 ### Direct Aim
 
-Direct aim is the simple moving-target model. At launch it predicts when the chosen
-rocket profile can reach the destination and flies a straight line toward that
-future intercept point.
+Direct aim is the simple educational moving-target model. At preview start it predicts
+when the chosen rocket profile can reach the destination and flies a straight line
+toward that future intercept point.
 
 Important limitations:
 
 - It does not curve under gravity.
 - It does not compute transfer windows.
 - It assumes the rocket can hold a straight course to the predicted intercept.
+- It is not an operational guidance, navigation, or trajectory-design model.
 - After arrival, the scene keeps the rocket attached to the destination body so
   scrubbing beyond arrival still reads as an arrived mission.
 
@@ -46,7 +49,7 @@ closest-approach readout shows whether the simple intercept lined up.
 
 ### Transfer Preview
 
-Transfer preview adds a separate approximate transfer model. For planets and dwarf
+Transfer preview adds a separate approximate educational transfer model. For planets and dwarf
 planets it estimates a Hohmann-style heliocentric transfer between Earth's orbit and
 the destination orbit, then samples a phase-aware visual arc to the destination's
 arrival position. For the Moon, it uses a simplified Earth-centered parking-orbit
@@ -73,7 +76,7 @@ the old intercept point.
 
 ## Launch Assumptions
 
-The launch selector is educational, not a launch vehicle simulation.
+The launch selector is educational, not a launch vehicle simulation or mission planner.
 
 - Earth departure: default/current behavior; the tracked cruise begins after Earth
   departure.
@@ -122,14 +125,15 @@ Rocket code lives in `src/future/rockets/`.
 ## Rocket Profiles
 
 Profile numbers are educational placeholders tuned for comparison, not mission-design
-figures. Confidence labels communicate how grounded each profile is.
+figures. Confidence labels communicate how grounded each profile is; "Flown" means
+the hardware family is real, not that the preview trajectory is flight-ready.
 
 | Rocket | Category | Confidence | init -> max km/s | accel m/s2 | burn |
 | --- | --- | --- | --- | --- | --- |
-| Saturn V | Existing | Real | 2 -> 11.0 | 22 | 420 s |
-| Falcon Heavy | Existing | Real | 2 -> 11.5 | 24 | 430 s |
+| Saturn V | Existing | Flown | 2 -> 11.0 | 22 | 420 s |
+| Falcon Heavy | Existing | Flown | 2 -> 11.5 | 24 | 430 s |
 | Starship | Existing | Estimated | 1.5 -> 12.0 | 22 | 520 s |
-| SLS Block 1 | Existing | Real | 2 -> 11.2 | 22 | 430 s |
+| SLS Block 1 | Existing | Flown | 2 -> 11.2 | 22 | 430 s |
 | Nuclear Thermal Rocket | Near future | Estimated | 3 -> 22 | 9 | 2,400 s |
 | Ion Drive Probe | Existing | Estimated | 0.5 -> 40 | 0.0006 | about 0.95 yr |
 | Fusion Drive Concept | Theoretical | Speculative | 5 -> 3,000 | 2.5 | about 69 d |

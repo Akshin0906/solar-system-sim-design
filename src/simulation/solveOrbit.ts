@@ -1,7 +1,18 @@
-import { DAY_MS, DAY_SECONDS } from "../data/constants";
+import { AU_KM, DAY_MS, DAY_SECONDS } from "../data/constants";
 import type { CelestialBody, Orbit, Vec3 } from "./orbitalElements";
 
 const TWO_PI = Math.PI * 2;
+const JULIAN_DAYS_PER_CENTURY = 36_525;
+
+type ResolvedOrbitElements = {
+  semiMajorAxisKm: number;
+  eccentricity: number;
+  inclinationDeg: number;
+  longitudeOfAscendingNodeDeg: number;
+  argumentOfPeriapsisDeg: number;
+  meanAnomalyDeg: number;
+  orbitalPeriodDays: number;
+};
 
 export const degToRad = (degrees: number) => (degrees * Math.PI) / 180;
 
@@ -9,6 +20,13 @@ const normalizeRadians = (radians: number) => {
   const normalized = radians % TWO_PI;
   return normalized < 0 ? normalized + TWO_PI : normalized;
 };
+
+const normalizeDegrees = (degrees: number) => {
+  const normalized = degrees % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
+};
+
+const getElapsedDays = (orbit: Orbit, date: Date) => (date.getTime() - Date.parse(orbit.epoch)) / DAY_MS;
 
 export const vectorLength = ([x, y, z]: Vec3) => Math.sqrt(x * x + y * y + z * z);
 
@@ -32,23 +50,72 @@ export const solveEccentricAnomaly = (meanAnomalyRad: number, eccentricity: numb
   return eccentricAnomaly;
 };
 
-export const getOrbitPositionKm = (orbit: Orbit, date: Date): Vec3 => {
-  const elapsedDays = (date.getTime() - Date.parse(orbit.epoch)) / DAY_MS;
+export const getOrbitElementsAtDate = (orbit: Orbit, date: Date): ResolvedOrbitElements => {
+  const elapsedDays = getElapsedDays(orbit, date);
   const direction = orbit.retrograde ? -1 : 1;
-  const meanAnomalyRad =
-    degToRad(orbit.meanAnomalyAtEpochDeg) +
-    direction * TWO_PI * (elapsedDays / orbit.orbitalPeriodDays);
+  const rates = orbit.elementRatesPerCentury;
 
-  const eccentricAnomaly = solveEccentricAnomaly(meanAnomalyRad, orbit.eccentricity);
+  if (!rates) {
+    return {
+      semiMajorAxisKm: orbit.semiMajorAxisKm,
+      eccentricity: orbit.eccentricity,
+      inclinationDeg: orbit.inclinationDeg,
+      longitudeOfAscendingNodeDeg: orbit.longitudeOfAscendingNodeDeg,
+      argumentOfPeriapsisDeg: orbit.argumentOfPeriapsisDeg,
+      meanAnomalyDeg: normalizeDegrees(
+        orbit.meanAnomalyAtEpochDeg + direction * 360 * (elapsedDays / orbit.orbitalPeriodDays),
+      ),
+      orbitalPeriodDays: orbit.orbitalPeriodDays,
+    };
+  }
+
+  const centuries = elapsedDays / JULIAN_DAYS_PER_CENTURY;
+  const longitudeOfPeriapsisAtEpochDeg = orbit.longitudeOfAscendingNodeDeg + orbit.argumentOfPeriapsisDeg;
+  const meanLongitudeAtEpochDeg = longitudeOfPeriapsisAtEpochDeg + orbit.meanAnomalyAtEpochDeg;
+  const longitudeOfAscendingNodeDeg =
+    orbit.longitudeOfAscendingNodeDeg + (rates.longitudeOfAscendingNodeDeg ?? 0) * centuries;
+  const longitudeOfPeriapsisDeg =
+    longitudeOfPeriapsisAtEpochDeg + (rates.longitudeOfPeriapsisDeg ?? 0) * centuries;
+  const usesMeanLongitudeRate = rates.meanLongitudeDeg !== undefined;
+  const meanLongitudeDeg = usesMeanLongitudeRate
+    ? meanLongitudeAtEpochDeg + rates.meanLongitudeDeg! * centuries
+    : undefined;
+  const meanAnomalyRateDegPerCentury =
+    rates.meanLongitudeDeg === undefined
+      ? undefined
+      : rates.meanLongitudeDeg - (rates.longitudeOfPeriapsisDeg ?? 0);
+
+  return {
+    semiMajorAxisKm: orbit.semiMajorAxisKm + (rates.semiMajorAxisAu ?? 0) * AU_KM * centuries,
+    eccentricity: orbit.eccentricity + (rates.eccentricity ?? 0) * centuries,
+    inclinationDeg: orbit.inclinationDeg + (rates.inclinationDeg ?? 0) * centuries,
+    longitudeOfAscendingNodeDeg: normalizeDegrees(longitudeOfAscendingNodeDeg),
+    argumentOfPeriapsisDeg: normalizeDegrees(longitudeOfPeriapsisDeg - longitudeOfAscendingNodeDeg),
+    meanAnomalyDeg:
+      meanLongitudeDeg === undefined
+        ? normalizeDegrees(orbit.meanAnomalyAtEpochDeg + direction * 360 * (elapsedDays / orbit.orbitalPeriodDays))
+        : normalizeDegrees(meanLongitudeDeg - longitudeOfPeriapsisDeg),
+    orbitalPeriodDays:
+      meanAnomalyRateDegPerCentury && meanAnomalyRateDegPerCentury !== 0
+        ? (JULIAN_DAYS_PER_CENTURY * 360) / Math.abs(meanAnomalyRateDegPerCentury)
+        : orbit.orbitalPeriodDays,
+  };
+};
+
+const getPositionFromElementsKm = (elements: ResolvedOrbitElements): Vec3 => {
+  const meanAnomalyRad = degToRad(elements.meanAnomalyDeg);
+  const eccentricity = elements.eccentricity;
+  const eccentricAnomaly = solveEccentricAnomaly(meanAnomalyRad, eccentricity);
+
   const trueAnomaly = Math.atan2(
-    Math.sqrt(1 - orbit.eccentricity * orbit.eccentricity) * Math.sin(eccentricAnomaly),
-    Math.cos(eccentricAnomaly) - orbit.eccentricity,
+    Math.sqrt(1 - eccentricity * eccentricity) * Math.sin(eccentricAnomaly),
+    Math.cos(eccentricAnomaly) - eccentricity,
   );
 
-  const radiusKm = orbit.semiMajorAxisKm * (1 - orbit.eccentricity * Math.cos(eccentricAnomaly));
-  const argument = degToRad(orbit.argumentOfPeriapsisDeg) + trueAnomaly;
-  const inclination = degToRad(orbit.inclinationDeg);
-  const ascendingNode = degToRad(orbit.longitudeOfAscendingNodeDeg);
+  const radiusKm = elements.semiMajorAxisKm * (1 - eccentricity * Math.cos(eccentricAnomaly));
+  const argument = degToRad(elements.argumentOfPeriapsisDeg) + trueAnomaly;
+  const inclination = degToRad(elements.inclinationDeg);
+  const ascendingNode = degToRad(elements.longitudeOfAscendingNodeDeg);
 
   const cosNode = Math.cos(ascendingNode);
   const sinNode = Math.sin(ascendingNode);
@@ -63,6 +130,9 @@ export const getOrbitPositionKm = (orbit: Orbit, date: Date): Vec3 => {
     radiusKm * (sinNode * cosArg + cosNode * sinArg * cosInc),
   ];
 };
+
+export const getOrbitPositionKm = (orbit: Orbit, date: Date): Vec3 =>
+  getPositionFromElementsKm(getOrbitElementsAtDate(orbit, date));
 
 export const getBodyPositionKm = (
   body: CelestialBody,
@@ -96,29 +166,22 @@ export const estimateOrbitalSpeedKmS = (body: CelestialBody, date: Date) => {
     return 0;
   }
 
-  const periodSeconds = Math.abs(body.orbit.orbitalPeriodDays) * DAY_SECONDS;
-  const semiMajorAxisKm = body.orbit.semiMajorAxisKm;
+  const orbit = getOrbitElementsAtDate(body.orbit, date);
+  const periodSeconds = Math.abs(orbit.orbitalPeriodDays) * DAY_SECONDS;
+  const semiMajorAxisKm = orbit.semiMajorAxisKm;
   const currentRadiusKm = getOrbitRadiusKm(body, date);
   const derivedMu = (4 * Math.PI * Math.PI * semiMajorAxisKm ** 3) / periodSeconds ** 2;
 
   return Math.sqrt(derivedMu * (2 / currentRadiusKm - 1 / semiMajorAxisKm));
 };
 
-export const sampleOrbitKm = (orbit: Orbit, samples = 192) => {
+export const sampleOrbitKm = (orbit: Orbit, samples = 192, date = new Date(orbit.epoch)) => {
   const points: Vec3[] = [];
   const step = 360 / samples;
+  const elements = getOrbitElementsAtDate(orbit, date);
 
   for (let index = 0; index <= samples; index += 1) {
-    points.push(
-      getOrbitPositionKm(
-        {
-          ...orbit,
-          epoch: orbit.epoch,
-          meanAnomalyAtEpochDeg: index * step,
-        },
-        new Date(orbit.epoch),
-      ),
-    );
+    points.push(getPositionFromElementsKm({ ...elements, meanAnomalyDeg: index * step }));
   }
 
   return points;

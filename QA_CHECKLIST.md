@@ -122,8 +122,8 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Rocket panel is hidden by default; the default view stays uncluttered.
 - [ ] The rocket button in the top bar opens and closes the launch panel.
 - [ ] Selecting a profile updates the category, confidence badge, and description.
-- [ ] Confidence is clearly labeled: Real, Estimated, or Speculative.
-- [ ] Launch from Earth shows a marker, outbound trail, and label in the scene.
+- [ ] Confidence is clearly labeled: Flown, Estimated, or Speculative.
+- [ ] Preview free flight shows a marker, outbound trail, and label in the scene.
 - [ ] Telemetry shows mission time, speed, distance traveled, distance from Earth,
       and target range/arrival when applicable, and all update as time advances.
 - [ ] Distance traveled and distance from Earth differ once Earth has moved along its orbit.
@@ -141,7 +141,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] The Target selector groups Free flight, planets, dwarf planets, and Moon only.
 - [ ] The mission mode selector offers Direct aim and Transfer preview, and disables for Free flight.
 - [ ] The launch assumption selector offers Earth departure, Low Earth orbit, and Surface launch.
-- [ ] The Launch button label reflects the target and mission mode (e.g. "Launch to Mars", "Preview transfer to Mars", "Launch from Earth").
+- [ ] The Preview button label reflects the target and mission mode (e.g. "Preview direct aim to Mars", "Preview transfer to Mars", "Preview free flight").
 - [ ] Launching toward a destination shows a subtle highlight ring on the target body.
 - [ ] Direct aim shows a straight outbound path and a thin dashed line to the selected destination.
 - [ ] Destination telemetry shows the target name, distance to target, estimated arrival,
@@ -161,8 +161,8 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Rocket progress advances along the arc as time runs and updates when time is scrubbed.
 - [ ] After the transfer arrival date, the rocket remains visually attached to the current destination
       and the target distance reads 0 km instead of drifting from the old intercept point.
-- [ ] Telemetry keeps the high-signal rows visible: mission time, speed, distance
-      fields, estimated arrival, and launch-window summary.
+- [ ] Telemetry shows Mission mode, Phase, Launch mode, Transfer time, Intercept date,
+      Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
 - [ ] Transfer math is clearly labeled approximate and not a professional mission planner.
 - [ ] Launch-window quality changes with target/date and includes a phase offset.
 - [ ] Transfer preview to the Moon uses the simplified Earth-centered estimate.

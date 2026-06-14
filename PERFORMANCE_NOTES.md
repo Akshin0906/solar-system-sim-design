@@ -12,6 +12,8 @@ Known build warning:
 ## Higher-Risk Areas
 
 - Procedural canvas textures are generated at runtime for bodies and clouds.
+- Curated planet textures are static public JPEGs loaded outside the JS bundle; procedural
+  canvas textures remain the fallback while images load or if they are unavailable.
 - Motion trails recompute multiple sampled positions for each trailed body.
 - Full label density can add many `Html` labels.
 - Belt particles are regenerated when scale mode changes.

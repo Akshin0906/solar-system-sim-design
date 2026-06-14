@@ -1,7 +1,7 @@
 # Rocket Module
 
-This folder contains the educational rocket-launch layer. The module is active, but
-it is still approximate: it is not a professional trajectory design tool.
+This folder contains the educational rocket concept-preview layer. The module is
+active, but it is still approximate: it is not a professional trajectory design tool.
 
 ## Layers
 
@@ -20,7 +20,7 @@ it is still approximate: it is not a professional trajectory design tool.
 ## Rules
 
 - Do not mutate celestial body data.
-- Keep direct/free-flight behavior working when changing transfer preview.
+- Keep conceptual direct/free-flight behavior working when changing transfer preview.
 - Keep transfer math pure and approximate labels visible.
 - Add or update Python math verification whenever changing arithmetic.
 - Keep the default solar-system experience uncluttered; the rocket panel stays hidden

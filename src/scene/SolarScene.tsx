@@ -120,6 +120,7 @@ export const SolarScene = () => {
           <OrbitRing
             key={body.id}
             body={body}
+            dateMs={dateMs}
             mode={mode}
             positions={positions}
             emphasis={emphasisById.get(body.id) ?? "normal"}

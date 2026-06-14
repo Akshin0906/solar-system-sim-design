@@ -104,8 +104,8 @@ export const TopBar = () => {
           className={`icon-button ${rocketActive ? "active" : ""}`}
           type="button"
           onClick={handleRocket}
-          title="Rocket launch"
-          aria-label="Rocket launch"
+          title="Rocket preview"
+          aria-label="Rocket preview"
           aria-pressed={isMobile ? rocketActive : undefined}
         >
           <Rocket size={16} />

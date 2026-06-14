@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare app planet orbit elements against JPL approximate planet elements.
+"""Compare app planet orbit elements and rates against JPL approximations.
 
 Reference:
 https://ssd.jpl.nasa.gov/planets/approx_pos.html
@@ -18,14 +18,14 @@ CHECK_DATE = dt.datetime(2026, 6, 14, 0, tzinfo=dt.timezone.utc)
 
 
 APP = {
-    "Mercury": dict(a=0.387_099_27, e=0.205_635_93, i=7.004_979_02, node=48.330_765_93, arg=29.127_030_35, m0=174.792_527_22, period=87.969),
-    "Venus": dict(a=0.723_335_66, e=0.006_776_72, i=3.394_676_05, node=76.679_842_55, arg=54.922_624_63, m0=50.376_632_32, period=224.701),
-    "Earth": dict(a=1.000_002_61, e=0.016_711_23, i=-0.000_015_31, node=0.0, arg=102.937_681_93, m0=357.526_889_73, period=365.256),
-    "Mars": dict(a=1.523_710_34, e=0.093_394_1, i=1.849_691_42, node=49.559_538_91, arg=286.496_831_5, m0=19.390_197_54, period=686.98),
-    "Jupiter": dict(a=5.202_887, e=0.048_386_24, i=1.304_396_95, node=100.473_909_09, arg=274.254_570_74, m0=19.667_960_68, period=4_332.589),
-    "Saturn": dict(a=9.536_675_94, e=0.053_861_79, i=2.485_991_87, node=113.662_424_48, arg=338.936_453_83, m0=317.355_365_92, period=10_759.22),
-    "Uranus": dict(a=19.189_164_64, e=0.047_257_44, i=0.772_637_83, node=74.016_925_03, arg=96.937_351_27, m0=142.283_828_21, period=30_685.4),
-    "Neptune": dict(a=30.069_922_76, e=0.008_590_48, i=1.770_043_47, node=131.784_225_74, arg=273.180_536_53, m0=259.915_208_04, period=60_190),
+    "Mercury": dict(a=0.387_099_27, adot=0.000_000_37, e=0.205_635_93, edot=0.000_019_06, i=7.004_979_02, idot=-0.005_947_49, node=48.330_765_93, nodedot=-0.125_340_81, arg=29.127_030_35, peri_dot=0.160_476_89, m0=174.792_527_22, mean_long_dot=149_472.674_111_75),
+    "Venus": dict(a=0.723_335_66, adot=0.000_003_90, e=0.006_776_72, edot=-0.000_041_07, i=3.394_676_05, idot=-0.000_788_90, node=76.679_842_55, nodedot=-0.277_694_18, arg=54.922_624_63, peri_dot=0.002_683_29, m0=50.376_632_32, mean_long_dot=58_517.815_387_29),
+    "Earth": dict(a=1.000_002_61, adot=0.000_005_62, e=0.016_711_23, edot=-0.000_043_92, i=-0.000_015_31, idot=-0.012_946_68, node=0.0, nodedot=0.0, arg=102.937_681_93, peri_dot=0.323_273_64, m0=357.526_889_73, mean_long_dot=35_999.372_449_81),
+    "Mars": dict(a=1.523_710_34, adot=0.000_018_47, e=0.093_394_10, edot=0.000_078_82, i=1.849_691_42, idot=-0.008_131_31, node=49.559_538_91, nodedot=-0.292_573_43, arg=286.496_831_5, peri_dot=0.444_410_88, m0=19.390_197_54, mean_long_dot=19_140.302_684_99),
+    "Jupiter": dict(a=5.202_887_00, adot=-0.000_116_07, e=0.048_386_24, edot=-0.000_132_53, i=1.304_396_95, idot=-0.001_837_14, node=100.473_909_09, nodedot=0.204_691_06, arg=274.254_570_74, peri_dot=0.212_526_68, m0=19.667_960_68, mean_long_dot=3_034.746_127_75),
+    "Saturn": dict(a=9.536_675_94, adot=-0.001_250_60, e=0.053_861_79, edot=-0.000_509_91, i=2.485_991_87, idot=0.001_936_09, node=113.662_424_48, nodedot=-0.288_677_94, arg=338.936_453_83, peri_dot=-0.418_972_16, m0=317.355_365_92, mean_long_dot=1_222.493_622_01),
+    "Uranus": dict(a=19.189_164_64, adot=-0.001_961_76, e=0.047_257_44, edot=-0.000_043_97, i=0.772_637_83, idot=-0.002_429_39, node=74.016_925_03, nodedot=0.042_405_89, arg=96.937_351_27, peri_dot=0.408_052_81, m0=142.283_828_21, mean_long_dot=428.482_027_85),
+    "Neptune": dict(a=30.069_922_76, adot=0.000_262_91, e=0.008_590_48, edot=0.000_051_05, i=1.770_043_47, idot=0.000_353_72, node=131.784_225_74, nodedot=-0.005_086_64, arg=273.180_536_53, peri_dot=-0.322_414_64, m0=259.915_208_04, mean_long_dot=218.459_453_25),
 }
 
 
@@ -48,6 +48,10 @@ def norm360(deg: float) -> float:
 
 def signed_angle_delta(a: float, b: float) -> float:
     return (a - b + 180.0) % 360.0 - 180.0
+
+
+def centuries_since_j2000(date: dt.datetime) -> float:
+    return (date - J2000).total_seconds() / (DAY_SECONDS * 36_525)
 
 
 def solve_eccentric_anomaly(mean_anomaly_rad: float, eccentricity: float) -> float:
@@ -96,7 +100,7 @@ def vector_len(vec: tuple[float, float, float]) -> float:
 
 
 def jpl_elements(name: str, date: dt.datetime) -> dict[str, float]:
-    T = (date - J2000).total_seconds() / (DAY_SECONDS * 36_525)
+    T = centuries_since_j2000(date)
     a, adot, e, edot, inc, incdot, mean_long, mean_long_dot, peri, peridot, node, nodedot = JPL[name]
     a += adot * T
     e += edot * T
@@ -116,19 +120,39 @@ def jpl_elements(name: str, date: dt.datetime) -> dict[str, float]:
 
 def app_elements(name: str, date: dt.datetime) -> dict[str, float]:
     source = APP[name]
-    elapsed_days = (date - J2000).total_seconds() / DAY_SECONDS
+    T = centuries_since_j2000(date)
+    peri0 = source["node"] + source["arg"]
+    mean_long0 = peri0 + source["m0"]
+    node = source["node"] + source["nodedot"] * T
+    peri = peri0 + source["peri_dot"] * T
+    mean_long = mean_long0 + source["mean_long_dot"] * T
     return {
-        "a": source["a"],
-        "e": source["e"],
-        "i": source["i"],
-        "node": norm360(source["node"]),
-        "arg": norm360(source["arg"]),
-        "m": norm360(source["m0"] + 360.0 * elapsed_days / source["period"]),
+        "a": source["a"] + source["adot"] * T,
+        "e": source["e"] + source["edot"] * T,
+        "i": source["i"] + source["idot"] * T,
+        "node": norm360(node),
+        "arg": norm360(peri - node),
+        "m": norm360(mean_long - peri),
     }
 
 
+def assert_rates_match() -> None:
+    rate_fields = [
+        ("adot", 1),
+        ("edot", 3),
+        ("idot", 5),
+        ("mean_long_dot", 7),
+        ("peri_dot", 9),
+        ("nodedot", 11),
+    ]
+    for name, source in APP.items():
+        reference = JPL[name]
+        for field, index in rate_fields:
+            assert math.isclose(source[field], reference[index], abs_tol=1e-12), (name, field, source[field], reference[index])
+
+
 def print_report() -> None:
-    print(f"Reference: JPL approximate planet elements, Table 1, valid 1800-2050")
+    print("Reference: JPL approximate planet elements, Table 1, valid 1800-2050")
     print(f"Check date: {CHECK_DATE.isoformat()}")
     print()
     print("J2000 element deltas: app - JPL")
@@ -147,8 +171,8 @@ def print_report() -> None:
         )
 
     print()
-    print("Position differences on check date")
-    print("planet      delta(AU)  delta(million km)  angular(deg)  app_r(AU)  jpl_r(AU)")
+    print("Position differences on check date after applying rates")
+    print("planet      delta(AU)  delta(thousand km)  angular(deg)  app_r(AU)  jpl_r(AU)")
     for name in APP:
         a = app_elements(name, CHECK_DATE)
         j = jpl_elements(name, CHECK_DATE)
@@ -159,35 +183,16 @@ def print_report() -> None:
         jpl_r = vector_len(jpl_pos)
         dot = sum(app_pos[index] * jpl_pos[index] for index in range(3)) / (app_r * jpl_r)
         angular = math.degrees(math.acos(max(-1.0, min(1.0, dot))))
-        print(f"{name:<8} {delta:>10.5f} {delta * AU_KM / 1_000_000:>18.2f} {angular:>13.4f} {app_r:>10.4f} {jpl_r:>10.4f}")
+        print(f"{name:<8} {delta:>10.8f} {delta * AU_KM / 1_000:>18.3f} {angular:>13.8f} {app_r:>10.4f} {jpl_r:>10.4f}")
 
-    print()
-    print("Flagged outer-planet path data")
-    for name in ("Uranus", "Neptune"):
-        j = jpl_elements(name, J2000)
-        a = app_elements(name, J2000)
-        print(
-            f"{name}: app a/e/M={a['a']:.8f}/{a['e']:.8f}/{a['m']:.4f}; "
-            f"JPL a/e/M={j['a']:.8f}/{j['e']:.8f}/{j['m']:.4f}"
-        )
-
-    max_delta_million_km = {
-        "Mercury": 0.2,
-        "Venus": 0.1,
-        "Earth": 0.1,
-        "Mars": 0.1,
-        "Jupiter": 1.0,
-        "Saturn": 3.5,
-        "Uranus": 0.5,
-        "Neptune": 0.5,
-    }
+    assert_rates_match()
     for name in APP:
         a = app_elements(name, CHECK_DATE)
         j = jpl_elements(name, CHECK_DATE)
         app_pos = position_au(a["a"], a["e"], a["i"], a["node"], a["arg"], a["m"])
         jpl_pos = position_au(j["a"], j["e"], j["i"], j["node"], j["arg"], j["m"])
-        delta_million_km = vector_len(tuple(app_pos[index] - jpl_pos[index] for index in range(3))) * AU_KM / 1_000_000
-        assert delta_million_km < max_delta_million_km[name], (name, delta_million_km)
+        delta_km = vector_len(tuple(app_pos[index] - jpl_pos[index] for index in range(3))) * AU_KM
+        assert delta_km < 1, (name, delta_km)
 
 
 if __name__ == "__main__":

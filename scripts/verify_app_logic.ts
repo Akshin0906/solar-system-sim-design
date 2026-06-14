@@ -143,18 +143,22 @@ const jplApprox: Record<string, JplElements> = {
 };
 
 const maxDeltaMillionKm: Record<string, number> = {
-  mercury: 0.2,
-  venus: 0.1,
-  earth: 0.1,
-  mars: 0.1,
-  jupiter: 1,
-  saturn: 3.5,
-  uranus: 0.5,
-  neptune: 0.5,
+  mercury: 0.001,
+  venus: 0.001,
+  earth: 0.001,
+  mars: 0.001,
+  jupiter: 0.001,
+  saturn: 0.001,
+  uranus: 0.001,
+  neptune: 0.001,
 };
 
 const degToRad = (degrees: number) => (degrees * Math.PI) / 180;
 const norm360 = (degrees: number) => ((degrees % 360) + 360) % 360;
+const assertClose = (actual: number | undefined, expected: number, tolerance: number, label: string) => {
+  assert.notEqual(actual, undefined, `${label} is missing`);
+  assert(Math.abs(actual! - expected) <= tolerance, `${label}: expected ${expected}, got ${actual}`);
+};
 
 const solveEccentricAnomaly = (meanAnomalyRad: number, eccentricity: number) => {
   const meanAnomaly = ((meanAnomalyRad % TWO_PI) + TWO_PI) % TWO_PI;
@@ -290,6 +294,22 @@ const assertPlanetOrbitsUseAppCode = () => {
   }
 };
 
+const assertPlanetOrbitRatesMatchJpl = () => {
+  for (const bodyId of Object.keys(jplApprox) as Array<keyof typeof jplApprox>) {
+    const body = bodiesById.get(bodyId);
+    const source = jplApprox[bodyId];
+    const rates = body?.orbit?.elementRatesPerCentury;
+
+    assert(rates, `${bodyId} should include JPL per-century element rates`);
+    assertClose(rates.semiMajorAxisAu, source.adot, 1e-12, `${bodyId} semi-major-axis rate`);
+    assertClose(rates.eccentricity, source.edot, 1e-12, `${bodyId} eccentricity rate`);
+    assertClose(rates.inclinationDeg, source.idot, 1e-12, `${bodyId} inclination rate`);
+    assertClose(rates.longitudeOfAscendingNodeDeg, source.nodeDot, 1e-12, `${bodyId} node rate`);
+    assertClose(rates.longitudeOfPeriapsisDeg, source.periDot, 1e-12, `${bodyId} longitude-of-periapsis rate`);
+    assertClose(rates.meanLongitudeDeg, source.meanLongDot, 1e-9, `${bodyId} mean-longitude rate`);
+  }
+};
+
 const assertTransferEstimateUsesAppCode = () => {
   const mars = bodiesById.get("mars");
   const jupiter = bodiesById.get("jupiter");
@@ -312,6 +332,7 @@ const assertTransferEstimateUsesAppCode = () => {
 
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
+assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
 

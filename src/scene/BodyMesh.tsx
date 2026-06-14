@@ -1,15 +1,20 @@
 import { Html } from "@react-three/drei";
 import { ThreeEvent, useFrame } from "@react-three/fiber";
-import { memo, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   AdditiveBlending,
   BackSide,
+  ClampToEdgeWrapping,
   Color,
   DoubleSide,
   PerspectiveCamera,
+  RepeatWrapping,
+  SRGBColorSpace,
+  TextureLoader,
   Vector3,
   type Group,
   type Mesh,
+  type Texture,
 } from "three";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
@@ -83,6 +88,50 @@ const atmosphereFragmentShader = `
   }
 `;
 
+const useBodyImageTexture = (url?: string) => {
+  const [texture, setTexture] = useState<Texture>();
+
+  useEffect(() => {
+    setTexture(undefined);
+
+    if (!url) {
+      return undefined;
+    }
+
+    let disposed = false;
+    const loader = new TextureLoader();
+    const loadedTexture = loader.load(
+      url,
+      (nextTexture) => {
+        if (disposed) {
+          nextTexture.dispose();
+          return;
+        }
+
+        nextTexture.colorSpace = SRGBColorSpace;
+        nextTexture.anisotropy = 4;
+        nextTexture.wrapS = RepeatWrapping;
+        nextTexture.wrapT = ClampToEdgeWrapping;
+        setTexture(nextTexture);
+      },
+      undefined,
+      () => {
+        if (!disposed) {
+          setTexture(undefined);
+        }
+      },
+    );
+
+    return () => {
+      disposed = true;
+      loadedTexture.dispose();
+      setTexture(undefined);
+    };
+  }, [url]);
+
+  return texture;
+};
+
 export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabel, emphasis }: BodyMeshProps) => {
   const groupRef = useRef<Group>(null);
   const meshRef = useRef<Mesh>(null);
@@ -94,7 +143,9 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
   const visual = useMemo(() => getVisualProfile(body), [body]);
-  const surfaceTexture = useMemo(() => createSurfaceTexture(body), [body]);
+  const proceduralSurfaceTexture = useMemo(() => createSurfaceTexture(body), [body]);
+  const imageSurfaceTexture = useBodyImageTexture(body.physical.texture);
+  const surfaceTexture = imageSurfaceTexture ?? proceduralSurfaceTexture;
   const bumpTexture = useMemo(() => createBodyBumpTexture(body), [body]);
   const cloudTexture = useMemo(() => createCloudTexture(body), [body]);
   const emphasisOpacity = getEmphasisOpacity(emphasis);

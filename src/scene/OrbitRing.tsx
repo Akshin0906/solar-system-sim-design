@@ -8,6 +8,7 @@ import type { BodyEmphasis } from "./planetVisuals";
 
 type OrbitRingProps = {
   body: CelestialBody;
+  dateMs: number;
   mode: ScaleMode;
   positions: Record<string, Vec3>;
   emphasis: BodyEmphasis;
@@ -34,13 +35,14 @@ const getOrbitOpacity = (body: CelestialBody, selected: boolean, emphasis: BodyE
   return body.type === "moon" ? 0.2 : 0.28;
 };
 
-export const OrbitRing = memo(({ body, mode, positions, emphasis, highlight }: OrbitRingProps) => {
+export const OrbitRing = memo(({ body, dateMs, mode, positions, emphasis, highlight }: OrbitRingProps) => {
   const line = useMemo(() => {
     if (!body.orbit) {
       return null;
     }
 
-    const points = sampleOrbitKm(body.orbit, body.type === "moon" ? 128 : 240).map((point) => {
+    const date = new Date(dateMs);
+    const points = sampleOrbitKm(body.orbit, body.type === "moon" ? 128 : 240, date).map((point) => {
       const scenePoint =
         body.type === "moon"
           ? scaleMoonOffset(point, mode, {
@@ -59,7 +61,7 @@ export const OrbitRing = memo(({ body, mode, positions, emphasis, highlight }: O
     });
 
     return new Line(geometry, material);
-  }, [body, mode, highlight, emphasis]);
+  }, [body, dateMs, mode, highlight, emphasis]);
 
   useEffect(() => {
     return () => {

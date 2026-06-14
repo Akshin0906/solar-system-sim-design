@@ -131,7 +131,7 @@ export const rocketsById = new Map(rocketCatalog.map((rocket) => [rocket.id, roc
 export const defaultRocketId = rocketCatalog[0].id;
 
 export const confidenceLabel: Record<SourceConfidence, string> = {
-  real: "Real",
+  real: "Flown",
   estimated: "Estimated",
   speculative: "Speculative",
 };
