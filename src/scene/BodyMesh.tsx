@@ -6,7 +6,7 @@ import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
 import { MIN_FIT_RADIUS, visualRadiusForBody } from "./cameraFraming";
-import { getBodyLabelScale } from "./labelScaling";
+import { BODY_LABEL_DISTANCE_FACTOR, getBodyLabelScale } from "./labelScaling";
 import {
   createCloudTexture,
   createSurfaceTexture,
@@ -80,7 +80,8 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
 
     groupRef.current.getWorldPosition(objectWorldPosition);
     camera.getWorldPosition(cameraWorldPosition);
-    const labelScale = getBodyLabelScale(mode, objectWorldPosition.distanceTo(cameraWorldPosition)).toFixed(3);
+    const cameraFovDeg = camera instanceof THREE.PerspectiveCamera ? camera.fov : undefined;
+    const labelScale = getBodyLabelScale(mode, objectWorldPosition.distanceTo(cameraWorldPosition), cameraFovDeg).toFixed(4);
 
     if (labelRef.current.style.getPropertyValue("--body-label-scale") !== labelScale) {
       labelRef.current.style.setProperty("--body-label-scale", labelScale);
@@ -218,7 +219,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
           ref={labelRef}
           position={[0, labelOffset, 0]}
           center
-          distanceFactor={mode === "real" ? undefined : 10}
+          distanceFactor={mode === "real" ? undefined : BODY_LABEL_DISTANCE_FACTOR}
           className={labelClassName}
           style={labelStyle}
         >
