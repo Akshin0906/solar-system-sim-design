@@ -19,6 +19,20 @@
   --clay: #c9745c;
   --radius: 8px;
   --focus: rgba(143, 199, 204, 0.75);
+  --app-viewport-height: 100vh;
+  --mobile-control-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+@supports (height: 100svh) {
+  :root {
+    --app-viewport-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-viewport-height: 100dvh;
+  }
 }
 
 * {
@@ -61,7 +75,7 @@ select:focus:not(:focus-visible) {
 .app-shell {
   position: relative;
   width: 100vw;
-  height: 100vh;
+  height: var(--app-viewport-height);
   overflow: hidden;
   background:
     radial-gradient(circle at 50% 50%, rgba(217, 173, 105, 0.08), transparent 28%),
@@ -514,7 +528,7 @@ option {
 .inspector-peek {
   position: absolute;
   right: max(10px, env(safe-area-inset-right));
-  bottom: calc(max(8px, env(safe-area-inset-bottom)) + 76px);
+  bottom: calc(var(--mobile-control-bottom) + 76px);
   left: max(10px, env(safe-area-inset-left));
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
@@ -588,7 +602,7 @@ option {
 .transport-bar {
   position: absolute;
   right: max(10px, env(safe-area-inset-right));
-  bottom: max(8px, env(safe-area-inset-bottom));
+  bottom: var(--mobile-control-bottom);
   left: max(10px, env(safe-area-inset-left));
   display: grid;
   grid-template-columns: repeat(3, 44px) minmax(0, 1fr);
@@ -899,7 +913,7 @@ input[type="range"] {
   width: min(284px, calc(100vw - 32px));
   padding: 12px;
   border-radius: var(--radius);
-  max-height: calc(100vh - 312px - 74px);
+  max-height: calc(var(--app-viewport-height) - 312px - 74px);
   overflow: hidden;
 }
 
@@ -1234,7 +1248,7 @@ input[type="range"] {
 
   .rocket-panel {
     top: 84px;
-    max-height: calc(100vh - 84px - 250px);
+    max-height: calc(var(--app-viewport-height) - 84px - 250px);
   }
 
   .top-date {
@@ -1262,6 +1276,10 @@ input[type="range"] {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --mobile-control-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
   .top-bar {
     left: 12px;
     width: calc(100vw - 24px);
@@ -1332,7 +1350,7 @@ input[type="range"] {
     top: 232px;
     bottom: auto;
     width: auto;
-    max-height: calc(100vh - 232px - 233px);
+    max-height: calc(var(--app-viewport-height) - 232px - 233px);
   }
 
   .ui-layer.rocket-open .object-inspector {
