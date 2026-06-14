@@ -5,6 +5,7 @@ import * as THREE from "three";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
+import { getBodyLabelScale } from "./labelScaling";
 import {
   createCloudTexture,
   createSurfaceTexture,
@@ -24,11 +25,18 @@ type BodyMeshProps = {
 };
 
 const ringIds = new Set(["saturn", "uranus"]);
+const labelStyle = {
+  transform: "translate3d(-50%, -50%, 0) scale(var(--body-label-scale, 1))",
+  transformOrigin: "center center",
+};
 
 export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabel, emphasis }: BodyMeshProps) => {
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
   const cloudRef = useRef<THREE.Mesh>(null);
+  const labelRef = useRef<HTMLDivElement>(null);
+  const objectWorldPosition = useMemo(() => new THREE.Vector3(), []);
+  const cameraWorldPosition = useMemo(() => new THREE.Vector3(), []);
   const focusBody = useSelectionStore((state) => state.focusBody);
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
@@ -46,17 +54,27 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
     .filter(Boolean)
     .join(" ");
 
-  useFrame(() => {
-    if (!meshRef.current || !body.physical.rotationPeriodHours) {
+  useFrame(({ camera }) => {
+    if (meshRef.current && body.physical.rotationPeriodHours) {
+      const rotationMs = Math.abs(body.physical.rotationPeriodHours) * 3_600_000;
+      const direction = body.physical.rotationPeriodHours < 0 ? -1 : 1;
+      meshRef.current.rotation.y = direction * ((dateMs % rotationMs) / rotationMs) * Math.PI * 2;
+
+      if (cloudRef.current) {
+        cloudRef.current.rotation.y = meshRef.current.rotation.y * 1.08 + 0.22;
+      }
+    }
+
+    if (!labelRef.current || !groupRef.current) {
       return;
     }
 
-    const rotationMs = Math.abs(body.physical.rotationPeriodHours) * 3_600_000;
-    const direction = body.physical.rotationPeriodHours < 0 ? -1 : 1;
-    meshRef.current.rotation.y = direction * ((dateMs % rotationMs) / rotationMs) * Math.PI * 2;
+    groupRef.current.getWorldPosition(objectWorldPosition);
+    camera.getWorldPosition(cameraWorldPosition);
+    const labelScale = getBodyLabelScale(mode, objectWorldPosition.distanceTo(cameraWorldPosition)).toFixed(3);
 
-    if (cloudRef.current) {
-      cloudRef.current.rotation.y = meshRef.current.rotation.y * 1.08 + 0.22;
+    if (labelRef.current.style.getPropertyValue("--body-label-scale") !== labelScale) {
+      labelRef.current.style.setProperty("--body-label-scale", labelScale);
     }
   });
 
@@ -187,7 +205,14 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
         </>
       )}
       {showLabel && (
-        <Html position={[0, radius * 1.85 + 0.16, 0]} center distanceFactor={10} className={labelClassName}>
+        <Html
+          ref={labelRef}
+          position={[0, radius * 1.85 + 0.16, 0]}
+          center
+          distanceFactor={mode === "real" ? undefined : 10}
+          className={labelClassName}
+          style={labelStyle}
+        >
           {body.name}
         </Html>
       )}
