@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo } from "react";
 import * as THREE from "three";
+import { bodiesById } from "../data";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { sampleOrbitKm } from "../simulation/solveOrbit";
 import { scaleMoonOffset, scaleVectorFromSun, type ScaleMode } from "../simulation/units";
@@ -40,7 +41,13 @@ export const OrbitRing = memo(({ body, mode, positions, emphasis, highlight }: O
     }
 
     const points = sampleOrbitKm(body.orbit, body.type === "moon" ? 128 : 240).map((point) => {
-      const scenePoint = body.type === "moon" ? scaleMoonOffset(point, mode) : scaleVectorFromSun(point, mode);
+      const scenePoint =
+        body.type === "moon"
+          ? scaleMoonOffset(point, mode, {
+              parentBody: body.parentId ? bodiesById.get(body.parentId) : undefined,
+              moonBody: body,
+            })
+          : scaleVectorFromSun(point, mode);
       return new THREE.Vector3(...scenePoint);
     });
     const geometry = new THREE.BufferGeometry().setFromPoints(points);

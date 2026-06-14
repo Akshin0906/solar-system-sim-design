@@ -13,6 +13,14 @@ export const SCALE_MODES: Array<{ id: ScaleMode; label: string; note: string }> 
 ];
 
 const realUnitsPerAu = 7;
+export const READABLE_MOON_DISTANCE_EXPONENT = 0.72;
+export const READABLE_MOON_DISTANCE_MULTIPLIER = 0.92;
+export const READABLE_MOON_MIN_CLEARANCE = 0.18;
+
+export type MoonScaleContext = {
+  parentBody?: CelestialBody;
+  moonBody?: CelestialBody;
+};
 
 const normalize = ([x, y, z]: Vec3): Vec3 => {
   const length = vectorLength([x, y, z]);
@@ -48,23 +56,6 @@ export const scaleVectorFromSun = (positionKm: Vec3, mode: ScaleMode): Vec3 => {
   return multiply(normalize(positionKm), scaleDistanceFromSun(distanceKm, mode));
 };
 
-export const scaleMoonOffset = (offsetKm: Vec3, mode: ScaleMode): Vec3 => {
-  const distanceKm = vectorLength(offsetKm);
-  if (distanceKm === 0) {
-    return [0, 0, 0];
-  }
-
-  if (mode === "real" || mode === "readable") {
-    return multiply(normalize(offsetKm), (distanceKm / AU_KM) * realUnitsPerAu);
-  }
-
-  if (mode === "compressed") {
-    return multiply(normalize(offsetKm), Math.pow(distanceKm / 100_000, 0.74) * 0.72);
-  }
-
-  return multiply(normalize(offsetKm), Math.pow(distanceKm / 100_000, 0.52) * 0.32);
-};
-
 export const getBodySceneRadius = (body: CelestialBody, mode: ScaleMode) => {
   const trueRadius = (body.physical.radiusKm / AU_KM) * realUnitsPerAu;
 
@@ -83,12 +74,53 @@ export const getBodySceneRadius = (body: CelestialBody, mode: ScaleMode) => {
   return Math.min(Math.max(readableRadius, minimum), cap);
 };
 
+const scaleReadableMoonDistance = (distanceKm: number, context?: MoonScaleContext) => {
+  const fallbackDistance = Math.pow(distanceKm / 100_000, 0.74) * 0.72;
+
+  if (!context?.parentBody || !context.moonBody || context.parentBody.physical.radiusKm <= 0) {
+    return fallbackDistance;
+  }
+
+  const parentRadius = getBodySceneRadius(context.parentBody, "readable");
+  const moonRadius = getBodySceneRadius(context.moonBody, "readable");
+  const distanceInParentRadii = distanceKm / context.parentBody.physical.radiusKm;
+  const readableDistance =
+    parentRadius * Math.pow(distanceInParentRadii, READABLE_MOON_DISTANCE_EXPONENT) * READABLE_MOON_DISTANCE_MULTIPLIER;
+  const minimumDistance = parentRadius + moonRadius + READABLE_MOON_MIN_CLEARANCE;
+
+  return Math.max(fallbackDistance, readableDistance, minimumDistance);
+};
+
+export const scaleMoonOffset = (offsetKm: Vec3, mode: ScaleMode, context?: MoonScaleContext): Vec3 => {
+  const distanceKm = vectorLength(offsetKm);
+  if (distanceKm === 0) {
+    return [0, 0, 0];
+  }
+
+  const trueDistance = (distanceKm / AU_KM) * realUnitsPerAu;
+
+  if (mode === "real") {
+    return multiply(normalize(offsetKm), trueDistance);
+  }
+
+  if (mode === "readable") {
+    return multiply(normalize(offsetKm), Math.max(trueDistance, scaleReadableMoonDistance(distanceKm, context)));
+  }
+
+  if (mode === "compressed") {
+    return multiply(normalize(offsetKm), Math.pow(distanceKm / 100_000, 0.74) * 0.72);
+  }
+
+  return multiply(normalize(offsetKm), Math.pow(distanceKm / 100_000, 0.52) * 0.32);
+};
+
 export const computeScenePositions = (
   bodies: CelestialBody[],
   date: Date,
   mode: ScaleMode,
 ): Record<string, Vec3> => {
   const positions: Record<string, Vec3> = {};
+  const bodiesById = new Map(bodies.map((body) => [body.id, body]));
   const pending = [...bodies];
   let guard = 0;
 
@@ -110,7 +142,10 @@ export const computeScenePositions = (
     const localPositionKm = getOrbitPositionKm(body.orbit, date);
 
     if (body.type === "moon") {
-      positions[body.id] = addVec3(parentPosition, scaleMoonOffset(localPositionKm, mode));
+      positions[body.id] = addVec3(
+        parentPosition,
+        scaleMoonOffset(localPositionKm, mode, { parentBody: bodiesById.get(body.parentId), moonBody: body }),
+      );
       continue;
     }
 
@@ -137,7 +172,7 @@ export const computeBodyScenePosition = (
     const parentScene: Vec3 = parent
       ? computeBodyScenePosition(parent, bodiesById, date, mode)
       : [0, 0, 0];
-    return addVec3(parentScene, scaleMoonOffset(localKm, mode));
+    return addVec3(parentScene, scaleMoonOffset(localKm, mode, { parentBody: parent, moonBody: body }));
   }
 
   return scaleVectorFromSun(localKm, mode);
@@ -148,9 +183,10 @@ export const scaleOrbitPoint = (
   mode: ScaleMode,
   bodyType: CelestialBody["type"],
   parentScenePosition: Vec3 = [0, 0, 0],
+  context?: MoonScaleContext,
 ) => {
   if (bodyType === "moon") {
-    return addVec3(parentScenePosition, scaleMoonOffset(pointKm, mode));
+    return addVec3(parentScenePosition, scaleMoonOffset(pointKm, mode, context));
   }
 
   return scaleVectorFromSun(pointKm, mode);
