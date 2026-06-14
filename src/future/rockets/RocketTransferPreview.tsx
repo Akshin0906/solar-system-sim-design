@@ -1,4 +1,5 @@
 import { bodiesById } from "../../data";
+import { DAY_SECONDS } from "../../data/constants";
 import type { RocketDestination } from "./destinationCatalog";
 import { formatDeltaV, formatMissionTime, formatPhaseAngle } from "./rocketState";
 import { estimateTransfer, type LaunchWindowQuality } from "./transferModel";
@@ -15,12 +16,19 @@ const qualityLabel: Record<LaunchWindowQuality, string> = {
   poor: "Poor",
 };
 
-const formatDate = (dateMs: number) =>
-  new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  }).format(new Date(dateMs));
+const AVERAGE_YEAR_SECONDS = DAY_SECONDS * 365.256;
+const AVERAGE_MONTH_SECONDS = DAY_SECONDS * 30.437;
+
+const formatArrivalDuration = (seconds: number) => {
+  const safeSeconds = Math.max(0, seconds);
+  const years = Math.floor(safeSeconds / AVERAGE_YEAR_SECONDS);
+  const afterYearsSeconds = safeSeconds - years * AVERAGE_YEAR_SECONDS;
+  const months = Math.floor(afterYearsSeconds / AVERAGE_MONTH_SECONDS);
+  const afterMonthsSeconds = afterYearsSeconds - months * AVERAGE_MONTH_SECONDS;
+  const days = Math.round(afterMonthsSeconds / DAY_SECONDS);
+
+  return `${years} yr ${months} mo ${days} d`;
+};
 
 export const RocketTransferPreview = ({ destination, launchDateMs }: RocketTransferPreviewProps) => {
   const body = destination.bodyId ? bodiesById.get(destination.bodyId) : undefined;
@@ -58,8 +66,8 @@ export const RocketTransferPreview = ({ destination, launchDateMs }: RocketTrans
           <dd>{formatMissionTime(estimate.transferTimeSeconds)}</dd>
         </div>
         <div>
-          <dt>Arrival date</dt>
-          <dd>{formatDate(estimate.arrivalDateMs)}</dd>
+          <dt>Arrival time</dt>
+          <dd>{formatArrivalDuration(estimate.transferTimeSeconds)}</dd>
         </div>
         <div>
           <dt>Phase offset</dt>
