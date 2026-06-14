@@ -4,6 +4,7 @@ import { destinationGroupOrder, destinationsById, rocketDestinations } from "./d
 import { rocketLaunchModes, rocketMissionModes } from "./missionOptions";
 import { categoryLabel, confidenceLabel, rocketCatalog, rocketsById } from "./rocketCatalog";
 import { RocketTelemetry } from "./RocketTelemetry";
+import { RocketTransferPreview } from "./RocketTransferPreview";
 import { useRocketStore } from "./rocketStore";
 
 // Compact launch panel. Hidden by default (toggled from the top bar) so the
@@ -16,6 +17,7 @@ export const RocketLauncherPanel = () => {
   const selectedDestinationId = useRocketStore((state) => state.selectedDestinationId);
   const selectedMissionMode = useRocketStore((state) => state.selectedMissionMode);
   const selectedLaunchMode = useRocketStore((state) => state.selectedLaunchMode);
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
   const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
   const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
@@ -46,7 +48,7 @@ export const RocketLauncherPanel = () => {
     .filter(({ destinations }) => destinations.length > 0);
 
   const handleLaunch = () => {
-    launch(selected.id, selectedDestination.id, effectiveMissionMode, selectedLaunchMode, useTimeStore.getState().simulationDateMs);
+    launch(selected.id, selectedDestination.id, effectiveMissionMode, selectedLaunchMode, simulationDateMs);
   };
 
   const launchLabel = !selectedDestination.bodyId
@@ -160,6 +162,9 @@ export const RocketLauncherPanel = () => {
               </span>
             </div>
             <p className="rocket-blurb">{selected.blurb}</p>
+            {effectiveMissionMode === "transfer" && selectedDestination.bodyId && (
+              <RocketTransferPreview destination={selectedDestination} launchDateMs={simulationDateMs} />
+            )}
           </>
         )}
       </div>
