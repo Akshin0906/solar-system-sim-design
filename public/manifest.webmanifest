@@ -1,0 +1,17 @@
+{
+  "name": "Solar System",
+  "short_name": "Solar",
+  "description": "A quiet interactive 3D solar system simulation.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090907",
+  "theme_color": "#090907",
+  "icons": [
+    {
+      "src": "/icons/solar-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

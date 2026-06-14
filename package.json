@@ -1,0 +1,28 @@
+{
+  "name": "solar-system-sim-design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build && node scripts/generate-service-worker.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "verify:math": "python3 scripts/verify_orbit_math.py && python3 scripts/verify_camera_framing.py && python3 scripts/verify_planet_orbits_against_jpl.py"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.4.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.170.0",
+    "typescript": "^5.7.2",
+    "vite": "^8.0.16",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.1",
+    "@types/react-dom": "^19.0.2"
+  }
+}
