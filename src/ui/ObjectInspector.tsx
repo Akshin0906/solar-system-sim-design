@@ -46,7 +46,7 @@ export const ObjectInspector = () => {
 
   const details = (
     <>
-      <dl>
+      <dl className="inspector-details">
         <div>
           <dt>Parent</dt>
           <dd>{parent?.name ?? "None"}</dd>

@@ -152,7 +152,7 @@ select:focus:not(:focus-visible) {
 
 .focus-kicker,
 .top-date,
-.object-inspector dt,
+.inspector-details dt,
 .scale-note,
 .search-result small {
   color: var(--muted);
@@ -462,30 +462,45 @@ option {
   letter-spacing: 0;
 }
 
-.object-inspector dl {
+.inspector-kicker {
+  margin: 0 0 10px;
+  color: var(--cyan);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.inspector-details {
   display: grid;
   gap: 8px;
   margin: 12px 0;
 }
 
-.object-inspector dl div {
+.inspector-details div {
   display: grid;
   grid-template-columns: minmax(88px, 0.82fr) minmax(0, 1fr);
   align-items: baseline;
   gap: 10px;
 }
 
-.object-inspector dt,
-.object-inspector dd {
+.inspector-details dt,
+.inspector-details dd {
   min-width: 0;
   margin: 0;
 }
 
-.object-inspector dd {
+.inspector-details dd {
   overflow-wrap: anywhere;
   color: rgba(245, 241, 232, 0.9);
   font-size: 12px;
   text-align: right;
+}
+
+.sheet-body .inspector-details {
+  margin: 0 0 12px;
+}
+
+.sheet-body .moon-list {
+  margin-bottom: 0;
 }
 
 .moon-list {
@@ -852,6 +867,49 @@ input[type="range"] {
   width: 100%;
 }
 
+.webgl-fallback {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 12;
+  display: grid;
+  width: min(360px, calc(100vw - 32px));
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px) saturate(125%);
+  transform: translate(-50%, -50%);
+}
+
+.webgl-fallback-kicker {
+  color: var(--cyan);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.webgl-fallback h1 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 680;
+  letter-spacing: 0;
+}
+
+.webgl-fallback p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.webgl-retry {
+  width: fit-content;
+  min-width: 82px;
+  padding: 0 13px;
+}
+
 .rocket-panel-sheet {
   position: static;
   width: 100%;
@@ -888,7 +946,9 @@ input[type="range"] {
   line-height: 1;
   white-space: nowrap;
   backdrop-filter: blur(8px);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: manipulation;
   user-select: none;
 }
 
@@ -1254,40 +1314,6 @@ input[type="range"] {
 }
 
 @media (max-width: 900px) {
-  .top-bar {
-    grid-template-columns: minmax(112px, 1fr) auto;
-  }
-
-  .rocket-panel {
-    top: 84px;
-    max-height: calc(var(--app-viewport-height) - 84px - 250px);
-  }
-
-  .top-date {
-    display: none;
-  }
-
-  .scale-controls {
-    top: auto;
-    bottom: 92px;
-    width: min(340px, calc(100vw - 32px));
-  }
-
-  .object-inspector {
-    top: 84px;
-  }
-
-  .time-controls {
-    grid-template-columns: repeat(4, 34px) minmax(112px, 1fr) 46px;
-  }
-
-  .speed-range,
-  .scrub-range {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 640px) {
   :root {
     --mobile-control-bottom: max(12px, env(safe-area-inset-bottom));
   }
@@ -1295,78 +1321,31 @@ input[type="range"] {
   .top-bar {
     left: 12px;
     width: calc(100vw - 24px);
-    transform: none;
-  }
-
-  .scale-controls {
-    left: 12px;
-    right: 12px;
-    top: 82px;
-    bottom: auto;
-    width: auto;
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 7px;
-    padding: 8px;
-  }
-
-  .object-inspector {
-    right: 12px;
-    top: 238px;
-    bottom: auto;
-    max-height: 340px;
-    overflow: auto;
-  }
-
-  .scale-controls .segmented-control,
-  .scale-controls .toggle-row {
-    grid-column: 1 / -1;
-  }
-
-  .scale-controls .view-buttons {
-    justify-content: flex-start;
-  }
-
-  .scale-controls .compact-select {
-    width: 128px;
-  }
-
-  .scale-controls .scale-note {
-    display: none;
-  }
-
-  .time-controls {
-    left: 12px;
-    width: calc(100vw - 24px);
-    grid-template-columns: repeat(4, 34px) minmax(0, 1fr);
+    gap: 10px;
+    min-height: 58px;
+    padding: 7px 8px 7px 12px;
     transform: none;
   }
 
-  .time-controls select {
-    grid-column: span 2;
+  .top-actions {
+    gap: 6px;
   }
 
-  .reset-time {
-    grid-column: span 1;
+  .top-bar .icon-button {
+    width: 40px;
+    height: 40px;
   }
 
-  .segmented-control button {
-    font-size: 10px;
-  }
-
-  /* Phones: dock the panel in the free band between the scale controls and the
-     (tall) time controls. The inspector is hidden while it is open so the two
-     never overlap. */
-  .rocket-panel {
-    left: 12px;
-    right: 12px;
-    top: 232px;
-    bottom: auto;
-    width: auto;
-    max-height: calc(var(--app-viewport-height) - 232px - 233px);
-  }
-
-  .ui-layer.rocket-open .object-inspector {
+  .top-date {
     display: none;
+  }
+
+  .transport-bar {
+    left: 50%;
+    right: auto;
+    width: min(520px, calc(100vw - 20px));
+    transform: translateX(-50%);
   }
 
   .sheet-root {
@@ -1378,6 +1357,12 @@ input[type="range"] {
     right: 0;
     left: auto;
     max-height: calc(100dvh - 96px - env(safe-area-inset-bottom));
+  }
+}
+
+@media (max-width: 640px) {
+  .segmented-control button {
+    font-size: 10px;
   }
 
   .rocket-panel.rocket-panel-sheet {

@@ -56,6 +56,10 @@ export const BottomSheet = ({ open, onClose, label, title, children, footer }: B
   }, [open]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.target instanceof Element && event.target.closest("button, input, select, textarea, a")) {
+      return;
+    }
+
     startYRef.current = event.clientY;
     setDragging(true);
     event.currentTarget.setPointerCapture?.(event.pointerId);

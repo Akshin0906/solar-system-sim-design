@@ -346,6 +346,10 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
           zIndexRange={SCENE_HTML_Z_INDEX_RANGE}
           className={labelClassName}
           style={labelStyle}
+          onClick={(event) => {
+            event.stopPropagation();
+            focusBody(body.id);
+          }}
         >
           {body.name}
         </Html>

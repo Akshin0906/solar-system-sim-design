@@ -8,6 +8,7 @@ export type SheetId = "none" | "view" | "rocket" | "speed" | "inspector";
 
 type UiState = {
   activeSheet: SheetId;
+  searchOpen: boolean;
   // The inspector has a third "peek" state: presented as a slim bar but not expanded.
   // `inspectorPresented` tracks whether the inspector should appear at all (peek or
   // full); `activeSheet === "inspector"` means it is expanded.
@@ -15,16 +16,39 @@ type UiState = {
   openSheet: (sheet: SheetId) => void;
   closeSheet: () => void;
   toggleSheet: (sheet: SheetId) => void;
+  openSearch: () => void;
+  closeSearch: () => void;
+  toggleSearch: () => void;
   presentInspector: () => void;
   dismissInspector: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
   activeSheet: "none",
+  searchOpen: false,
   inspectorPresented: false,
-  openSheet: (activeSheet) => set({ activeSheet }),
+  openSheet: (activeSheet) =>
+    set({
+      activeSheet,
+      searchOpen: false,
+    }),
   closeSheet: () => set({ activeSheet: "none" }),
-  toggleSheet: (sheet) => set((state) => ({ activeSheet: state.activeSheet === sheet ? "none" : sheet })),
+  toggleSheet: (sheet) =>
+    set((state) => ({
+      activeSheet: state.activeSheet === sheet ? "none" : sheet,
+      searchOpen: state.activeSheet === sheet ? state.searchOpen : false,
+    })),
+  openSearch: () => set({ activeSheet: "none", searchOpen: true }),
+  closeSearch: () => set({ searchOpen: false }),
+  toggleSearch: () =>
+    set((state) =>
+      state.searchOpen
+        ? { searchOpen: false }
+        : {
+            activeSheet: "none",
+            searchOpen: true,
+          },
+    ),
   presentInspector: () => set({ inspectorPresented: true }),
   dismissInspector: () =>
     set((state) => ({

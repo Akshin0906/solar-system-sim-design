@@ -1,6 +1,6 @@
 import { Canvas } from "@react-three/fiber";
-import { Suspense, useEffect, useRef } from "react";
-import { ACESFilmicToneMapping, SRGBColorSpace } from "three";
+import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
+import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
 import { SolarScene } from "../scene/SolarScene";
 import { ObjectInspector } from "../ui/ObjectInspector";
 import { ScaleControls } from "../ui/ScaleControls";
@@ -40,6 +40,34 @@ const isInteractiveTarget = (target: EventTarget | null) => {
 
   return tagName === "button";
 };
+
+const canCreateWebGlContext = () => {
+  if (typeof document === "undefined") {
+    return true;
+  }
+
+  const canvas = document.createElement("canvas");
+
+  try {
+    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl") ?? canvas.getContext("experimental-webgl"));
+  } catch {
+    return false;
+  }
+};
+
+const WebGlFallback = ({ onRetry }: { onRetry: () => void }) => (
+  <section className="webgl-fallback" role="alert" aria-live="polite">
+    <span className="webgl-fallback-kicker">Rendering paused</span>
+    <h1>WebGL unavailable</h1>
+    <p>This browser cannot create the graphics context needed for the simulator.</p>
+    <button className="reset-time webgl-retry" type="button" onClick={onRetry}>
+      Retry
+    </button>
+  </section>
+);
+
+type CanvasGlFactory = Extract<NonNullable<ComponentProps<typeof Canvas>["gl"]>, (defaultProps: any) => unknown>;
+type CanvasRendererProps = Parameters<CanvasGlFactory>[0];
 
 const TimeDriver = () => {
   const tick = useTimeStore((state) => state.tick);
@@ -138,6 +166,7 @@ const KeyboardShortcuts = () => {
 };
 
 export const App = () => {
+  const [webglUnavailable, setWebglUnavailable] = useState(() => !canCreateWebGlContext());
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -147,39 +176,68 @@ export const App = () => {
   // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
   // open" overlap hack must not apply.
   const layerClass = `ui-layer${rocketPanelOpen && !isMobile ? " rocket-open" : ""}`;
+  const createRenderer = useCallback(async (defaultProps: CanvasRendererProps) => {
+    try {
+      return new WebGLRenderer({
+        ...defaultProps,
+        antialias: true,
+        alpha: false,
+        powerPreference: "high-performance",
+        logarithmicDepthBuffer: true,
+      });
+    } catch {
+      setWebglUnavailable(true);
+      return await new Promise<never>(() => undefined);
+    }
+  }, []);
 
   return (
     <main className="app-shell">
       <TimeDriver />
       <KeyboardShortcuts />
-      <Canvas
-        className="solar-canvas"
-        camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
-        dpr={[1, 1.65]}
-        gl={{ antialias: true, alpha: false, powerPreference: "high-performance", logarithmicDepthBuffer: true }}
-        onCreated={({ gl }) => {
-          gl.toneMapping = ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.08;
-          gl.outputColorSpace = SRGBColorSpace;
-        }}
-      >
-        <Suspense fallback={null}>
-          <SolarScene />
-        </Suspense>
-      </Canvas>
-      <div className={layerClass} data-mobile={isMobile ? "true" : undefined}>
-        <TopBar />
-        <ScaleControls />
-        <ObjectInspector />
-        {isMobile ? (
-          <BottomSheet open={activeSheet === "rocket"} onClose={closeSheet} label="Rocket preview" title="Rocket preview">
-            <RocketLauncherPanel forceOpen embedded onClose={closeSheet} />
-          </BottomSheet>
-        ) : (
-          <RocketLauncherPanel />
-        )}
-        <TimeControls />
-      </div>
+      {webglUnavailable ? (
+        <WebGlFallback onRetry={() => setWebglUnavailable(!canCreateWebGlContext())} />
+      ) : (
+        <Canvas
+          className="solar-canvas"
+          camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
+          dpr={[1, 1.65]}
+          fallback={<p>WebGL unavailable</p>}
+          gl={createRenderer}
+          onCreated={({ gl }) => {
+            gl.toneMapping = ACESFilmicToneMapping;
+            gl.toneMappingExposure = 1.08;
+            gl.outputColorSpace = SRGBColorSpace;
+            gl.domElement.addEventListener(
+              "webglcontextlost",
+              (event) => {
+                event.preventDefault();
+                setWebglUnavailable(true);
+              },
+              { once: true },
+            );
+          }}
+        >
+          <Suspense fallback={null}>
+            <SolarScene />
+          </Suspense>
+        </Canvas>
+      )}
+      {!webglUnavailable && (
+        <div className={layerClass} data-mobile={isMobile ? "true" : undefined}>
+          <TopBar />
+          <ScaleControls />
+          <ObjectInspector />
+          {isMobile ? (
+            <BottomSheet open={activeSheet === "rocket"} onClose={closeSheet} label="Rocket preview" title="Rocket preview">
+              <RocketLauncherPanel forceOpen embedded onClose={closeSheet} />
+            </BottomSheet>
+          ) : (
+            <RocketLauncherPanel />
+          )}
+          <TimeControls />
+        </div>
+      )}
     </main>
   );
 };

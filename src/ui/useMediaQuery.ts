@@ -26,8 +26,8 @@ export const useMediaQuery = (query: string): boolean => {
   return matches;
 };
 
-// The phone breakpoint, kept in lockstep with the `@media (max-width: 640px)`
-// rules in App.css so JS and CSS agree on what counts as "mobile".
-export const MOBILE_QUERY = "(max-width: 640px)";
+// The compact breakpoint, kept in lockstep with the `@media (max-width: 900px)`
+// rules in App.css so JS and CSS agree on when panels become bottom sheets.
+export const MOBILE_QUERY = "(max-width: 900px)";
 
 export const useIsMobile = () => useMediaQuery(MOBILE_QUERY);

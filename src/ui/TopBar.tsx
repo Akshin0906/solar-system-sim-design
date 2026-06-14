@@ -19,7 +19,6 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 });
 
 export const TopBar = () => {
-  const [searchOpen, setSearchOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const selectedId = useSelectionStore((state) => state.selectedId);
@@ -28,6 +27,10 @@ export const TopBar = () => {
   const toggleRocketPanel = useRocketStore((state) => state.togglePanel);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
+  const searchOpen = useUiStore((state) => state.searchOpen);
+  const openSearch = useUiStore((state) => state.openSearch);
+  const closeSearch = useUiStore((state) => state.closeSearch);
+  const toggleSearch = useUiStore((state) => state.toggleSearch);
   const toggleSheet = useUiStore((state) => state.toggleSheet);
   const selected = bodiesById.get(selectedId);
 
@@ -37,22 +40,21 @@ export const TopBar = () => {
   const viewActive = activeSheet === "view";
 
   useEffect(() => {
-    const openSearch = () => {
+    const handleOpenSearch = () => {
       setHelpOpen(false);
-      setSearchOpen(true);
+      openSearch();
     };
-    const closeSearch = () => setSearchOpen(false);
 
-    window.addEventListener("solar:open-search", openSearch);
+    window.addEventListener("solar:open-search", handleOpenSearch);
     window.addEventListener("solar:close-search", closeSearch);
     return () => {
-      window.removeEventListener("solar:open-search", openSearch);
+      window.removeEventListener("solar:open-search", handleOpenSearch);
       window.removeEventListener("solar:close-search", closeSearch);
     };
-  }, []);
+  }, [closeSearch, openSearch]);
 
   const handleRocket = () => {
-    setSearchOpen(false);
+    closeSearch();
     setHelpOpen(false);
     if (isMobile) {
       toggleSheet("rocket");
@@ -77,7 +79,7 @@ export const TopBar = () => {
           type="button"
           onClick={() => {
             setHelpOpen(false);
-            setSearchOpen((value) => !value);
+            toggleSearch();
           }}
           title={`Search objects (/ or ${commandKey})`}
           aria-label="Search objects"
@@ -89,7 +91,7 @@ export const TopBar = () => {
             className={`icon-button ${viewActive ? "active" : ""}`}
             type="button"
             onClick={() => {
-              setSearchOpen(false);
+              closeSearch();
               setHelpOpen(false);
               toggleSheet("view");
             }}
@@ -115,7 +117,7 @@ export const TopBar = () => {
           className={`icon-button ${helpOpen ? "active" : ""}`}
           type="button"
           onClick={() => {
-            setSearchOpen(false);
+            closeSearch();
             setHelpOpen((value) => !value);
           }}
           title="Help & shortcuts"
@@ -127,7 +129,7 @@ export const TopBar = () => {
           <CircleHelp size={16} />
         </button>
       </div>
-      <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <SearchCommand open={searchOpen} onClose={closeSearch} />
       <HelpPopover open={helpOpen} onClose={() => setHelpOpen(false)} triggerRef={helpButtonRef} />
     </header>
   );
