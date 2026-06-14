@@ -17,7 +17,7 @@ type ScaleState = {
 export const useScaleStore = create<ScaleState>((set) => ({
   mode: "compressed",
   labelDensity: "standard",
-  showGrid: true,
+  showGrid: false,
   showOrbits: true,
   showTrails: false,
   setMode: (mode) => set({ mode }),
