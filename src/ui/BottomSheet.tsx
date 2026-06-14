@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useFocusTrap } from "./focusTrap";
 
 type BottomSheetProps = {
   open: boolean;
@@ -19,7 +20,6 @@ const DISMISS_THRESHOLD = 96;
 // contract — focus moves in on open and is restored to the prior element on close.
 export const BottomSheet = ({ open, onClose, label, title, children, footer }: BottomSheetProps) => {
   const sheetRef = useRef<HTMLDivElement>(null);
-  const restoreRef = useRef<HTMLElement | null>(null);
   // Keep the latest onClose without re-running the focus effect; callers often pass a
   // fresh closure each render (the clock re-renders ancestors every frame).
   const onCloseRef = useRef(onClose);
@@ -29,30 +29,15 @@ export const BottomSheet = ({ open, onClose, label, title, children, footer }: B
   const [dragging, setDragging] = useState(false);
   const startYRef = useRef(0);
 
-  // Esc closes; focus moves into the sheet on open and is restored on close.
+  useFocusTrap(sheetRef, open, () => onCloseRef.current());
+
   useEffect(() => {
     if (!open) {
       return;
     }
 
-    restoreRef.current = (document.activeElement as HTMLElement) ?? null;
-    sheetRef.current?.focus();
     setDragY(0);
     setDragging(false);
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        // Beat the global "close search" handler so Esc dismisses the sheet first.
-        event.stopPropagation();
-        onCloseRef.current();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown, true);
-      restoreRef.current?.focus?.();
-    };
   }, [open]);
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {

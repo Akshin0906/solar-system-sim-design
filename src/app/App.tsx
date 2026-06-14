@@ -114,13 +114,15 @@ const KeyboardShortcuts = () => {
       const editable = isEditableTarget(event.target);
 
       if (event.key === "Escape") {
-        window.dispatchEvent(new CustomEvent("solar:close-search"));
+        const { closeSearch, closeSheet } = useUiStore.getState();
+        closeSearch();
+        closeSheet();
         return;
       }
 
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        window.dispatchEvent(new CustomEvent("solar:open-search"));
+        useUiStore.getState().openSearch();
         return;
       }
 
@@ -130,7 +132,7 @@ const KeyboardShortcuts = () => {
 
       if (event.key === "/") {
         event.preventDefault();
-        window.dispatchEvent(new CustomEvent("solar:open-search"));
+        useUiStore.getState().openSearch();
         return;
       }
 
@@ -165,6 +167,21 @@ const KeyboardShortcuts = () => {
   return null;
 };
 
+const SimulationLiveRegion = () => {
+  const isPaused = useTimeStore((state) => state.isPaused);
+  const direction = useTimeStore((state) => state.direction);
+  const preset = useTimeStore((state) => state.preset);
+  const message = `${isPaused ? "Simulation paused" : "Simulation playing"} ${
+    direction === 1 ? "forward" : "in reverse"
+  } at ${preset === "custom" ? "custom speed" : `${preset} speed`}.`;
+
+  return (
+    <span className="sr-only" aria-live="polite">
+      {message}
+    </span>
+  );
+};
+
 export const App = () => {
   const [webglUnavailable, setWebglUnavailable] = useState(() => !canCreateWebGlContext());
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
@@ -193,13 +210,18 @@ export const App = () => {
 
   return (
     <main className="app-shell">
+      <a className="skip-link" href="#main-controls">
+        Skip to controls
+      </a>
       <TimeDriver />
       <KeyboardShortcuts />
+      <SimulationLiveRegion />
       {webglUnavailable ? (
         <WebGlFallback onRetry={() => setWebglUnavailable(!canCreateWebGlContext())} />
       ) : (
         <Canvas
           className="solar-canvas"
+          aria-label="Interactive 3D solar system simulation"
           camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
           dpr={[1, 1.65]}
           fallback={<p>WebGL unavailable</p>}
@@ -224,7 +246,7 @@ export const App = () => {
         </Canvas>
       )}
       {!webglUnavailable && (
-        <div className={layerClass} data-mobile={isMobile ? "true" : undefined}>
+        <div id="main-controls" className={layerClass} tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
           <TopBar />
           <ScaleControls />
           <ObjectInspector />

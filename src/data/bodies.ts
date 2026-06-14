@@ -35,7 +35,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 2_439.7,
-      meanDistanceKm: 0.387_099_27 * AU_KM,
       color: "#a89f93",
       axialTiltDeg: 0.03,
       rotationPeriodHours: 1_407.6,
@@ -67,7 +66,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 6_051.8,
-      meanDistanceKm: 0.723_335_66 * AU_KM,
       color: "#d7b482",
       texture: "textures/venus.jpg",
       axialTiltDeg: 177.36,
@@ -100,7 +98,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 6_371,
-      meanDistanceKm: 1.000_002_61 * AU_KM,
       color: "#76a9b7",
       texture: "textures/earth.jpg",
       axialTiltDeg: 23.44,
@@ -134,7 +131,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 3_389.5,
-      meanDistanceKm: 1.523_710_34 * AU_KM,
       color: "#c9745c",
       texture: "textures/mars.jpg",
       axialTiltDeg: 25.19,
@@ -168,7 +164,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 69_911,
-      meanDistanceKm: 5.202_887 * AU_KM,
       color: "#d1aa7b",
       texture: "textures/jupiter.jpg",
       axialTiltDeg: 3.13,
@@ -202,7 +197,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 58_232,
-      meanDistanceKm: 9.536_675_94 * AU_KM,
       color: "#d9c59b",
       texture: "textures/saturn.jpg",
       axialTiltDeg: 26.73,
@@ -236,7 +230,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 25_362,
-      meanDistanceKm: 19.189_164_64 * AU_KM,
       color: "#9cd3cf",
       axialTiltDeg: 97.77,
       rotationPeriodHours: -17.24,
@@ -269,7 +262,6 @@ export const majorBodies: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 24_622,
-      meanDistanceKm: 30.069_922_76 * AU_KM,
       color: "#5d84c6",
       texture: "textures/neptune.jpg",
       axialTiltDeg: 28.32,
@@ -309,7 +301,6 @@ export const dwarfPlanets: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 473,
-      meanDistanceKm: 2.7675 * AU_KM,
       color: "#aaa59a",
       rotationPeriodHours: 9.074,
     },
@@ -332,7 +323,6 @@ export const dwarfPlanets: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 1_188.3,
-      meanDistanceKm: 39.48 * AU_KM,
       color: "#b99a79",
       axialTiltDeg: 119.61,
       rotationPeriodHours: -153.2928,
@@ -356,7 +346,6 @@ export const dwarfPlanets: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 1_163,
-      meanDistanceKm: 67.78 * AU_KM,
       color: "#c9c4bc",
       rotationPeriodHours: 25.9,
     },
@@ -379,7 +368,6 @@ export const dwarfPlanets: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 816,
-      meanDistanceKm: 43.13 * AU_KM,
       color: "#d4d0c5",
       rotationPeriodHours: 3.915,
     },
@@ -402,7 +390,6 @@ export const dwarfPlanets: CelestialBody[] = [
     parentId: "sun",
     physical: {
       radiusKm: 715,
-      meanDistanceKm: 45.79 * AU_KM,
       color: "#c28f78",
       rotationPeriodHours: 22.83,
     },

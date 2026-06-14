@@ -34,7 +34,6 @@ export type CelestialBody = {
   parentId: string | null;
   physical: {
     radiusKm: number;
-    meanDistanceKm?: number;
     color: string;
     texture?: string;
     axialTiltDeg?: number;

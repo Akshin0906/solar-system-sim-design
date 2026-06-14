@@ -116,11 +116,12 @@ export const scaleMoonOffset = (offsetKm: Vec3, mode: ScaleMode, context?: MoonS
 
 export const computeScenePositions = (
   bodies: CelestialBody[],
+  bodiesById: Map<string, CelestialBody>,
   date: Date,
   mode: ScaleMode,
+  target: Record<string, Vec3> = {},
 ): Record<string, Vec3> => {
-  const positions: Record<string, Vec3> = {};
-  const bodiesById = new Map(bodies.map((body) => [body.id, body]));
+  const positions = target;
   const pending = [...bodies];
   let guard = 0;
 

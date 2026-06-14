@@ -1,10 +1,9 @@
 import { OrbitControls } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useRef, type ComponentRef } from "react";
 import { Vector3 } from "three";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
-import type { Vec3 } from "../simulation/orbitalElements";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
 import {
   FOCUS_FRAMING_SAFETY,
@@ -15,13 +14,14 @@ import {
   surfaceMinDistanceForRadius,
   visualRadiusForBody,
 } from "./cameraFraming";
+import type { ScenePositionsRef } from "./scenePositions";
 
 type CameraRigProps = {
-  positions: Record<string, Vec3>;
+  positionsRef: ScenePositionsRef;
   mode: ScaleMode;
 };
 
-const asVector = (value: Vec3) => new Vector3(value[0], value[1], value[2]);
+const asVector = (value: [number, number, number]) => new Vector3(value[0], value[1], value[2]);
 
 const distanceBetween = (a: Vector3, b: Vector3) => a.distanceTo(b);
 
@@ -36,8 +36,8 @@ const FOLLOW_POSITION_DAMPING = 6.321631;
 const dampingAlpha = (ratePerSecond: number, deltaSeconds: number) =>
   1 - Math.exp(-ratePerSecond * Math.min(deltaSeconds, 0.12));
 
-export const CameraRig = ({ positions, mode }: CameraRigProps) => {
-  const controlsRef = useRef<any>(null);
+export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
+  const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null);
   const cameraRangeRef = useRef<{ near: number; far: number } | null>(null);
   const controlsRangeRef = useRef<{ minDistance: number; maxDistance: number } | null>(null);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
@@ -53,7 +53,8 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
     cameraMode === "moons" && moonFocusParentId ? bodiesById.get(moonFocusParentId) ?? selectedBody : selectedBody;
   const controlsTargetRadius = controlsTargetBody ? getBodySceneRadius(controlsTargetBody, mode) : 0;
 
-  const desired = useMemo(() => {
+  const getDesiredCamera = () => {
+    const positions = positionsRef.current;
     const selectedPosition = positions[selectedId] ? asVector(positions[selectedId]) : new Vector3();
     const pointsForIds = (ids: string[]) =>
       ids.flatMap((id) => {
@@ -123,7 +124,7 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
       target: selectedPosition,
       position: selectedPosition.clone().add(cameraOffset(distance, "focus")),
     };
-  }, [cameraMode, mode, positions, selectedBody, selectedId, selectedRadius]);
+  };
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
@@ -135,6 +136,7 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
     if (cameraMode !== "free") {
       const targetAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_TARGET_DAMPING : FOCUS_TARGET_DAMPING, delta);
       const positionAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
+      const desired = getDesiredCamera();
 
       controls.target.lerp(desired.target, targetAlpha);
       camera.position.lerp(desired.position, positionAlpha);

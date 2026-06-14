@@ -19,7 +19,6 @@ export const ObjectInspector = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
-  const dateMs = useTimeStore((state) => state.simulationDateMs);
   const isMobile = useIsMobile();
   const inspectorPresented = useUiStore((state) => state.inspectorPresented);
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -29,9 +28,6 @@ export const ObjectInspector = () => {
   const body = bodiesById.get(selectedId) ?? bodies[0];
   const parent = body.parentId ? bodiesById.get(body.parentId) : undefined;
   const moons = childBodiesByParentId[body.id]?.filter((child) => child.type === "moon") ?? [];
-  const date = new Date(dateMs);
-  const distance = body.orbit ? getOrbitRadiusKm(body, date) : 0;
-  const speed = body.orbit ? estimateOrbitalSpeedKmS(body, date) : 0;
 
   // Present the inspector whenever the user actively selects a different body. The
   // initial default selection (Earth) is skipped so phones open to a clean scene.
@@ -57,7 +53,9 @@ export const ObjectInspector = () => {
         </div>
         <div>
           <dt>Distance (est.)</dt>
-          <dd>{distance ? formatDistance(distance) : "Center"}</dd>
+          <dd>
+            <BodyDistance body={body} />
+          </dd>
         </div>
         <div>
           <dt>Period</dt>
@@ -65,7 +63,9 @@ export const ObjectInspector = () => {
         </div>
         <div>
           <dt>Speed (Kepler)</dt>
-          <dd>{speed ? `${speed.toFixed(speed > 10 ? 1 : 2)} km/s` : "N/A"}</dd>
+          <dd>
+            <BodySpeed body={body} />
+          </dd>
         </div>
         {body.physical.rotationPeriodHours && (
           <div>
@@ -117,7 +117,6 @@ export const ObjectInspector = () => {
     }
 
     const expanded = activeSheet === "inspector";
-    const peekStat = distance ? formatDistance(distance) : "Center";
 
     return (
       <>
@@ -132,7 +131,7 @@ export const ObjectInspector = () => {
               <span className="inspector-peek-text">
                 <span className="inspector-peek-name">{body.name}</span>
                 <span className="inspector-peek-stat">
-                  {titleCaseType(body.type)} · {peekStat}
+                  {titleCaseType(body.type)} · <BodyDistance body={body} />
                 </span>
               </span>
               <ChevronUp size={18} aria-hidden />
@@ -165,4 +164,18 @@ export const ObjectInspector = () => {
       {actions}
     </aside>
   );
+};
+
+const BodyDistance = ({ body }: { body: (typeof bodies)[number] }) => {
+  const dateMs = useTimeStore((state) => state.simulationDateMs);
+  const distance = body.orbit ? getOrbitRadiusKm(body, new Date(dateMs)) : 0;
+
+  return <>{distance ? formatDistance(distance) : "Center"}</>;
+};
+
+const BodySpeed = ({ body }: { body: (typeof bodies)[number] }) => {
+  const dateMs = useTimeStore((state) => state.simulationDateMs);
+  const speed = body.orbit ? estimateOrbitalSpeedKmS(body, new Date(dateMs)) : 0;
+
+  return <>{speed ? `${speed.toFixed(speed > 10 ? 1 : 2)} km/s` : "N/A"}</>;
 };

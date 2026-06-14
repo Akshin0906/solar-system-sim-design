@@ -18,6 +18,21 @@ type TimeState = {
 };
 
 const defaultPreset = TIME_PRESETS[2];
+const j2000Ms = Date.parse(J2000_EPOCH);
+
+export const SIMULATION_WINDOW_DAYS = 365.256 * 100;
+export const MIN_TIME_SCALE = TIME_PRESETS[0].secondsPerSecond;
+export const MAX_TIME_SCALE = TIME_PRESETS[TIME_PRESETS.length - 1].secondsPerSecond;
+const MAX_TICK_REAL_SECONDS = 1 / 30;
+
+const getDateMsFromEpochDaysValue = (days: number) => j2000Ms + days * DAY_MS;
+const minSimulationDateMs = getDateMsFromEpochDaysValue(-SIMULATION_WINDOW_DAYS);
+const maxSimulationDateMs = getDateMsFromEpochDaysValue(SIMULATION_WINDOW_DAYS);
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+const clampSimulationDateMs = (simulationDateMs: number) =>
+  clamp(simulationDateMs, minSimulationDateMs, maxSimulationDateMs);
+const clampTimeScale = (timeScale: number) => clamp(timeScale, MIN_TIME_SCALE, MAX_TIME_SCALE);
 
 export const useTimeStore = create<TimeState>((set, get) => ({
   isPaused: false,
@@ -33,13 +48,16 @@ export const useTimeStore = create<TimeState>((set, get) => ({
       return;
     }
 
+    const boundedElapsedSeconds = clamp(elapsedRealSeconds, 0, MAX_TICK_REAL_SECONDS);
     set((state) => ({
-      simulationDateMs: state.simulationDateMs + elapsedRealSeconds * timeScale * 1_000 * direction,
+      simulationDateMs: clampSimulationDateMs(
+        state.simulationDateMs + boundedElapsedSeconds * timeScale * 1_000 * direction,
+      ),
     }));
   },
   stepDays: (days) =>
     set((state) => ({
-      simulationDateMs: state.simulationDateMs + days * DAY_MS,
+      simulationDateMs: clampSimulationDateMs(state.simulationDateMs + days * DAY_MS),
     })),
   setDirection: (direction) => set({ direction }),
   setPreset: (preset) => {
@@ -47,16 +65,21 @@ export const useTimeStore = create<TimeState>((set, get) => ({
     set({ preset: match.id, timeScale: match.secondsPerSecond });
   },
   setTimeScale: (timeScale) => {
+    const boundedTimeScale = clampTimeScale(timeScale);
     // Only show a preset label when the scale is genuinely at that preset (within
     // 1%); otherwise report "custom" so the dropdown never misrepresents the speed.
-    const nearestPreset = TIME_PRESETS.find(
-      (item) => Math.abs(item.secondsPerSecond - timeScale) <= item.secondsPerSecond * 0.01,
-    );
-    set({ timeScale, preset: nearestPreset ? nearestPreset.id : "custom" });
+    const nearestPreset =
+      boundedTimeScale < 1.5
+        ? TIME_PRESETS[0]
+        : TIME_PRESETS.find(
+            (item) => Math.abs(item.secondsPerSecond - boundedTimeScale) <= item.secondsPerSecond * 0.01,
+          );
+    set({ timeScale: boundedTimeScale, preset: nearestPreset ? nearestPreset.id : "custom" });
   },
-  setSimulationDateMs: (simulationDateMs) => set({ simulationDateMs }),
+  setSimulationDateMs: (simulationDateMs) => set({ simulationDateMs: clampSimulationDateMs(simulationDateMs) }),
 }));
 
-export const getDaysFromEpoch = (dateMs: number) => (dateMs - Date.parse(J2000_EPOCH)) / DAY_MS;
+export const getDaysFromEpoch = (dateMs: number) => (dateMs - j2000Ms) / DAY_MS;
 
-export const getDateMsFromEpochDays = (days: number) => Date.parse(J2000_EPOCH) + days * DAY_MS;
+export const getDateMsFromEpochDays = (days: number) =>
+  clampSimulationDateMs(getDateMsFromEpochDaysValue(days));

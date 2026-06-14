@@ -50,8 +50,8 @@ export const rocketLaunchModes: RocketLaunchModeOption[] = [
     id: "low-earth-orbit",
     label: "Low Earth orbit",
     shortLabel: "LEO",
-    note: "Concept parking-orbit baseline; adds a simplified 7.8 km/s orbital offset.",
-    initialSpeedBonusKmS: 7.8,
+    note: "Concept parking-orbit baseline; cruise starts after the departure burn.",
+    initialSpeedBonusKmS: 0,
   },
   {
     id: "surface-launch",

@@ -1,5 +1,5 @@
 import { CalendarDays, CircleHelp, Rocket, Search, SlidersHorizontal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { bodiesById } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
@@ -22,13 +22,11 @@ export const TopBar = () => {
   const [helpOpen, setHelpOpen] = useState(false);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const selectedId = useSelectionStore((state) => state.selectedId);
-  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const toggleRocketPanel = useRocketStore((state) => state.togglePanel);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const searchOpen = useUiStore((state) => state.searchOpen);
-  const openSearch = useUiStore((state) => state.openSearch);
   const closeSearch = useUiStore((state) => state.closeSearch);
   const toggleSearch = useUiStore((state) => state.toggleSearch);
   const toggleSheet = useUiStore((state) => state.toggleSheet);
@@ -38,20 +36,6 @@ export const TopBar = () => {
   // sheet state on those buttons; on desktop the rocket button keeps its own panel.
   const rocketActive = isMobile ? activeSheet === "rocket" : rocketPanelOpen;
   const viewActive = activeSheet === "view";
-
-  useEffect(() => {
-    const handleOpenSearch = () => {
-      setHelpOpen(false);
-      openSearch();
-    };
-
-    window.addEventListener("solar:open-search", handleOpenSearch);
-    window.addEventListener("solar:close-search", closeSearch);
-    return () => {
-      window.removeEventListener("solar:open-search", handleOpenSearch);
-      window.removeEventListener("solar:close-search", closeSearch);
-    };
-  }, [closeSearch, openSearch]);
 
   const handleRocket = () => {
     closeSearch();
@@ -71,7 +55,7 @@ export const TopBar = () => {
       </div>
       <div className="top-date" title="Simulation date">
         <CalendarDays size={15} />
-        <span>{dateFormatter.format(new Date(simulationDateMs))}</span>
+        <SimClock />
       </div>
       <div className="top-actions">
         <button
@@ -133,4 +117,10 @@ export const TopBar = () => {
       <HelpPopover open={helpOpen} onClose={() => setHelpOpen(false)} triggerRef={helpButtonRef} />
     </header>
   );
+};
+
+const SimClock = () => {
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
+
+  return <span aria-hidden="true">{dateFormatter.format(new Date(simulationDateMs))}</span>;
 };

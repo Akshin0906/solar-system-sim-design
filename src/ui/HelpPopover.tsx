@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type RefObject } from "react";
+import { useRef, type RefObject } from "react";
+import { useFocusTrap } from "./focusTrap";
 import { commandKey } from "./shortcuts";
 
 type HelpPopoverProps = {
@@ -17,31 +18,7 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onCloseRef.current();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open]);
-
-  // Dialog focus contract: move focus into the popover on open, restore it to the
-  // trigger on close.
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    containerRef.current?.focus();
-    return () => triggerRef?.current?.focus();
-  }, [open, triggerRef]);
+  useFocusTrap(containerRef, open, () => onCloseRef.current());
 
   if (!open) {
     return null;
@@ -53,6 +30,7 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
       id="help-popover"
       className="help-popover"
       role="dialog"
+      aria-modal="true"
       aria-label="Help and shortcuts"
       tabIndex={-1}
     >

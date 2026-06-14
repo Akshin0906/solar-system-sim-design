@@ -1,7 +1,8 @@
 import { Search, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { selectableBodies } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
+import { useFocusTrap } from "./focusTrap";
 
 type SearchCommandProps = {
   open: boolean;
@@ -9,8 +10,11 @@ type SearchCommandProps = {
 };
 
 export const SearchCommand = ({ open, onClose }: SearchCommandProps) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const focusBody = useSelectionStore((state) => state.focusBody);
+
+  useFocusTrap(containerRef, open, onClose);
 
   useEffect(() => {
     if (!open) {
@@ -34,7 +38,14 @@ export const SearchCommand = ({ open, onClose }: SearchCommandProps) => {
   }
 
   return (
-    <div className="search-popover">
+    <div
+      ref={containerRef}
+      className="search-popover"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Search objects"
+      tabIndex={-1}
+    >
       <div className="search-input-wrap">
         <Search size={15} aria-hidden />
         <input

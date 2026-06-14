@@ -25,6 +25,7 @@ export type TransferEstimate = {
   originOrbitRadiusKm: number;
   destinationOrbitRadiusKm: number;
   transferSemiMajorAxisKm: number;
+  meanTransferSpeedKmS: number;
   idealPhaseAngleDeg: number;
   currentPhaseAngleDeg: number;
   phaseOffsetDeg: number;
@@ -134,12 +135,18 @@ const estimateLocalMoonTransfer = (
   const destinationRadiusKm = destinationOrbit.semiMajorAxisKm;
   const transferSemiMajorAxisKm = (originRadiusKm + destinationRadiusKm) / 2;
   const transferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muEarth);
+  if (!Number.isFinite(transferTimeSeconds) || transferTimeSeconds <= 0) {
+    return null;
+  }
+
+  const departureTransferSpeedKmS = transferSpeed(muEarth, originRadiusKm, transferSemiMajorAxisKm);
+  const arrivalTransferSpeedKmS = transferSpeed(muEarth, destinationRadiusKm, transferSemiMajorAxisKm);
+  const meanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
   const departureDeltaVKmS = Math.abs(
-    transferSpeed(muEarth, originRadiusKm, transferSemiMajorAxisKm) - circularSpeed(muEarth, originRadiusKm),
+    departureTransferSpeedKmS - circularSpeed(muEarth, originRadiusKm),
   );
   const arrivalDeltaVKmS = Math.abs(
-    circularSpeed(muEarth, destinationRadiusKm) -
-      transferSpeed(muEarth, destinationRadiusKm, transferSemiMajorAxisKm),
+    circularSpeed(muEarth, destinationRadiusKm) - arrivalTransferSpeedKmS,
   );
 
   return {
@@ -152,6 +159,7 @@ const estimateLocalMoonTransfer = (
     originOrbitRadiusKm: originRadiusKm,
     destinationOrbitRadiusKm: destinationRadiusKm,
     transferSemiMajorAxisKm,
+    meanTransferSpeedKmS,
     idealPhaseAngleDeg: 42,
     currentPhaseAngleDeg: 42,
     phaseOffsetDeg: 0,
@@ -205,6 +213,10 @@ export const estimateTransfer = (
   const destinationRadiusKm = transferTargetOrbit.semiMajorAxisKm;
   const transferSemiMajorAxisKm = (originRadiusKm + destinationRadiusKm) / 2;
   const transferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muSun);
+  if (!Number.isFinite(transferTimeSeconds) || transferTimeSeconds <= 0 || transferTargetOrbit.orbitalPeriodDays === 0) {
+    return null;
+  }
+
   const targetMeanMotion = TWO_PI / (Math.abs(transferTargetOrbit.orbitalPeriodDays) * DAY_SECONDS);
   const idealPhaseAngleRad = normalizeSignedRadians(Math.PI - targetMeanMotion * transferTimeSeconds);
 
@@ -215,12 +227,12 @@ export const estimateTransfer = (
   const phaseOffsetDeg = radiansToDegrees(phaseOffsetRad);
   const launchWindowQuality = qualityFromPhaseOffset(phaseOffsetDeg);
 
-  const departureDeltaVKmS = Math.abs(
-    transferSpeed(muSun, originRadiusKm, transferSemiMajorAxisKm) - circularSpeed(muSun, originRadiusKm),
-  );
+  const departureTransferSpeedKmS = transferSpeed(muSun, originRadiusKm, transferSemiMajorAxisKm);
+  const arrivalTransferSpeedKmS = transferSpeed(muSun, destinationRadiusKm, transferSemiMajorAxisKm);
+  const meanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
+  const departureDeltaVKmS = Math.abs(departureTransferSpeedKmS - circularSpeed(muSun, originRadiusKm));
   const arrivalDeltaVKmS = Math.abs(
-    circularSpeed(muSun, destinationRadiusKm) -
-      transferSpeed(muSun, destinationRadiusKm, transferSemiMajorAxisKm),
+    circularSpeed(muSun, destinationRadiusKm) - arrivalTransferSpeedKmS,
   );
 
   const notes = ["Hohmann estimate assumes circular, coplanar heliocentric orbits."];
@@ -235,6 +247,7 @@ export const estimateTransfer = (
     originOrbitRadiusKm: originRadiusKm,
     destinationOrbitRadiusKm: destinationRadiusKm,
     transferSemiMajorAxisKm,
+    meanTransferSpeedKmS,
     idealPhaseAngleDeg: radiansToDegrees(idealPhaseAngleRad),
     currentPhaseAngleDeg: radiansToDegrees(currentPhaseAngleRad),
     phaseOffsetDeg,

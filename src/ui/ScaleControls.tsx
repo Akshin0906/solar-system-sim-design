@@ -39,6 +39,7 @@ export const ScaleControls = () => {
             className={mode === item.id ? "selected" : ""}
             onClick={() => setMode(item.id as ScaleMode)}
             title={item.note}
+            aria-pressed={mode === item.id}
           >
             {item.label}
           </button>
@@ -51,6 +52,7 @@ export const ScaleControls = () => {
           onClick={() => setCameraMode("overview")}
           title="Solar system overview"
           aria-label="Solar system overview"
+          aria-pressed={cameraMode === "overview"}
         >
           <Eye size={16} />
         </button>
@@ -60,6 +62,7 @@ export const ScaleControls = () => {
           onClick={() => setCameraMode("inner")}
           title="Inner planets"
           aria-label="Inner planets"
+          aria-pressed={cameraMode === "inner"}
         >
           <Orbit size={16} />
         </button>
@@ -69,6 +72,7 @@ export const ScaleControls = () => {
           onClick={() => setCameraMode("outer")}
           title="Outer planets"
           aria-label="Outer planets"
+          aria-pressed={cameraMode === "outer"}
         >
           <Route size={16} />
         </button>

@@ -1,6 +1,6 @@
 import { Html } from "@react-three/drei";
 import { ThreeEvent, useFrame } from "@react-three/fiber";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import {
   AdditiveBlending,
   BackSide,
@@ -16,11 +16,13 @@ import {
   type Mesh,
   type Texture,
 } from "three";
-import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
+import type { CelestialBody } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
+import { useTimeStore } from "../simulation/timeStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
+import { SCENE_HTML_Z_INDEX_RANGE } from "../ui/htmlLayering";
 import { MIN_FIT_RADIUS, visualRadiusForBody } from "./cameraFraming";
-import { BODY_LABEL_DISTANCE_FACTOR, SCENE_HTML_Z_INDEX_RANGE, getBodyLabelScale } from "./labelScaling";
+import { BODY_LABEL_DISTANCE_FACTOR, getBodyLabelScale } from "./labelScaling";
 import {
   createBodyBumpTexture,
   createCloudTexture,
@@ -30,12 +32,12 @@ import {
   getVisualProfile,
   type BodyEmphasis,
 } from "./planetVisuals";
+import type { ScenePositionsRef } from "./scenePositions";
 
 type BodyMeshProps = {
   body: CelestialBody;
-  dateMs: number;
   mode: ScaleMode;
-  position: Vec3;
+  positionsRef: ScenePositionsRef;
   selected: boolean;
   showLabel: boolean;
   emphasis: BodyEmphasis;
@@ -132,7 +134,7 @@ const useBodyImageTexture = (url?: string) => {
   return texture;
 };
 
-export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabel, emphasis }: BodyMeshProps) => {
+export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, emphasis }: BodyMeshProps) => {
   const groupRef = useRef<Group>(null);
   const meshRef = useRef<Mesh>(null);
   const cloudRef = useRef<Mesh>(null);
@@ -183,8 +185,19 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
     .filter(Boolean)
     .join(" ");
 
+  useEffect(() => () => proceduralSurfaceTexture?.dispose(), [proceduralSurfaceTexture]);
+  useEffect(() => () => bumpTexture?.dispose(), [bumpTexture]);
+  useEffect(() => () => cloudTexture?.dispose(), [cloudTexture]);
+  useEffect(() => () => ringTexture?.dispose(), [ringTexture]);
+
   useFrame(({ camera }) => {
+    const position = positionsRef.current[body.id];
+    if (position && groupRef.current) {
+      groupRef.current.position.set(position[0], position[1], position[2]);
+    }
+
     if (meshRef.current && body.physical.rotationPeriodHours) {
+      const dateMs = useTimeStore.getState().simulationDateMs;
       const rotationMs = Math.abs(body.physical.rotationPeriodHours) * 3_600_000;
       const direction = body.physical.rotationPeriodHours < 0 ? -1 : 1;
       meshRef.current.rotation.y = direction * ((dateMs % rotationMs) / rotationMs) * Math.PI * 2;
@@ -213,8 +226,18 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
     focusBody(body.id);
   };
 
+  const handleLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    focusBody(body.id);
+  };
+
   return (
-    <group ref={groupRef} position={position} onClick={handleClick}>
+    <group ref={groupRef} onClick={handleClick}>
       {body.type === "star" && (
         <>
           <mesh>
@@ -346,10 +369,14 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
           zIndexRange={SCENE_HTML_Z_INDEX_RANGE}
           className={labelClassName}
           style={labelStyle}
+          role="button"
+          tabIndex={0}
+          aria-label={`Select ${body.name}`}
           onClick={(event) => {
             event.stopPropagation();
             focusBody(body.id);
           }}
+          onKeyDown={handleLabelKeyDown}
         >
           {body.name}
         </Html>

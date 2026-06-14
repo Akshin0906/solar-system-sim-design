@@ -1,7 +1,7 @@
 import { Html, Line } from "@react-three/drei";
 import { useMemo } from "react";
 import { AdditiveBlending, DoubleSide, Quaternion, Shape, Vector3 } from "three";
-import { SCENE_HTML_Z_INDEX_RANGE } from "../../scene/labelScaling";
+import { SCENE_HTML_Z_INDEX_RANGE } from "../../ui/htmlLayering";
 import type { RocketProfile } from "./rocketCatalog";
 import { getCachedRocketView, useActiveRocketView } from "./useRocketView";
 

@@ -513,12 +513,13 @@ export const computeRocketView = (
     const plan = getTransferPlan(destBody, launchDateMs);
     if (plan) {
       const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
-      const progress = clamp01(elapsedSeconds / plan.estimate.transferTimeSeconds);
+      const transferTimeSeconds = Math.max(plan.estimate.transferTimeSeconds, 1);
+      const progress = clamp01(elapsedSeconds / transferTimeSeconds);
       const arrivalDate = new Date(plan.estimate.arrivalDateMs);
       const transferTargetBody = bodiesById.get(plan.estimate.transferTargetBodyId) ?? destBody;
       const arrived =
         progress >= ARRIVAL_PROGRESS_THRESHOLD ||
-        elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= plan.estimate.transferTimeSeconds;
+        elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= transferTimeSeconds;
       const targetArrivalScenePosition = computeBodyScenePosition(destBody, bodiesById, arrivalDate, mode);
       const interceptScenePosition = computeBodyScenePosition(transferTargetBody, bodiesById, arrivalDate, mode);
       const transferScenePoints = getTransferSceneArc(plan, destBody, launchDateMs, mode);
@@ -545,10 +546,10 @@ export const computeRocketView = (
           );
       const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
       const preLaunch = simulationDateMs < launchDateMs;
-      const averageSpeedKmS = plan.arc.arcLengthKm / plan.estimate.transferTimeSeconds;
+      const averageSpeedKmS = plan.estimate.meanTransferSpeedKmS;
       const burnEndSeconds = Math.min(
         applyLaunchModeToProfile(profile, launchMode).burnDurationSeconds,
-        plan.estimate.transferTimeSeconds * 0.12,
+        transferTimeSeconds * 0.12,
       );
       let status: MissionStatus;
       if (preLaunch) {

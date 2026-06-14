@@ -45,6 +45,14 @@ def transfer_speed_km_s(radius_km: float, transfer_semimajor_axis_km: float) -> 
     return math.sqrt(MU_SUN_KM3_S2 * (2 / radius_km - 1 / transfer_semimajor_axis_km))
 
 
+def mean_transfer_speed_km_s(origin_radius_km: float, destination_radius_km: float) -> float:
+    transfer_semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
+    return (
+        transfer_speed_km_s(origin_radius_km, transfer_semimajor_axis_km)
+        + transfer_speed_km_s(destination_radius_km, transfer_semimajor_axis_km)
+    ) / 2
+
+
 def delta_v_pair(origin_radius_km: float, destination_radius_km: float) -> tuple[float, float]:
     transfer_semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
     departure = abs(transfer_speed_km_s(origin_radius_km, transfer_semimajor_axis_km) - circular_speed_km_s(origin_radius_km))
@@ -198,10 +206,12 @@ def main() -> None:
 
     mars_departure, mars_arrival = delta_v_pair(earth, mars)
     jupiter_departure, jupiter_arrival = delta_v_pair(earth, jupiter)
+    mars_mean_transfer_speed = mean_transfer_speed_km_s(earth, mars)
     assert 2.8 < mars_departure < 3.1, mars_departure
     assert 2.5 < mars_arrival < 2.8, mars_arrival
     assert jupiter_departure > mars_departure
     assert jupiter_arrival > 5
+    assert 22 < mars_mean_transfer_speed < 28, mars_mean_transfer_speed
 
     earth_launch = circular_orbit_position(earth, 0, 0, 365.256)
     mars_phase = math.radians(65)
@@ -220,7 +230,12 @@ def main() -> None:
     assert vec_len(vec_sub(transfer_arc[-1], mars_at(mars_transfer_days * DAY_SECONDS))) < 1e-6
     transfer_chord = vec_len(vec_sub(transfer_arc[-1], transfer_arc[0]))
     transfer_length = sum(vec_len(vec_sub(transfer_arc[index], transfer_arc[index - 1])) for index in range(1, len(transfer_arc)))
+    mars_decorative_arc_speed = transfer_length / hohmann_transfer_time_seconds(earth, mars)
     assert transfer_length > transfer_chord * 1.02, (transfer_length, transfer_chord)
+    assert abs(mars_decorative_arc_speed - mars_mean_transfer_speed) > 1, (
+        mars_decorative_arc_speed,
+        mars_mean_transfer_speed,
+    )
 
     # Once a mission has arrived, the scene should keep the rocket with the
     # destination body as time continues, not frozen at the old intercept point.
@@ -236,6 +251,7 @@ def main() -> None:
     print(f"Earth-Mars Hohmann transfer: {mars_transfer_days:.1f} days")
     print("Outer transfer days:", ", ".join(f"{days:.1f}" for days in outer_transfer_days))
     print(f"Mars delta-v departure/arrival: {mars_departure:.2f}/{mars_arrival:.2f} km/s")
+    print(f"Mars vis-viva mean transfer speed: {mars_mean_transfer_speed:.2f} km/s")
     print(f"Jupiter delta-v departure/arrival: {jupiter_departure:.2f}/{jupiter_arrival:.2f} km/s")
     print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
     print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")

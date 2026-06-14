@@ -21,7 +21,6 @@ const moon = (
   parentId,
   physical: {
     radiusKm,
-    meanDistanceKm: semiMajorAxisKm,
     color,
     rotationPeriodHours,
     texture,

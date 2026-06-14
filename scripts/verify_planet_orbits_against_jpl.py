@@ -121,11 +121,12 @@ def jpl_elements(name: str, date: dt.datetime) -> dict[str, float]:
 def app_elements(name: str, date: dt.datetime) -> dict[str, float]:
     source = APP[name]
     T = centuries_since_j2000(date)
+    direction = -1 if source.get("retrograde") else 1
     peri0 = source["node"] + source["arg"]
     mean_long0 = peri0 + source["m0"]
     node = source["node"] + source["nodedot"] * T
     peri = peri0 + source["peri_dot"] * T
-    mean_long = mean_long0 + source["mean_long_dot"] * T
+    mean_long = mean_long0 + direction * source["mean_long_dot"] * T
     return {
         "a": source["a"] + source["adot"] * T,
         "e": source["e"] + source["edot"] * T,

@@ -8,12 +8,12 @@
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
-  --surface: rgba(18, 18, 15, 0.68);
-  --surface-strong: rgba(23, 22, 18, 0.86);
+  --surface: rgba(18, 18, 15, 0.78);
+  --surface-strong: rgba(23, 22, 18, 0.9);
   --hairline: rgba(245, 241, 232, 0.13);
   --hairline-strong: rgba(245, 241, 232, 0.2);
   --muted: rgba(245, 241, 232, 0.62);
-  --quiet: rgba(245, 241, 232, 0.42);
+  --quiet: rgba(245, 241, 232, 0.6);
   --gold: #d9ad69;
   --cyan: #8fc7cc;
   --clay: #c9745c;
@@ -80,6 +80,37 @@ select:focus:not(:focus-visible) {
   background:
     radial-gradient(circle at 50% 50%, rgba(217, 173, 105, 0.08), transparent 28%),
     #090907;
+}
+
+.skip-link {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 10px;
+  z-index: 100;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+  color: #f5f1e8;
+  text-decoration: none;
+  transform: translateY(-150%);
+  transition: transform 160ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .app-shell::after {
@@ -967,6 +998,17 @@ input[type="range"] {
   opacity: 0.36;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 .rocket-panel {
   position: absolute;
   left: 16px;
@@ -1357,6 +1399,15 @@ input[type="range"] {
     right: 0;
     left: auto;
     max-height: calc(100dvh - 96px - env(safe-area-inset-bottom));
+  }
+
+  .body-label {
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 10px;
   }
 }
 

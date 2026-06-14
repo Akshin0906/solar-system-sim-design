@@ -1,6 +1,9 @@
 import { CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
 import { DAY_MS, TIME_PRESETS, type TimePresetId } from "../data/constants";
 import {
+  MAX_TIME_SCALE,
+  MIN_TIME_SCALE,
+  SIMULATION_WINDOW_DAYS,
   getDateMsFromEpochDays,
   getDaysFromEpoch,
   useTimeStore,
@@ -16,15 +19,16 @@ const scrubDateFormatter = new Intl.DateTimeFormat(undefined, {
   day: "2-digit",
 });
 
-const minScrubDays = -365.256 * 100;
-const maxScrubDays = 365.256 * 100;
-const minSpeed = 1;
-const maxSpeed = TIME_PRESETS[TIME_PRESETS.length - 1].secondsPerSecond;
+const minScrubDays = -SIMULATION_WINDOW_DAYS;
+const maxScrubDays = SIMULATION_WINDOW_DAYS;
+const minSpeed = MIN_TIME_SCALE;
+const maxSpeed = MAX_TIME_SCALE;
 
 const speedToSlider = (speed: number) => {
   const min = Math.log10(minSpeed);
   const max = Math.log10(maxSpeed);
-  return ((Math.log10(speed) - min) / (max - min)) * 100;
+  const boundedSpeed = Math.min(Math.max(speed, minSpeed), maxSpeed);
+  return ((Math.log10(boundedSpeed) - min) / (max - min)) * 100;
 };
 
 const sliderToSpeed = (slider: number) => {
@@ -85,7 +89,7 @@ export const TimeControls = () => {
         aria-label="Speed"
         aria-valuetext={speedLabel}
       />
-      <span className="range-value">{speedLabel}</span>
+      <span className="range-value" aria-hidden="true">{speedLabel}</span>
     </label>
   );
 
@@ -102,7 +106,7 @@ export const TimeControls = () => {
         aria-label="Timeline"
         aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}
       />
-      <span className="range-value">{nowDeltaLabel}</span>
+      <span className="range-value" aria-hidden="true">{nowDeltaLabel}</span>
     </label>
   );
 

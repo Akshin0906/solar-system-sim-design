@@ -1,5 +1,6 @@
 import { Stars } from "@react-three/drei";
-import { useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
@@ -14,9 +15,9 @@ import { MotionTrail } from "./MotionTrail";
 import { OrbitRing } from "./OrbitRing";
 import type { BodyEmphasis } from "./planetVisuals";
 import { RocketObject } from "../future/rockets/RocketObject";
+import type { ScenePositions } from "./scenePositions";
 
 export const SolarScene = () => {
-  const dateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
   const showGrid = useScaleStore((state) => state.showGrid);
   const showOrbits = useScaleStore((state) => state.showOrbits);
@@ -24,8 +25,8 @@ export const SolarScene = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
   const labelDensity = useScaleStore((state) => state.labelDensity);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
-  const date = useMemo(() => new Date(dateMs), [dateMs]);
-  const positions = useMemo(() => computeScenePositions(bodies, date, mode), [date, mode]);
+  const positionsRef = useRef<ScenePositions>({});
+  const positionsInitializedRef = useRef(false);
   const selectedBody = bodiesById.get(selectedId);
   const moonFocusParentId =
     selectedBody?.type === "moon"
@@ -108,6 +109,27 @@ export const SolarScene = () => {
     return bodies.filter((body) => body.orbit);
   }, [showTrails]);
 
+  if (!positionsInitializedRef.current) {
+    computeScenePositions(
+      bodies,
+      bodiesById,
+      new Date(useTimeStore.getState().simulationDateMs),
+      mode,
+      positionsRef.current,
+    );
+    positionsInitializedRef.current = true;
+  }
+
+  useFrame(() => {
+    computeScenePositions(
+      bodies,
+      bodiesById,
+      new Date(useTimeStore.getState().simulationDateMs),
+      mode,
+      positionsRef.current,
+    );
+  });
+
   return (
     <>
       <color attach="background" args={["#050609"]} />
@@ -121,30 +143,28 @@ export const SolarScene = () => {
           <OrbitRing
             key={body.id}
             body={body}
-            dateMs={dateMs}
             mode={mode}
-            positions={positions}
+            positionsRef={positionsRef}
             emphasis={emphasisById.get(body.id) ?? "normal"}
             highlight={body.id === selectedId && !(isMoonContext && body.id === moonFocusParentId)}
           />
         ))}
       {trailBodies.map((body) => (
-        <MotionTrail key={body.id} body={body} dateMs={dateMs} mode={mode} selected={body.id === selectedId} />
+        <MotionTrail key={body.id} body={body} mode={mode} selected={body.id === selectedId} />
       ))}
       {bodies.map((body) => (
         <BodyMesh
           key={body.id}
           body={body}
-          dateMs={dateMs}
           mode={mode}
-          position={positions[body.id] ?? [0, 0, 0]}
+          positionsRef={positionsRef}
           selected={body.id === selectedId}
           showLabel={labelledIds.has(body.id)}
           emphasis={emphasisById.get(body.id) ?? "normal"}
         />
       ))}
       <RocketObject />
-      <CameraRig positions={positions} mode={mode} />
+      <CameraRig positionsRef={positionsRef} mode={mode} />
     </>
   );
 };

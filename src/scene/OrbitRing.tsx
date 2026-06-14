@@ -1,11 +1,14 @@
-import { memo, useEffect, useMemo } from "react";
+import { useFrame } from "@react-three/fiber";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { BufferGeometry, Line, LineBasicMaterial, Vector3, type Material } from "three";
 import { bodiesById } from "../data";
 import { DAY_MS } from "../data/constants";
-import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
+import type { CelestialBody } from "../simulation/orbitalElements";
 import { sampleOrbitKm } from "../simulation/solveOrbit";
+import { useTimeStore } from "../simulation/timeStore";
 import { scaleMoonOffset, scaleVectorFromSun, type ScaleMode } from "../simulation/units";
 import type { BodyEmphasis } from "./planetVisuals";
+import type { ScenePositionsRef } from "./scenePositions";
 
 // An orbit ellipse only changes shape via slow secular precession, so rebuilding
 // its geometry on every animation tick (~30x/s) was a large, pointless alloc/GC
@@ -15,9 +18,8 @@ const ORBIT_PRECESSION_BUCKET_MS = 30 * DAY_MS;
 
 type OrbitRingProps = {
   body: CelestialBody;
-  dateMs: number;
   mode: ScaleMode;
-  positions: Record<string, Vec3>;
+  positionsRef: ScenePositionsRef;
   emphasis: BodyEmphasis;
   highlight: boolean;
 };
@@ -42,8 +44,10 @@ const getOrbitOpacity = (body: CelestialBody, selected: boolean, emphasis: BodyE
   return body.type === "moon" ? 0.2 : 0.28;
 };
 
-export const OrbitRing = memo(({ body, dateMs, mode, positions, emphasis, highlight }: OrbitRingProps) => {
-  const precessionBucket = Math.floor(dateMs / ORBIT_PRECESSION_BUCKET_MS);
+export const OrbitRing = memo(({ body, mode, positionsRef, emphasis, highlight }: OrbitRingProps) => {
+  const initialPrecessionBucket = Math.floor(useTimeStore.getState().simulationDateMs / ORBIT_PRECESSION_BUCKET_MS);
+  const [precessionBucket, setPrecessionBucket] = useState(initialPrecessionBucket);
+  const precessionBucketRef = useRef(initialPrecessionBucket);
   const line = useMemo(() => {
     if (!body.orbit) {
       return null;
@@ -80,12 +84,22 @@ export const OrbitRing = memo(({ body, dateMs, mode, positions, emphasis, highli
     };
   }, [line]);
 
+  useFrame(() => {
+    const nextPrecessionBucket = Math.floor(useTimeStore.getState().simulationDateMs / ORBIT_PRECESSION_BUCKET_MS);
+    if (nextPrecessionBucket !== precessionBucketRef.current) {
+      precessionBucketRef.current = nextPrecessionBucket;
+      setPrecessionBucket(nextPrecessionBucket);
+    }
+
+    if (line && body.type === "moon" && body.parentId) {
+      const parentPosition = positionsRef.current[body.parentId];
+      line.position.set(parentPosition?.[0] ?? 0, parentPosition?.[1] ?? 0, parentPosition?.[2] ?? 0);
+    }
+  });
+
   if (!body.orbit || !line) {
     return null;
   }
-
-  const parentPosition = body.type === "moon" && body.parentId ? positions[body.parentId] ?? [0, 0, 0] : [0, 0, 0];
-  line.position.set(parentPosition[0], parentPosition[1], parentPosition[2]);
 
   return <primitive object={line} />;
 });

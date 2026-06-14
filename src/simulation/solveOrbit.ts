@@ -82,7 +82,7 @@ export const getOrbitElementsAtDate = (orbit: Orbit, date: Date): ResolvedOrbitE
     longitudeOfPeriapsisAtEpochDeg + (rates.longitudeOfPeriapsisDeg ?? 0) * centuries;
   const usesMeanLongitudeRate = rates.meanLongitudeDeg !== undefined;
   const meanLongitudeDeg = usesMeanLongitudeRate
-    ? meanLongitudeAtEpochDeg + rates.meanLongitudeDeg! * centuries
+    ? meanLongitudeAtEpochDeg + direction * rates.meanLongitudeDeg! * centuries
     : undefined;
   const meanAnomalyRateDegPerCentury =
     rates.meanLongitudeDeg === undefined
