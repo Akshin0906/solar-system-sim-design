@@ -6,6 +6,9 @@ import {
   useTimeStore,
 } from "../simulation/timeStore";
 import { formatNowDelta, formatTimeScale } from "../simulation/units";
+import { BottomSheet } from "./BottomSheet";
+import { useUiStore } from "./uiStore";
+import { useIsMobile } from "./useMediaQuery";
 
 const scrubDateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -42,9 +45,137 @@ export const TimeControls = () => {
   const setPreset = useTimeStore((state) => state.setPreset);
   const setTimeScale = useTimeStore((state) => state.setTimeScale);
   const setSimulationDateMs = useTimeStore((state) => state.setSimulationDateMs);
+  const isMobile = useIsMobile();
+  const activeSheet = useUiStore((state) => state.activeSheet);
+  const openSheet = useUiStore((state) => state.openSheet);
+  const closeSheet = useUiStore((state) => state.closeSheet);
   const scrubDays = Math.max(minScrubDays, Math.min(maxScrubDays, getDaysFromEpoch(simulationDateMs)));
   const speedLabel = formatTimeScale(timeScale);
   const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
+
+  const presetSelect = (
+    <select
+      value={preset}
+      onChange={(event) => {
+        if (event.target.value !== "custom") {
+          setPreset(event.target.value as TimePresetId);
+        }
+      }}
+      aria-label="Speed preset"
+    >
+      {preset === "custom" && <option value="custom">Custom</option>}
+      {TIME_PRESETS.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.label}
+        </option>
+      ))}
+    </select>
+  );
+
+  const speedSlider = (
+    <label className="range-shell speed-range">
+      <Gauge size={14} aria-hidden />
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={0.2}
+        value={speedToSlider(timeScale)}
+        onChange={(event) => setTimeScale(sliderToSpeed(Number(event.target.value)))}
+        aria-label="Speed"
+        aria-valuetext={speedLabel}
+      />
+      <span className="range-value">{speedLabel}</span>
+    </label>
+  );
+
+  const timelineSlider = (
+    <label className="range-shell scrub-range">
+      <CalendarClock size={14} aria-hidden />
+      <input
+        type="range"
+        min={minScrubDays}
+        max={maxScrubDays}
+        step={1}
+        value={scrubDays}
+        onChange={(event) => setSimulationDateMs(getDateMsFromEpochDays(Number(event.target.value)))}
+        aria-label="Timeline"
+        aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}
+      />
+      <span className="range-value">{nowDeltaLabel}</span>
+    </label>
+  );
+
+  if (isMobile) {
+    return (
+      <>
+        <section className="transport-bar" aria-label="Time controls">
+          <button className="icon-button transport" type="button" onClick={() => stepDays(-1)} aria-label="Step backward">
+            <SkipBack size={18} />
+          </button>
+          <button
+            className="icon-button transport primary"
+            type="button"
+            onClick={togglePaused}
+            aria-label={isPaused ? "Play" : "Pause"}
+          >
+            {isPaused ? <Play size={20} /> : <Pause size={20} />}
+          </button>
+          <button className="icon-button transport" type="button" onClick={() => stepDays(1)} aria-label="Step forward">
+            <SkipForward size={18} />
+          </button>
+          <button
+            className={`speed-chip ${activeSheet === "speed" ? "active" : ""}`}
+            type="button"
+            onClick={() => openSheet("speed")}
+            aria-label={`Speed and timeline, currently ${speedLabel}`}
+            aria-haspopup="dialog"
+          >
+            <Gauge size={15} aria-hidden />
+            <span className="speed-chip-value">{speedLabel}</span>
+            <span className="speed-chip-delta">{nowDeltaLabel}</span>
+          </button>
+        </section>
+        <BottomSheet
+          open={activeSheet === "speed"}
+          onClose={closeSheet}
+          label="Speed and time"
+          title="Speed & time"
+          footer={
+            <button className="reset-time sheet-now" type="button" onClick={() => setSimulationDateMs(Date.now())}>
+              Jump to now
+            </button>
+          }
+        >
+          <div className="speed-sheet">
+            <div className="sheet-field">
+              <span className="sheet-field-label">Time direction</span>
+              <div className="segmented-control direction-control">
+                <button type="button" className={direction === 1 ? "selected" : ""} onClick={() => setDirection(1)}>
+                  <RotateCw size={15} aria-hidden /> Forward
+                </button>
+                <button type="button" className={direction === -1 ? "selected" : ""} onClick={() => setDirection(-1)}>
+                  <RotateCcw size={15} aria-hidden /> Reverse
+                </button>
+              </div>
+            </div>
+            <div className="sheet-field">
+              <span className="sheet-field-label">Speed preset</span>
+              <div className="sheet-select">{presetSelect}</div>
+            </div>
+            <div className="sheet-field">
+              <span className="sheet-field-label">Speed</span>
+              {speedSlider}
+            </div>
+            <div className="sheet-field">
+              <span className="sheet-field-label">Timeline</span>
+              {timelineSlider}
+            </div>
+          </div>
+        </BottomSheet>
+      </>
+    );
+  }
 
   return (
     <section className="time-controls" aria-label="Time controls">
@@ -66,50 +197,9 @@ export const TimeControls = () => {
       >
         {direction === 1 ? <RotateCw size={16} /> : <RotateCcw size={16} />}
       </button>
-      <select
-        value={preset}
-        onChange={(event) => {
-          if (event.target.value !== "custom") {
-            setPreset(event.target.value as TimePresetId);
-          }
-        }}
-        aria-label="Speed preset"
-      >
-        {preset === "custom" && <option value="custom">Custom</option>}
-        {TIME_PRESETS.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.label}
-          </option>
-        ))}
-      </select>
-      <label className="range-shell speed-range">
-        <Gauge size={14} aria-hidden />
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={0.2}
-          value={speedToSlider(timeScale)}
-          onChange={(event) => setTimeScale(sliderToSpeed(Number(event.target.value)))}
-          aria-label="Speed"
-          aria-valuetext={speedLabel}
-        />
-        <span className="range-value">{speedLabel}</span>
-      </label>
-      <label className="range-shell scrub-range">
-        <CalendarClock size={14} aria-hidden />
-        <input
-          type="range"
-          min={minScrubDays}
-          max={maxScrubDays}
-          step={1}
-          value={scrubDays}
-          onChange={(event) => setSimulationDateMs(getDateMsFromEpochDays(Number(event.target.value)))}
-          aria-label="Timeline"
-          aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}
-        />
-        <span className="range-value">{nowDeltaLabel}</span>
-      </label>
+      {presetSelect}
+      {speedSlider}
+      {timelineSlider}
       <button className="reset-time" type="button" onClick={() => setSimulationDateMs(Date.now())}>
         Now
       </button>

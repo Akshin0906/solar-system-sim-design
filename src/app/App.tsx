@@ -8,6 +8,7 @@ import { TopBar } from "../ui/TopBar";
 import { RocketLauncherPanel } from "../future/rockets/RocketLauncherPanel";
 import { useRocketStore } from "../future/rockets/rocketStore";
 import { useTimeStore } from "../simulation/timeStore";
+import { useIsMobile } from "../ui/useMediaQuery";
 
 const isEditableTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
@@ -126,6 +127,12 @@ const KeyboardShortcuts = () => {
 
 export const App = () => {
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
+  const isMobile = useIsMobile();
+
+  // On phones the panels become dismissible bottom sheets that manage their own
+  // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
+  // open" overlap hack must not apply.
+  const layerClass = `ui-layer${rocketPanelOpen && !isMobile ? " rocket-open" : ""}`;
 
   return (
     <main className="app-shell">
@@ -141,7 +148,7 @@ export const App = () => {
           <SolarScene />
         </Suspense>
       </Canvas>
-      <div className={`ui-layer${rocketPanelOpen ? " rocket-open" : ""}`}>
+      <div className={layerClass} data-mobile={isMobile ? "true" : undefined}>
         <TopBar />
         <ScaleControls />
         <ObjectInspector />

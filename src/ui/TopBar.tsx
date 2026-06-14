@@ -1,4 +1,4 @@
-import { CalendarDays, CircleHelp, Rocket, Search } from "lucide-react";
+import { CalendarDays, CircleHelp, Rocket, Search, SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { bodiesById } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
@@ -7,6 +7,8 @@ import { useRocketStore } from "../future/rockets/rocketStore";
 import { SearchCommand } from "./SearchCommand";
 import { HelpPopover } from "./HelpPopover";
 import { commandKey } from "./shortcuts";
+import { useUiStore } from "./uiStore";
+import { useIsMobile } from "./useMediaQuery";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -24,7 +26,15 @@ export const TopBar = () => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const toggleRocketPanel = useRocketStore((state) => state.togglePanel);
+  const isMobile = useIsMobile();
+  const activeSheet = useUiStore((state) => state.activeSheet);
+  const toggleSheet = useUiStore((state) => state.toggleSheet);
   const selected = bodiesById.get(selectedId);
+
+  // On phones the rocket panel and view controls become bottom sheets, so reflect
+  // sheet state on those buttons; on desktop the rocket button keeps its own panel.
+  const rocketActive = isMobile ? activeSheet === "rocket" : rocketPanelOpen;
+  const viewActive = activeSheet === "view";
 
   useEffect(() => {
     const openSearch = () => {
@@ -40,6 +50,16 @@ export const TopBar = () => {
       window.removeEventListener("solar:close-search", closeSearch);
     };
   }, []);
+
+  const handleRocket = () => {
+    setSearchOpen(false);
+    setHelpOpen(false);
+    if (isMobile) {
+      toggleSheet("rocket");
+    } else {
+      toggleRocketPanel();
+    }
+  };
 
   return (
     <header className="top-bar">
@@ -64,12 +84,29 @@ export const TopBar = () => {
         >
           <Search size={16} />
         </button>
+        {isMobile && (
+          <button
+            className={`icon-button ${viewActive ? "active" : ""}`}
+            type="button"
+            onClick={() => {
+              setSearchOpen(false);
+              setHelpOpen(false);
+              toggleSheet("view");
+            }}
+            title="View settings"
+            aria-label="View settings"
+            aria-pressed={viewActive}
+          >
+            <SlidersHorizontal size={16} />
+          </button>
+        )}
         <button
-          className={`icon-button ${rocketPanelOpen ? "active" : ""}`}
+          className={`icon-button ${rocketActive ? "active" : ""}`}
           type="button"
-          onClick={toggleRocketPanel}
+          onClick={handleRocket}
           title="Rocket launch"
           aria-label="Rocket launch"
+          aria-pressed={isMobile ? rocketActive : undefined}
         >
           <Rocket size={16} />
         </button>

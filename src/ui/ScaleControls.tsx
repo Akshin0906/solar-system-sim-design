@@ -2,6 +2,9 @@ import { Eye, Orbit, Route, Tags } from "lucide-react";
 import { SCALE_MODES, type LabelDensity, type ScaleMode } from "../simulation/units";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
+import { BottomSheet } from "./BottomSheet";
+import { useUiStore } from "./uiStore";
+import { useIsMobile } from "./useMediaQuery";
 
 const labelOptions: Array<{ id: LabelDensity; label: string }> = [
   { id: "minimal", label: "Minimal" },
@@ -20,9 +23,12 @@ export const ScaleControls = () => {
   const setShowTrails = useScaleStore((state) => state.setShowTrails);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
+  const isMobile = useIsMobile();
+  const activeSheet = useUiStore((state) => state.activeSheet);
+  const closeSheet = useUiStore((state) => state.closeSheet);
 
-  return (
-    <section className="scale-controls" aria-label="Scale and view controls">
+  const controls = (
+    <>
       <div className="segmented-control">
         {SCALE_MODES.map((item) => (
           <button
@@ -86,6 +92,20 @@ export const ScaleControls = () => {
         </label>
       </div>
       <p className="scale-note">{SCALE_MODES.find((item) => item.id === mode)?.note}</p>
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <BottomSheet open={activeSheet === "view"} onClose={closeSheet} label="View settings" title="View">
+        <div className="sheet-scale">{controls}</div>
+      </BottomSheet>
+    );
+  }
+
+  return (
+    <section className="scale-controls" aria-label="Scale and view controls">
+      {controls}
     </section>
   );
 };
