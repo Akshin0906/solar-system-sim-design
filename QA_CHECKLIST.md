@@ -124,8 +124,8 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Selecting a profile updates the category, confidence badge, and description.
 - [ ] Confidence is clearly labeled: Real, Estimated, or Speculative.
 - [ ] Launch from Earth shows a marker, outbound trail, and label in the scene.
-- [ ] Telemetry shows name, category, mission time, speed, distance traveled, and
-      distance from Earth, and all update as time advances.
+- [ ] Telemetry shows mission time, speed, distance traveled, distance from Earth,
+      and target range/arrival when applicable, and all update as time advances.
 - [ ] Distance traveled and distance from Earth differ once Earth has moved along its orbit.
 - [ ] Fast drives (e.g. Fusion Drive) show speed as a fraction of light speed (`% c`).
 - [ ] Reset rocket clears the marker, trail, and telemetry.
@@ -161,8 +161,8 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Rocket progress advances along the arc as time runs and updates when time is scrubbed.
 - [ ] After the transfer arrival date, the rocket remains visually attached to the current destination
       and the target distance reads 0 km instead of drifting from the old intercept point.
-- [ ] Telemetry shows Mission mode, Phase, Launch mode, Transfer time, Intercept date,
-      Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
+- [ ] Telemetry keeps the high-signal rows visible: mission time, speed, distance
+      fields, estimated arrival, and launch-window summary.
 - [ ] Transfer math is clearly labeled approximate and not a professional mission planner.
 - [ ] Launch-window quality changes with target/date and includes a phase offset.
 - [ ] Transfer preview to the Moon uses the simplified Earth-centered estimate.
