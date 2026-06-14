@@ -29,24 +29,26 @@ time. It has no destination cue, no target line, and no transfer math.
 
 ### Direct Aim
 
-Direct aim is the original simple model. At launch it freezes the destination's
-launch-time position and flies a straight line toward that fixed point.
+Direct aim is the simple moving-target model. At launch it predicts when the chosen
+rocket profile can reach the destination and flies a straight line toward that
+future intercept point.
 
 Important limitations:
 
-- It does not lead the target.
 - It does not curve under gravity.
 - It does not compute transfer windows.
-- The target keeps orbiting, so the rocket can visibly miss.
+- It assumes the rocket can hold a straight course to the predicted intercept.
+- After the intercept or flyby, the target keeps orbiting and the rocket keeps coasting.
 
 Telemetry still measures distance to the destination's current position, so the
-closest-approach readout shows the consequence of using a fixed aim.
+closest-approach readout shows whether the simple intercept lined up.
 
 ### Transfer Preview
 
 Transfer preview adds a separate approximate transfer model. For planets and dwarf
 planets it estimates a Hohmann-style heliocentric transfer between Earth's orbit and
-the destination orbit. For major moons outside Earth, the transfer targets the parent
+the destination orbit, then samples a phase-aware visual arc to the destination's
+arrival position. For major moons outside Earth, the transfer targets the parent
 planet's heliocentric orbit and clearly notes that local moon capture is not modeled.
 For the Moon, it uses a simplified Earth-centered parking-orbit transfer estimate.
 
@@ -148,7 +150,7 @@ npm run build
 
 Manual QA should confirm:
 
-- direct aim still works and can visibly miss a moving target,
+- direct aim still predicts a moving-target intercept,
 - free flight still works without destination cues,
 - transfer preview renders a curved arc,
 - telemetry updates while time runs and while time is scrubbed,

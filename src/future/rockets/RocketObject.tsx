@@ -98,7 +98,7 @@ export const RocketObject = () => {
         </>
       ) : (
         <Line
-          points={[view.launchScenePosition, view.scenePosition]}
+          points={view.directScenePoints ?? [view.launchScenePosition, view.scenePosition]}
           color={accent}
           lineWidth={1.4}
           transparent

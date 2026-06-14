@@ -165,7 +165,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Launch-window quality changes with target/date and includes a phase offset.
 - [ ] Transfer preview to a major moon explains that local moon capture is not modeled,
       except the Moon's simplified Earth-centered estimate.
-- [ ] Direct aim still uses the fixed launch-time target and can miss a moving body.
+- [ ] Direct aim predicts a moving-target straight-line intercept and can report Arrived near the target.
 - [ ] Low Earth orbit launch mode changes the direct/free-flight speed readout without
       changing planet or moon data.
 

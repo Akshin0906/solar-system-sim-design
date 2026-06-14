@@ -57,10 +57,22 @@ const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => [
   a[2] + (b[2] - a[2]) * t,
 ];
 
+const normalize = (v: Vec3): Vec3 => {
+  const length = vectorLength(v);
+  return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
+};
+
 const quadraticBezier = (a: Vec3, b: Vec3, c: Vec3, t: number): Vec3 => {
   const ab = lerp(a, b, t);
   const bc = lerp(b, c, t);
   return lerp(ab, bc, t);
+};
+
+const cubicBezier = (a: Vec3, b: Vec3, c: Vec3, d: Vec3, t: number): Vec3 => {
+  const ab = lerp(a, b, t);
+  const bc = lerp(b, c, t);
+  const cd = lerp(c, d, t);
+  return lerp(lerp(ab, bc, t), lerp(bc, cd, t), t);
 };
 
 const measurePolylineKm = (points: Vec3[]) =>
@@ -91,6 +103,11 @@ const circularSpeed = (muKm3S2: number, radiusKm: number) => Math.sqrt(muKm3S2 /
 
 const transferSpeed = (muKm3S2: number, radiusKm: number, transferSemiMajorAxisKm: number) =>
   Math.sqrt(muKm3S2 * (2 / radiusKm - 1 / transferSemiMajorAxisKm));
+
+const progradeTangentFromSun = ([x, _y, z]: Vec3): Vec3 => {
+  const tangent = normalize([-z, 0, x]);
+  return vectorLength(tangent) === 0 ? [0, 0, 1] : tangent;
+};
 
 const getTransferTarget = (destinationBody: CelestialBody, bodiesById: Map<string, CelestialBody>) => {
   if (destinationBody.type === "moon" && destinationBody.parentId && destinationBody.parentId !== EARTH_ID) {
@@ -239,27 +256,30 @@ export const sampleTransferArcKm = (
 ): TransferArc | null => {
   const earth = bodiesById.get(EARTH_ID);
   const destinationBody = bodiesById.get(estimate.destinationBodyId);
-  if (!earth || !destinationBody) {
+  const transferTargetBody = bodiesById.get(estimate.transferTargetBodyId) ?? destinationBody;
+  if (!earth || !destinationBody || !transferTargetBody) {
     return null;
   }
 
   const launchDate = new Date(launchDateMs);
   const arrivalDate = new Date(estimate.arrivalDateMs);
   const launchPointKm = getBodyPositionKm(earth, bodiesById, launchDate);
-  const interceptPointKm = getBodyPositionKm(
-    bodiesById.get(estimate.transferTargetBodyId) ?? destinationBody,
-    bodiesById,
-    arrivalDate,
-  );
+  const interceptPointKm = getBodyPositionKm(transferTargetBody, bodiesById, arrivalDate);
 
   if (estimate.centralBodyId === "earth") {
-    const chord = sub(interceptPointKm, launchPointKm);
-    const chordLength = vectorLength(chord);
-    const lift: Vec3 = [0, Math.max(chordLength * 0.24, EARTH_RADIUS_KM * 8), 0];
-    const control = add(lerp(launchPointKm, interceptPointKm, 0.48), lift);
-    const pointsKm = Array.from({ length: samples + 1 }, (_value, index) =>
-      quadraticBezier(launchPointKm, control, interceptPointKm, index / samples),
-    );
+    const destinationLocalArrivalKm = destinationBody.orbit
+      ? getOrbitPositionKm(destinationBody.orbit, arrivalDate)
+      : sub(interceptPointKm, getBodyPositionKm(earth, bodiesById, arrivalDate));
+    const localLaunchKm: Vec3 = [0, 0, 0];
+    const localChordLength = vectorLength(destinationLocalArrivalKm);
+    const localLift: Vec3 = [0, Math.max(localChordLength * 0.24, EARTH_RADIUS_KM * 5), 0];
+    const localControl = add(lerp(localLaunchKm, destinationLocalArrivalKm, 0.48), localLift);
+    const pointsKm = Array.from({ length: samples + 1 }, (_value, index) => {
+      const t = index / samples;
+      const sampleDate = new Date(launchDateMs + estimate.transferTimeSeconds * 1_000 * t);
+      const earthAtSampleKm = getBodyPositionKm(earth, bodiesById, sampleDate);
+      return add(earthAtSampleKm, quadraticBezier(localLaunchKm, localControl, destinationLocalArrivalKm, t));
+    });
 
     return {
       pointsKm,
@@ -269,22 +289,16 @@ export const sampleTransferArcKm = (
     };
   }
 
-  const earthLocalKm = getOrbitPositionKm(earth.orbit!, launchDate);
-  const launchAngle = angleFromSun(earthLocalKm);
-  const outward = estimate.destinationOrbitRadiusKm >= estimate.originOrbitRadiusKm;
-  const eccentricity =
-    Math.abs(estimate.destinationOrbitRadiusKm - estimate.originOrbitRadiusKm) /
-    (estimate.destinationOrbitRadiusKm + estimate.originOrbitRadiusKm);
-  const semiMajorAxis = estimate.transferSemiMajorAxisKm;
-  const parameter = semiMajorAxis * (1 - eccentricity * eccentricity);
-  const periapsisAngle = outward ? launchAngle : launchAngle - Math.PI;
+  const chordLength = vectorLength(sub(interceptPointKm, launchPointKm));
+  const controlDistance = Math.min(chordLength * 0.42, estimate.transferSemiMajorAxisKm * 0.85);
+  const launchTangent = progradeTangentFromSun(launchPointKm);
+  const interceptTangent = progradeTangentFromSun(interceptPointKm);
+  const controlOne = add(launchPointKm, mul(launchTangent, controlDistance));
+  const controlTwo = sub(interceptPointKm, mul(interceptTangent, controlDistance));
 
   const pointsKm = Array.from({ length: samples + 1 }, (_value, index) => {
     const t = index / samples;
-    const trueAnomaly = outward ? t * Math.PI : Math.PI - t * Math.PI;
-    const radiusKm = parameter / (1 + eccentricity * Math.cos(trueAnomaly));
-    const angle = periapsisAngle + trueAnomaly;
-    return [Math.cos(angle) * radiusKm, 0, Math.sin(angle) * radiusKm] as Vec3;
+    return cubicBezier(launchPointKm, controlOne, controlTwo, interceptPointKm, t);
   });
 
   return {
