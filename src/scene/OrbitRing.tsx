@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo } from "react";
-import * as THREE from "three";
+import { BufferGeometry, Line, LineBasicMaterial, Vector3, type Material } from "three";
 import { bodiesById } from "../data";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { sampleOrbitKm } from "../simulation/solveOrbit";
@@ -48,24 +48,24 @@ export const OrbitRing = memo(({ body, mode, positions, emphasis, highlight }: O
               moonBody: body,
             })
           : scaleVectorFromSun(point, mode);
-      return new THREE.Vector3(...scenePoint);
+      return new Vector3(...scenePoint);
     });
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({
+    const geometry = new BufferGeometry().setFromPoints(points);
+    const material = new LineBasicMaterial({
       color: highlight ? "#f4dfad" : body.render.orbitColor ?? "#d8c7a4",
       transparent: true,
       opacity: getOrbitOpacity(body, highlight, emphasis),
       depthWrite: false,
     });
 
-    return new THREE.Line(geometry, material);
+    return new Line(geometry, material);
   }, [body, mode, highlight, emphasis]);
 
   useEffect(() => {
     return () => {
       if (line) {
         line.geometry.dispose();
-        (line.material as THREE.Material).dispose();
+        (line.material as Material).dispose();
       }
     };
   }, [line]);

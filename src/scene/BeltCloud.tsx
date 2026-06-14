@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useThree } from "@react-three/fiber";
-import * as THREE from "three";
+import { BufferAttribute, BufferGeometry, Color } from "three";
 import { beltConfigs, type BeltConfig } from "../data/belts";
 import { scaleVectorFromSun, type ScaleMode } from "../simulation/units";
 
@@ -75,10 +75,10 @@ void main() {
 }
 `;
 
-const asteroidPalette = ["#d9c7aa", "#b7aa99", "#8c8580", "#c49a72"].map((color) => new THREE.Color(color));
-const kuiperPalette = ["#b7dbe5", "#8fb4c2", "#d6d2c1", "#a6816c"].map((color) => new THREE.Color(color));
-const asteroidAccent = new THREE.Color("#efd6aa");
-const kuiperAccent = new THREE.Color("#d8f1ff");
+const asteroidPalette = ["#d9c7aa", "#b7aa99", "#8c8580", "#c49a72"].map((color) => new Color(color));
+const kuiperPalette = ["#b7dbe5", "#8fb4c2", "#d6d2c1", "#a6816c"].map((color) => new Color(color));
+const asteroidAccent = new Color("#efd6aa");
+const kuiperAccent = new Color("#d8f1ff");
 
 const pickParticleColor = (random: () => number, type: BeltConfig["type"]) => {
   const palette = type === "asteroidBelt" ? asteroidPalette : kuiperPalette;
@@ -154,11 +154,11 @@ export const BeltCloud = ({ mode, opacityMultiplier = 1 }: BeltCloudProps) => {
           alphas[index] = isKuiper ? 0.34 + random() * 0.42 : 0.42 + random() * 0.46;
         }
 
-        const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute("particleColor", new THREE.BufferAttribute(colors, 3));
-        geometry.setAttribute("particleSize", new THREE.BufferAttribute(sizes, 1));
-        geometry.setAttribute("particleAlpha", new THREE.BufferAttribute(alphas, 1));
+        const geometry = new BufferGeometry();
+        geometry.setAttribute("position", new BufferAttribute(positions, 3));
+        geometry.setAttribute("particleColor", new BufferAttribute(colors, 3));
+        geometry.setAttribute("particleSize", new BufferAttribute(sizes, 1));
+        geometry.setAttribute("particleAlpha", new BufferAttribute(alphas, 1));
 
         return { belt, geometry, renderSettings: getBeltRenderSettings(belt, mode) };
       }),

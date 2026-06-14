@@ -1,7 +1,16 @@
 import { Html } from "@react-three/drei";
 import { ThreeEvent, useFrame } from "@react-three/fiber";
 import { memo, useMemo, useRef } from "react";
-import * as THREE from "three";
+import {
+  AdditiveBlending,
+  BackSide,
+  Color,
+  DoubleSide,
+  PerspectiveCamera,
+  Vector3,
+  type Group,
+  type Mesh,
+} from "three";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
@@ -75,12 +84,12 @@ const atmosphereFragmentShader = `
 `;
 
 export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabel, emphasis }: BodyMeshProps) => {
-  const groupRef = useRef<THREE.Group>(null);
-  const meshRef = useRef<THREE.Mesh>(null);
-  const cloudRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<Group>(null);
+  const meshRef = useRef<Mesh>(null);
+  const cloudRef = useRef<Mesh>(null);
   const labelRef = useRef<HTMLDivElement>(null);
-  const objectWorldPosition = useMemo(() => new THREE.Vector3(), []);
-  const cameraWorldPosition = useMemo(() => new THREE.Vector3(), []);
+  const objectWorldPosition = useMemo(() => new Vector3(), []);
+  const cameraWorldPosition = useMemo(() => new Vector3(), []);
   const focusBody = useSelectionStore((state) => state.focusBody);
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
@@ -107,7 +116,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
     () =>
       visual.atmosphereColor
         ? {
-            glowColor: { value: new THREE.Color(visual.atmosphereColor) },
+            glowColor: { value: new Color(visual.atmosphereColor) },
             opacity: { value: (visual.atmosphereOpacity ?? 0.12) * emphasisOpacity },
             power: { value: body.id === "earth" ? 2.55 : 2.25 },
           }
@@ -140,7 +149,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
 
     groupRef.current.getWorldPosition(objectWorldPosition);
     camera.getWorldPosition(cameraWorldPosition);
-    const cameraFovDeg = camera instanceof THREE.PerspectiveCamera ? camera.fov : undefined;
+    const cameraFovDeg = camera instanceof PerspectiveCamera ? camera.fov : undefined;
     const labelScale = getBodyLabelScale(mode, objectWorldPosition.distanceTo(cameraWorldPosition), cameraFovDeg).toFixed(4);
 
     if (labelRef.current.style.getPropertyValue("--body-label-scale") !== labelScale) {
@@ -163,7 +172,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
               color="#f7b260"
               transparent
               opacity={0.08 * emphasisOpacity}
-              blending={THREE.AdditiveBlending}
+              blending={AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
@@ -173,7 +182,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
               color="#ffd08a"
               transparent
               opacity={0.14 * emphasisOpacity}
-              blending={THREE.AdditiveBlending}
+              blending={AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
@@ -228,8 +237,8 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
               vertexShader={atmosphereVertexShader}
               fragmentShader={atmosphereFragmentShader}
               transparent
-              side={THREE.BackSide}
-              blending={THREE.AdditiveBlending}
+              side={BackSide}
+              blending={AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
@@ -240,7 +249,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
             <meshStandardMaterial
               map={ringTexture}
               color="#ffffff"
-              side={THREE.DoubleSide}
+              side={DoubleSide}
               transparent
               opacity={ringConfig.opacity * emphasisOpacity}
               roughness={0.94}
@@ -271,7 +280,7 @@ export const BodyMesh = memo(({ body, dateMs, mode, position, selected, showLabe
               color="#f1dfb8"
               transparent
               opacity={0.025}
-              blending={THREE.AdditiveBlending}
+              blending={AdditiveBlending}
               depthWrite={false}
             />
           </mesh>

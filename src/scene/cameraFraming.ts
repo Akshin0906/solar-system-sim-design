@@ -1,4 +1,4 @@
-import * as THREE from "three";
+import { Box3, MathUtils, Vector3 } from "three";
 import type { CelestialBody } from "../simulation/orbitalElements";
 
 export const CAMERA_FOV_DEG = 48;
@@ -11,12 +11,12 @@ export const MAX_CAMERA_NEAR = 0.1;
 export const FOCUS_FRAMING_SAFETY = 1.9;
 
 export type Bounds = {
-  center: THREE.Vector3;
+  center: Vector3;
   radius: number;
 };
 
 export const fitDistanceForRadius = (radius: number, fovDeg = CAMERA_FOV_DEG, safety = 1.55) => {
-  const halfFovRad = THREE.MathUtils.degToRad(fovDeg / 2);
+  const halfFovRad = MathUtils.degToRad(fovDeg / 2);
   return Math.max(MIN_FIT_RADIUS, (Math.max(radius, MIN_FIT_RADIUS) / Math.tan(halfFovRad)) * safety);
 };
 
@@ -42,7 +42,7 @@ export const surfaceMinDistanceForRadius = (radius: number) =>
   Math.max(radius * SURFACE_DISTANCE_RADIUS_MULTIPLIER, MIN_SURFACE_DISTANCE);
 
 export const cameraNearForTarget = (distanceToTarget: number, targetRadius = 0) => {
-  const distanceBasedNear = THREE.MathUtils.clamp(distanceToTarget * 0.02, PREFERRED_CAMERA_NEAR, MAX_CAMERA_NEAR);
+  const distanceBasedNear = MathUtils.clamp(distanceToTarget * 0.02, PREFERRED_CAMERA_NEAR, MAX_CAMERA_NEAR);
   const surfaceClearance = distanceToTarget - targetRadius;
 
   if (surfaceClearance <= 0) {
@@ -52,14 +52,14 @@ export const cameraNearForTarget = (distanceToTarget: number, targetRadius = 0) 
   return Math.max(Math.min(distanceBasedNear, surfaceClearance * 0.48), MIN_CAMERA_NEAR);
 };
 
-export const boundsForPoints = (points: THREE.Vector3[]): Bounds => {
+export const boundsForPoints = (points: Vector3[]): Bounds => {
   if (points.length === 0) {
-    return { center: new THREE.Vector3(), radius: 1 };
+    return { center: new Vector3(), radius: 1 };
   }
 
-  const box = new THREE.Box3().setFromPoints(points);
-  const center = new THREE.Vector3();
-  const size = new THREE.Vector3();
+  const box = new Box3().setFromPoints(points);
+  const center = new Vector3();
+  const size = new Vector3();
   box.getCenter(center);
   box.getSize(size);
   return { center, radius: Math.max(size.x, size.y, size.z) / 2 };
@@ -67,11 +67,11 @@ export const boundsForPoints = (points: THREE.Vector3[]): Bounds => {
 
 export const cameraOffset = (distance: number, mode: "overview" | "inner" | "outer" | "focus" | "moons") => {
   const directionByMode = {
-    overview: new THREE.Vector3(0.22, 0.58, 1),
-    inner: new THREE.Vector3(-0.28, 0.54, 1),
-    outer: new THREE.Vector3(-0.52, 0.58, 1),
-    focus: new THREE.Vector3(0.82, 0.46, 1),
-    moons: new THREE.Vector3(0.68, 0.42, 1),
+    overview: new Vector3(0.22, 0.58, 1),
+    inner: new Vector3(-0.28, 0.54, 1),
+    outer: new Vector3(-0.52, 0.58, 1),
+    focus: new Vector3(0.82, 0.46, 1),
+    moons: new Vector3(0.68, 0.42, 1),
   };
 
   return directionByMode[mode].normalize().multiplyScalar(distance);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import * as THREE from "three";
+import { BufferGeometry, Color, Float32BufferAttribute } from "three";
 import { AU_KM } from "../data/constants";
 import { scaleDistanceFromSun, type ScaleMode } from "../simulation/units";
 
@@ -20,7 +20,7 @@ const spokeCount = 16;
 const maxCueAu = 52;
 const centerGapAu = 0.36;
 
-const pushVertex = (vertices: number[], colors: number[], color: THREE.Color, x: number, z: number) => {
+const pushVertex = (vertices: number[], colors: number[], color: Color, x: number, z: number) => {
   vertices.push(x, 0, z);
   colors.push(color.r, color.g, color.b);
 };
@@ -29,9 +29,9 @@ export const EclipticCues = ({ mode, opacityMultiplier = 1 }: EclipticCuesProps)
   const geometry = useMemo(() => {
     const vertices: number[] = [];
     const colors: number[] = [];
-    const innerTone = new THREE.Color("#d4ba82");
-    const outerTone = new THREE.Color("#6f9dad");
-    const spokeTone = new THREE.Color("#536474");
+    const innerTone = new Color("#d4ba82");
+    const outerTone = new Color("#6f9dad");
+    const spokeTone = new Color("#536474");
 
     ringCuesAu.forEach(({ au, tone }) => {
       const radius = scaleDistanceFromSun(AU_KM * au, mode);
@@ -59,9 +59,9 @@ export const EclipticCues = ({ mode, opacityMultiplier = 1 }: EclipticCuesProps)
       pushVertex(vertices, colors, spokeColor, cos * outerRadius, sin * outerRadius);
     }
 
-    const cueGeometry = new THREE.BufferGeometry();
-    cueGeometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    cueGeometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    const cueGeometry = new BufferGeometry();
+    cueGeometry.setAttribute("position", new Float32BufferAttribute(vertices, 3));
+    cueGeometry.setAttribute("color", new Float32BufferAttribute(colors, 3));
 
     return cueGeometry;
   }, [mode]);

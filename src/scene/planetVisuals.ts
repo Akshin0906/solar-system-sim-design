@@ -1,4 +1,10 @@
-import * as THREE from "three";
+import {
+  CanvasTexture,
+  ClampToEdgeWrapping,
+  NoColorSpace,
+  RepeatWrapping,
+  SRGBColorSpace,
+} from "three";
 import type { CelestialBody } from "../simulation/orbitalElements";
 
 export type BodyEmphasis = "primary" | "related" | "normal" | "muted";
@@ -393,11 +399,11 @@ export const createSurfaceTexture = (body: CelestialBody) => {
   }
 
   context.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 4;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
 
@@ -438,11 +444,11 @@ export const createBodyBumpTexture = (body: CelestialBody) => {
   }
 
   context.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.NoColorSpace;
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = NoColorSpace;
   texture.anisotropy = 4;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
 
@@ -488,10 +494,10 @@ export const createCloudTexture = (body: CelestialBody) => {
   }
 
   context.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.wrapS = RepeatWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
 
@@ -535,11 +541,11 @@ export const createRingTexture = (body: CelestialBody, innerToOuterRatio: number
   }
 
   context.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 4;
-  texture.wrapS = THREE.ClampToEdgeWrapping;
-  texture.wrapT = THREE.ClampToEdgeWrapping;
+  texture.wrapS = ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
 

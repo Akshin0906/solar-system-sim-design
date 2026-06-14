@@ -1,5 +1,3 @@
-import { useScaleStore } from "../../simulation/scaleStore";
-import { useTimeStore } from "../../simulation/timeStore";
 import { formatDistance } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
 import {
@@ -10,13 +8,13 @@ import {
 } from "./missionOptions";
 import { confidenceLabel, type RocketProfile } from "./rocketCatalog";
 import {
-  computeRocketView,
   formatDeltaV,
   formatMissionTime,
   formatPhaseAngle,
   formatSpeed,
   missionStatusLabel,
 } from "./rocketState";
+import { useRocketView } from "./useRocketView";
 
 type RocketTelemetryProps = {
   profile: RocketProfile;
@@ -38,10 +36,8 @@ export const RocketTelemetry = ({
   launchMode,
   launchDateMs,
 }: RocketTelemetryProps) => {
-  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
-  const mode = useScaleStore((state) => state.mode);
-  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode, launchMode);
-  const preLaunch = simulationDateMs < launchDateMs;
+  const view = useRocketView(profile, destination, missionMode, launchMode, launchDateMs);
+  const preLaunch = view.status === "pre-launch";
   const target = view.destination;
   const transfer = view.transfer;
   const launchModeOption = getLaunchModeOption(view.launchMode);

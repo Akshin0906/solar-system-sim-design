@@ -1,23 +1,19 @@
 import { Html, Line } from "@react-three/drei";
 import { useMemo } from "react";
-import * as THREE from "three";
-import { useScaleStore } from "../../simulation/scaleStore";
-import { useTimeStore } from "../../simulation/timeStore";
-import { destinationsById } from "./destinationCatalog";
-import { rocketsById, type RocketProfile } from "./rocketCatalog";
-import { computeRocketView } from "./rocketState";
-import { useRocketStore } from "./rocketStore";
+import { AdditiveBlending, DoubleSide, Quaternion, Shape, Vector3 } from "three";
+import type { RocketProfile } from "./rocketCatalog";
+import { getCachedRocketView, useActiveRocketView } from "./useRocketView";
 
 // Renders the active rocket (and its destination cues) in the 3D scene.
 //
 // IMPORTANT: this deliberately does NOT follow the MotionTrail/OrbitRing pattern of
-// imperatively constructing `new THREE.Line(...)` inside a useMemo keyed on the
+// imperatively constructing Three.js line objects inside a useMemo keyed on the
 // frame date and disposing it by hand. The marker, the destination highlight, and
 // the rings use declarative R3F geometry/materials (which React Three Fiber disposes
 // automatically on unmount); the path and target lines use drei's <Line>, which
 // manages its own geometry lifecycle.
 
-const UP = new THREE.Vector3(0, 1, 0);
+const UP = new Vector3(0, 1, 0);
 const noopRaycast = () => null;
 const TARGET_COLOR = "#9fd2d9";
 const BODY_COLOR = "#e9f0f2";
@@ -60,7 +56,7 @@ const EXHAUST_TRAILS: [number, number, number][][] = [
 ];
 
 const createFinShape = () => {
-  const shape = new THREE.Shape();
+  const shape = new Shape();
   shape.moveTo(0.03, -0.085);
   shape.lineTo(0.092, -0.13);
   shape.lineTo(0.055, 0.035);
@@ -70,7 +66,7 @@ const createFinShape = () => {
 };
 
 const createSolarSailShape = () => {
-  const shape = new THREE.Shape();
+  const shape = new Shape();
   shape.moveTo(0, 0.24);
   shape.lineTo(0.24, 0);
   shape.lineTo(0, -0.24);
@@ -88,35 +84,34 @@ const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
 };
 
 export const RocketObject = () => {
-  const activeRocketId = useRocketStore((state) => state.activeRocketId);
-  const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
-  const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
-  const activeLaunchMode = useRocketStore((state) => state.activeLaunchMode);
-  const launchDateMs = useRocketStore((state) => state.launchDateMs);
-  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
-  const mode = useScaleStore((state) => state.mode);
-
-  const profile = activeRocketId ? rocketsById.get(activeRocketId) : undefined;
-  const destination = activeDestinationId ? destinationsById.get(activeDestinationId) ?? null : null;
+  const { activeLaunchMode, activeMissionMode, destination, launchDateMs, mode, profile, view } =
+    useActiveRocketView();
 
   // Orientation is frozen for the whole flight, so it only depends on the launch.
   const orientation = useMemo(() => {
     if (!profile || launchDateMs === null) {
       return [0, 0, 0, 1] as const;
     }
-    const view = computeRocketView(profile, launchDateMs, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode);
-    const dir = new THREE.Vector3(...view.sceneDirection);
+    const launchView = getCachedRocketView(
+      profile,
+      launchDateMs,
+      launchDateMs,
+      mode,
+      destination,
+      activeMissionMode,
+      activeLaunchMode,
+    );
+    const dir = new Vector3(...launchView.sceneDirection);
     if (dir.lengthSq() === 0) {
       return [0, 0, 0, 1] as const;
     }
-    return new THREE.Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
+    return new Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
   }, [profile, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode]);
 
-  if (!profile || launchDateMs === null) {
+  if (!profile || launchDateMs === null || !view) {
     return null;
   }
 
-  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, activeMissionMode, activeLaunchMode);
   const markerScale = mode === "real" || mode === "readable" ? 2.4 : 1;
   const accent = profile.accentColor;
   const solarSail = isSolarSailProfile(profile);
@@ -156,7 +151,7 @@ export const RocketObject = () => {
           </mesh>
           <mesh position={transfer.interceptScenePosition} raycast={noopRaycast}>
             <ringGeometry args={[0.11 * markerScale, 0.15 * markerScale, 28]} />
-            <meshBasicMaterial color={TARGET_COLOR} transparent opacity={0.68} side={THREE.DoubleSide} depthWrite={false} />
+            <meshBasicMaterial color={TARGET_COLOR} transparent opacity={0.68} side={DoubleSide} depthWrite={false} />
           </mesh>
           <mesh position={transfer.targetArrivalScenePosition} raycast={noopRaycast}>
             <sphereGeometry args={[0.045 * markerScale, 12, 12]} />
@@ -200,7 +195,7 @@ export const RocketObject = () => {
                 color={TARGET_COLOR}
                 transparent
                 opacity={0.05}
-                blending={THREE.AdditiveBlending}
+                blending={AdditiveBlending}
                 depthWrite={false}
               />
             </mesh>
@@ -216,7 +211,7 @@ export const RocketObject = () => {
             color={accent}
             transparent
             opacity={solarSail ? 0.22 : 0.3}
-            blending={THREE.AdditiveBlending}
+            blending={AdditiveBlending}
             depthWrite={false}
           />
         </mesh>
@@ -234,7 +229,7 @@ export const RocketObject = () => {
                   metalness={0.05}
                   transparent
                   opacity={0.38}
-                  side={THREE.DoubleSide}
+                  side={DoubleSide}
                   depthWrite={false}
                 />
               </mesh>
@@ -302,7 +297,7 @@ export const RocketObject = () => {
                   emissiveIntensity={0.16}
                   roughness={0.42}
                   metalness={0.18}
-                  side={THREE.DoubleSide}
+                  side={DoubleSide}
                 />
               </mesh>
             </group>
@@ -325,7 +320,7 @@ export const RocketObject = () => {
               color={ENGINE_CORE_COLOR}
               transparent
               opacity={0.82}
-              blending={THREE.AdditiveBlending}
+              blending={AdditiveBlending}
               depthWrite={false}
             />
           </mesh>
@@ -335,8 +330,8 @@ export const RocketObject = () => {
               color={ENGINE_GLOW_COLOR}
               transparent
               opacity={0.28}
-              blending={THREE.AdditiveBlending}
-              side={THREE.DoubleSide}
+              blending={AdditiveBlending}
+              side={DoubleSide}
               depthWrite={false}
             />
           </mesh>
@@ -361,7 +356,7 @@ export const RocketObject = () => {
               metalness={0}
               transparent
               opacity={0.18}
-              blending={THREE.AdditiveBlending}
+              blending={AdditiveBlending}
               depthWrite={false}
             />
           </mesh>

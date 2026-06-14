@@ -1,7 +1,7 @@
 import { OrbitControls } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
-import * as THREE from "three";
+import { Vector3 } from "three";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import type { Vec3 } from "../simulation/orbitalElements";
@@ -21,9 +21,9 @@ type CameraRigProps = {
   mode: ScaleMode;
 };
 
-const asVector = (value: Vec3) => new THREE.Vector3(value[0], value[1], value[2]);
+const asVector = (value: Vec3) => new Vector3(value[0], value[1], value[2]);
 
-const distanceBetween = (a: THREE.Vector3, b: THREE.Vector3) => a.distanceTo(b);
+const distanceBetween = (a: Vector3, b: Vector3) => a.distanceTo(b);
 
 const shouldUpdateRange = (current: number, next: number, absoluteEpsilon: number, relativeEpsilon: number) =>
   Math.abs(current - next) > Math.max(absoluteEpsilon, Math.abs(next) * relativeEpsilon);
@@ -54,7 +54,7 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
   const controlsTargetRadius = controlsTargetBody ? getBodySceneRadius(controlsTargetBody, mode) : 0;
 
   const desired = useMemo(() => {
-    const selectedPosition = positions[selectedId] ? asVector(positions[selectedId]) : new THREE.Vector3();
+    const selectedPosition = positions[selectedId] ? asVector(positions[selectedId]) : new Vector3();
     const pointsForIds = (ids: string[]) =>
       ids.flatMap((id) => {
         const position = positions[id];
@@ -66,7 +66,7 @@ export const CameraRig = ({ positions, mode }: CameraRigProps) => {
         .filter((body) => body.parentId === "sun" && (body.type === "planet" || body.id === "pluto"))
         .map((body) => body.id);
       const bounds = boundsForPoints(pointsForIds(["sun", ...overviewPoints]));
-      const target = mode === "real" || mode === "readable" ? bounds.center : new THREE.Vector3(0, 0, 0);
+      const target = mode === "real" || mode === "readable" ? bounds.center : new Vector3(0, 0, 0);
       const fittedDistance = fitDistanceForRadius(bounds.radius, 48, mode === "real" || mode === "readable" ? 1.9 : 1.42);
       const maxDistance =
         mode === "real" || mode === "readable"
