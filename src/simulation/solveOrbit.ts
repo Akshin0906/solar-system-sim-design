@@ -3,6 +3,10 @@ import type { CelestialBody, Orbit, Vec3 } from "./orbitalElements";
 
 const TWO_PI = Math.PI * 2;
 const JULIAN_DAYS_PER_CENTURY = 36_525;
+// The propagator below only handles bound, elliptic orbits. Clamp just shy of 1 so
+// parabolic/hyperbolic elements (or eccentricity that drifts past 1 via secular
+// rates) degrade to a closed orbit instead of emitting NaN into the scene.
+const MAX_ELLIPTIC_ECCENTRICITY = 0.999;
 
 type ResolvedOrbitElements = {
   semiMajorAxisKm: number;
@@ -104,7 +108,9 @@ export const getOrbitElementsAtDate = (orbit: Orbit, date: Date): ResolvedOrbitE
 
 const getPositionFromElementsKm = (elements: ResolvedOrbitElements): Vec3 => {
   const meanAnomalyRad = degToRad(elements.meanAnomalyDeg);
-  const eccentricity = elements.eccentricity;
+  // sqrt(1 - e^2) and the (1 - e cos E) Newton step below go imaginary/degenerate
+  // for e >= 1; clamp so bad data never poisons Three.js transforms with NaN.
+  const eccentricity = Math.min(Math.max(elements.eccentricity, 0), MAX_ELLIPTIC_ECCENTRICITY);
   const eccentricAnomaly = solveEccentricAnomaly(meanAnomalyRad, eccentricity);
 
   const trueAnomaly = Math.atan2(

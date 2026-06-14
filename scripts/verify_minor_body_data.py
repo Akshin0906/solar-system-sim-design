@@ -34,7 +34,9 @@ MAJOR_MOONS = {
     "ariel": dict(a_km=190_900, period_days=2.52, eccentricity=0.0012, inclination_deg=0.31),
     "umbriel": dict(a_km=266_000, period_days=4.144, eccentricity=0.0039, inclination_deg=0.36),
     "miranda": dict(a_km=129_900, period_days=1.413, eccentricity=0.0013, inclination_deg=4.338),
-    "triton": dict(a_km=354_759, period_days=5.877, eccentricity=0.000016, inclination_deg=156.865, retrograde=True),
+    # Inclination 156.865° (>90°) already produces retrograde motion; the data must
+    # NOT also set the retrograde flag, or the two cancel. Assert the flag stays off.
+    "triton": dict(a_km=354_759, period_days=5.877, eccentricity=0.000016, inclination_deg=156.865, retrograde=False),
 }
 
 

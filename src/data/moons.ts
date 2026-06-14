@@ -120,10 +120,12 @@ export const majorMoons: CelestialBody[] = [
     inclinationDeg: 4.338,
     meanAnomalyAtEpochDeg: 287,
   }),
+  // Triton's 156.865° inclination already encodes retrograde motion in the standard
+  // frame, so it must NOT also set `retrograde: true` — the two encodings cancel and
+  // make Triton orbit Neptune prograde (the wrong way). Inclination alone is correct.
   moon("triton", "Triton", "neptune", 1_353.4, 354_759, 5.877, "#c6d3d7", {
     eccentricity: 0.000016,
     inclinationDeg: 156.865,
     meanAnomalyAtEpochDeg: 53,
-    retrograde: true,
   }),
 ];
