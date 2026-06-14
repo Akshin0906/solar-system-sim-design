@@ -1,10 +1,12 @@
-import { CalendarDays, Rocket, Search, Settings2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarDays, CircleHelp, Rocket, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { bodiesById } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { useRocketStore } from "../future/rockets/rocketStore";
 import { SearchCommand } from "./SearchCommand";
+import { HelpPopover } from "./HelpPopover";
+import { commandKey } from "./shortcuts";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -16,6 +18,8 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 
 export const TopBar = () => {
   const [searchOpen, setSearchOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpButtonRef = useRef<HTMLButtonElement>(null);
   const selectedId = useSelectionStore((state) => state.selectedId);
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
@@ -23,7 +27,10 @@ export const TopBar = () => {
   const selected = bodiesById.get(selectedId);
 
   useEffect(() => {
-    const openSearch = () => setSearchOpen(true);
+    const openSearch = () => {
+      setHelpOpen(false);
+      setSearchOpen(true);
+    };
     const closeSearch = () => setSearchOpen(false);
 
     window.addEventListener("solar:open-search", openSearch);
@@ -46,10 +53,13 @@ export const TopBar = () => {
       </div>
       <div className="top-actions">
         <button
-          className="icon-button"
+          className={`icon-button ${searchOpen ? "active" : ""}`}
           type="button"
-          onClick={() => setSearchOpen((value) => !value)}
-          title="Search objects"
+          onClick={() => {
+            setHelpOpen(false);
+            setSearchOpen((value) => !value);
+          }}
+          title={`Search objects (/ or ${commandKey})`}
           aria-label="Search objects"
         >
           <Search size={16} />
@@ -63,11 +73,25 @@ export const TopBar = () => {
         >
           <Rocket size={16} />
         </button>
-        <button className="icon-button" type="button" title="View settings" aria-label="View settings">
-          <Settings2 size={16} />
+        <button
+          ref={helpButtonRef}
+          className={`icon-button ${helpOpen ? "active" : ""}`}
+          type="button"
+          onClick={() => {
+            setSearchOpen(false);
+            setHelpOpen((value) => !value);
+          }}
+          title="Help & shortcuts"
+          aria-label="Help and shortcuts"
+          aria-haspopup="dialog"
+          aria-expanded={helpOpen}
+          aria-controls="help-popover"
+        >
+          <CircleHelp size={16} />
         </button>
       </div>
       <SearchCommand open={searchOpen} onClose={() => setSearchOpen(false)} />
+      <HelpPopover open={helpOpen} onClose={() => setHelpOpen(false)} triggerRef={helpButtonRef} />
     </header>
   );
 };

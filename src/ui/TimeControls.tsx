@@ -1,10 +1,17 @@
-import { Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
+import { CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
 import { DAY_MS, TIME_PRESETS, type TimePresetId } from "../data/constants";
 import {
   getDateMsFromEpochDays,
   getDaysFromEpoch,
   useTimeStore,
 } from "../simulation/timeStore";
+import { formatNowDelta, formatTimeScale } from "../simulation/units";
+
+const scrubDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+});
 
 const minScrubDays = -365.256 * 100;
 const maxScrubDays = 365.256 * 100;
@@ -36,6 +43,8 @@ export const TimeControls = () => {
   const setTimeScale = useTimeStore((state) => state.setTimeScale);
   const setSimulationDateMs = useTimeStore((state) => state.setSimulationDateMs);
   const scrubDays = Math.max(minScrubDays, Math.min(maxScrubDays, getDaysFromEpoch(simulationDateMs)));
+  const speedLabel = formatTimeScale(timeScale);
+  const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
 
   return (
     <section className="time-controls" aria-label="Time controls">
@@ -57,7 +66,16 @@ export const TimeControls = () => {
       >
         {direction === 1 ? <RotateCw size={16} /> : <RotateCcw size={16} />}
       </button>
-      <select value={preset} onChange={(event) => setPreset(event.target.value as TimePresetId)} aria-label="Speed preset">
+      <select
+        value={preset}
+        onChange={(event) => {
+          if (event.target.value !== "custom") {
+            setPreset(event.target.value as TimePresetId);
+          }
+        }}
+        aria-label="Speed preset"
+      >
+        {preset === "custom" && <option value="custom">Custom</option>}
         {TIME_PRESETS.map((item) => (
           <option key={item.id} value={item.id}>
             {item.label}
@@ -65,6 +83,7 @@ export const TimeControls = () => {
         ))}
       </select>
       <label className="range-shell speed-range">
+        <Gauge size={14} aria-hidden />
         <input
           type="range"
           min={0}
@@ -73,9 +92,12 @@ export const TimeControls = () => {
           value={speedToSlider(timeScale)}
           onChange={(event) => setTimeScale(sliderToSpeed(Number(event.target.value)))}
           aria-label="Speed"
+          aria-valuetext={speedLabel}
         />
+        <span className="range-value">{speedLabel}</span>
       </label>
       <label className="range-shell scrub-range">
+        <CalendarClock size={14} aria-hidden />
         <input
           type="range"
           min={minScrubDays}
@@ -84,7 +106,9 @@ export const TimeControls = () => {
           value={scrubDays}
           onChange={(event) => setSimulationDateMs(getDateMsFromEpochDays(Number(event.target.value)))}
           aria-label="Timeline"
+          aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}
         />
+        <span className="range-value">{nowDeltaLabel}</span>
       </label>
       <button className="reset-time" type="button" onClick={() => setSimulationDateMs(Date.now())}>
         Now

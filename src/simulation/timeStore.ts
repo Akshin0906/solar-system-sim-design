@@ -6,7 +6,7 @@ type TimeState = {
   simulationDateMs: number;
   timeScale: number;
   direction: 1 | -1;
-  preset: TimePresetId;
+  preset: TimePresetId | "custom";
   setPaused: (isPaused: boolean) => void;
   togglePaused: () => void;
   tick: (elapsedRealSeconds: number) => void;
@@ -47,9 +47,12 @@ export const useTimeStore = create<TimeState>((set, get) => ({
     set({ preset: match.id, timeScale: match.secondsPerSecond });
   },
   setTimeScale: (timeScale) => {
-    const nearestPreset =
-      TIME_PRESETS.find((item) => Math.abs(item.secondsPerSecond - timeScale) < 1) ?? undefined;
-    set({ timeScale, preset: nearestPreset?.id ?? "day" });
+    // Only show a preset label when the scale is genuinely at that preset (within
+    // 1%); otherwise report "custom" so the dropdown never misrepresents the speed.
+    const nearestPreset = TIME_PRESETS.find(
+      (item) => Math.abs(item.secondsPerSecond - timeScale) <= item.secondsPerSecond * 0.01,
+    );
+    set({ timeScale, preset: nearestPreset ? nearestPreset.id : "custom" });
   },
   setSimulationDateMs: (simulationDateMs) => set({ simulationDateMs }),
 }));

@@ -13,7 +13,9 @@ The app is a working 3D solar system MVP with:
 - Procedural planet/cloud visuals.
 - Camera framing utilities and verification.
 - Production service-worker generation.
-- Future rocket scaffolding, but no rocket UI or simulation yet.
+- Educational rocket feature implemented in `src/future/rockets/`: launch panel, rocket
+  catalog, simple speed-profile flight model, and destination targeting (Moon, Mars,
+  Jupiter, Saturn, Neptune). See `ROCKETS.md`. Patched conics / transfer orbits remain future.
 
 ## Immediate Priority
 

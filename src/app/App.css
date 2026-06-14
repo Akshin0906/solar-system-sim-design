@@ -18,6 +18,7 @@
   --cyan: #8fc7cc;
   --clay: #c9745c;
   --radius: 8px;
+  --focus: rgba(143, 199, 204, 0.75);
 }
 
 * {
@@ -41,6 +42,20 @@ input {
 
 button {
   color: inherit;
+}
+
+/* One consistent keyboard-focus ring for every control. */
+:where(button, select, input, [role="button"]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* We manage focus visibility via :focus-visible; suppress the native ring only
+   on pointer focus for the controls that previously hard-cleared their outline. */
+.search-input-wrap input:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
 }
 
 .app-shell {
@@ -70,6 +85,7 @@ button {
 .object-inspector,
 .time-controls,
 .search-popover,
+.help-popover,
 .rocket-panel {
   pointer-events: auto;
   border: 1px solid var(--hairline);
@@ -199,7 +215,6 @@ button {
 .search-input-wrap input {
   min-width: 0;
   border: 0;
-  outline: 0;
   color: #f5f1e8;
   background: transparent;
 }
@@ -234,6 +249,72 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+}
+
+.help-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: grid;
+  gap: 8px;
+  width: min(300px, calc(100vw - 32px));
+  padding: 10px;
+  border-radius: var(--radius);
+}
+
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.help-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.help-list div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.help-list dt {
+  color: rgba(245, 241, 232, 0.86);
+  font-size: 12px;
+}
+
+.help-list dd {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.help-divider {
+  height: 1px;
+  background: var(--hairline);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 2px 5px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 5px;
+  background: rgba(245, 241, 232, 0.06);
+  color: rgba(245, 241, 232, 0.86);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
 }
 
 .scale-controls {
@@ -290,7 +371,6 @@ select {
   width: 100%;
   min-width: 0;
   border: 0;
-  outline: 0;
   color: #f5f1e8;
   background: transparent;
 }
@@ -441,12 +521,28 @@ option {
 .range-shell {
   display: flex;
   align-items: center;
+  gap: 8px;
   min-width: 0;
   height: 34px;
   padding: 0 9px;
   border: 1px solid var(--hairline);
   border-radius: 7px;
   background: rgba(0, 0, 0, 0.16);
+}
+
+.range-shell > svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.range-value {
+  flex: none;
+  min-width: 54px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
 input[type="range"] {
@@ -512,13 +608,26 @@ input[type="range"] {
   position: absolute;
   left: 16px;
   top: 312px;
-  display: grid;
-  width: min(284px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
   gap: 10px;
+  width: min(284px, calc(100vw - 32px));
   padding: 12px;
   border-radius: var(--radius);
-  max-height: calc(100vh - 312px - 88px);
+  max-height: calc(100vh - 312px - 74px);
+  overflow: hidden;
+}
+
+.rocket-panel-body {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
   overflow: auto;
+}
+
+.rocket-panel-actions {
+  display: grid;
+  gap: 8px;
 }
 
 .rocket-panel-head {
@@ -568,6 +677,11 @@ input[type="range"] {
 .rocket-select-label {
   color: var(--muted);
   font-size: 11px;
+}
+
+.rocket-select select:disabled {
+  color: rgba(245, 241, 232, 0.42);
+  cursor: not-allowed;
 }
 
 .rocket-meta {
@@ -635,25 +749,29 @@ input[type="range"] {
   white-space: nowrap;
 }
 
-.rocket-status.departing {
-  border-color: rgba(217, 173, 105, 0.42);
-  background: rgba(217, 173, 105, 0.14);
-  color: #f3d49a;
-}
-
-.rocket-status.cruising {
+.rocket-status.pre-launch,
+.rocket-status.coast {
   border-color: rgba(245, 241, 232, 0.2);
   background: rgba(245, 241, 232, 0.07);
   color: rgba(245, 241, 232, 0.82);
 }
 
-.rocket-status.approaching {
+.rocket-status.burn,
+.rocket-status.flyby {
+  border-color: rgba(217, 173, 105, 0.42);
+  background: rgba(217, 173, 105, 0.14);
+  color: #f3d49a;
+}
+
+.rocket-status.transfer,
+.rocket-status.approach,
+.rocket-status.arrived {
   border-color: rgba(143, 199, 204, 0.46);
   background: rgba(143, 199, 204, 0.16);
   color: #bfe4e6;
 }
 
-.rocket-status.passed {
+.rocket-status.missed {
   border-color: rgba(201, 116, 92, 0.46);
   background: rgba(201, 116, 92, 0.16);
   color: #e9a88f;
@@ -741,7 +859,7 @@ input[type="range"] {
 
 .rocket-readout {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   margin: 0;
 }
 

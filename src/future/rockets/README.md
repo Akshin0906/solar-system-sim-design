@@ -1,9 +1,27 @@
-# Future Rocket Module
+# Rocket Module
 
-Rocket launches are intentionally outside the MVP. This folder reserves the integration point for later phases so flight models, vehicle catalogs, and mission UI can attach to the existing simulation stores and scene without rewriting the solar-system renderer.
+This folder contains the educational rocket-launch layer. The module is active, but
+it is still approximate: it is not a professional trajectory design tool.
 
-Planned layers:
+## Layers
 
-- `rocketCatalog.ts`: editable rocket profiles and assumptions.
-- `flightModel.ts`: simple profile, patched-conic, or sandbox flight propagation.
-- Future UI: launch mode, destination, mission elapsed time, velocity, and confidence labeling.
+- `rocketCatalog.ts`: rocket profile data, assumptions, and confidence labels.
+- `destinationCatalog.ts`: grouped destinations mapped to existing celestial body IDs.
+- `missionOptions.ts`: direct/transfer mission modes and launch assumptions.
+- `flightModel.ts`: pure closed-form speed and distance profile for direct/free flight.
+- `transferModel.ts`: pure Hohmann-style transfer estimates and sampled transfer arcs.
+- `rocketState.ts`: derived view model for scene positions, telemetry, status, and
+  transfer visuals.
+- `rocketStore.ts`: selected and active launch identity.
+- `RocketLauncherPanel.tsx`: compact controls.
+- `RocketTelemetry.tsx`: live readout formatting.
+- `RocketObject.tsx`: scene marker, trails, transfer arcs, and destination cues.
+
+## Rules
+
+- Do not mutate celestial body data.
+- Keep direct/free-flight behavior working when changing transfer preview.
+- Keep transfer math pure and approximate labels visible.
+- Add or update Python math verification whenever changing arithmetic.
+- Keep the default solar-system experience uncluttered; the rocket panel stays hidden
+  until opened.

@@ -2,6 +2,48 @@
 
 Use this checklist after meaningful scene, UI, scale, camera, time, or service-worker changes.
 
+## Latest QA Run - 2026-06-14 (Rocket Phase 2)
+
+- `npm run verify:math` passed, including `scripts/verify_rocket_transfer_math.py`.
+- `npm run build` passed and regenerated the service worker.
+- Dev server loaded at `http://127.0.0.1:5176/`; 5173-5175 were already in use.
+- Desktop 1280 x 720: canvas rendered, rocket panel hidden by default, no document
+  overflow, no console errors.
+- Rocket panel showed grouped destinations, disabled Mission mode for Free flight, and
+  exposed Direct aim, Transfer preview, Earth departure, LEO, and Surface options.
+- Free flight with LEO launched successfully; telemetry showed Direct aim, LEO launch
+  mode, and the expected higher direct speed readout.
+- Direct aim to Mars launched successfully with no transfer note and destination
+  telemetry populated.
+- Transfer preview to Mars launched successfully; telemetry showed Transfer preview,
+  Transfer phase, transfer time, intercept date, launch-window quality, ideal phase,
+  and delta-v. The curved transfer cue rendered in the scene with no console errors.
+- Desktop screenshot checked: panel text fit, actions stayed reachable, no UI overlap.
+- Phone viewport 390 x 844: no overflow, inspector hidden while rocket panel was open,
+  rocket panel sat between scale controls and time controls, transfer telemetry fit
+  without horizontal overflow, no console errors.
+- Time stepping with the UI updated transfer telemetry and the top date.
+- Timeline range scrubber was identified (`aria-label="Timeline"`), but direct fill was
+  rejected by the browser range control and coordinate dragging did not move the native
+  slider in the in-app Browser. Recheck physical range dragging before strict release sign-off.
+
+## Latest QA Run - 2026-06-13 (Rocket Destination Targeting)
+
+- `npm run verify:math` passed (destination feature does not touch orbital math).
+- `tsc --noEmit` and `npm run build` passed; service worker regenerated.
+- Desktop 1280×800 and phone 390×844 checked in browser, no console errors.
+- Target selector offers Free flight, Moon, Mars, Jupiter, Saturn, Neptune.
+- Launched Saturn V → Mars and → Jupiter: rocket + gold trail render, a cyan dashed line
+  connects the rocket to the target, and the target body shows a subtle highlight ring.
+- Telemetry adds destination, distance-to-target, arrival estimate, closest approach, and
+  mission status; distance-to-target changed over time (Jupiter 6.17 → 4.11 AU) and status
+  progressed Departing → Cruising → Approaching.
+- Free flight still launches outward with no destination cues and no destination rows.
+- Reset clears the mission; closing the panel keeps the rocket flying.
+- Panel header and Launch/Reset stay pinned while the body scrolls; all telemetry rows and
+  Reset remained visible at 1280×800 with no overlap. Phone docked the panel between the
+  scale and time controls with the inspector hidden while open; no horizontal overflow.
+
 ## Latest QA Run - 2026-06-13 (Rocket MVP)
 
 - `npm run verify:math` passed (rocket feature does not touch orbital math).
@@ -93,6 +135,39 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] No panel overlap on phone (390×844); the inspector is hidden while the panel is open
       and returns when it is closed.
 - [ ] No console errors after launching, resetting, and switching scale modes.
+
+## Rocket Destination Targeting Checks
+
+- [ ] The Target selector groups Free flight, planets, dwarf planets, and major moon targets.
+- [ ] The mission mode selector offers Direct aim and Transfer preview, and disables for Free flight.
+- [ ] The launch assumption selector offers Earth departure, Low Earth orbit, and Surface launch.
+- [ ] The Launch button label reflects the target and mission mode (e.g. "Launch to Mars", "Preview transfer to Mars", "Launch from Earth").
+- [ ] Launching toward a destination shows a subtle highlight ring on the target body.
+- [ ] Direct aim shows a straight outbound path and a thin dashed line to the selected destination.
+- [ ] Destination telemetry shows the target name, distance to target, estimated arrival,
+      and closest approach.
+- [ ] Distance to target changes over time (decreases while approaching).
+- [ ] Mission phase updates through appropriate values such as Burn, Coast, Approach, Flyby, Arrived, or Missed.
+- [ ] Free flight launches outward with no destination cues and no destination telemetry rows.
+- [ ] Reset clears the destination mission, target highlight, and target line.
+- [ ] All telemetry rows and the Reset button remain reachable (header/actions stay pinned).
+- [ ] Destination launches do not move or modify any planet/moon.
+- [ ] No console errors after selecting destinations, launching, and resetting.
+
+## Rocket Transfer Preview Checks
+
+- [ ] Transfer preview renders a curved transfer arc instead of only a straight line.
+- [ ] The arc shows a launch marker, current rocket marker, and intercept/arrival cue.
+- [ ] Rocket progress advances along the arc as time runs and updates when time is scrubbed.
+- [ ] Telemetry shows Mission mode, Phase, Launch mode, Transfer time, Intercept date,
+      Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
+- [ ] Transfer math is clearly labeled approximate and not a professional mission planner.
+- [ ] Launch-window quality changes with target/date and includes a phase offset.
+- [ ] Transfer preview to a major moon explains that local moon capture is not modeled,
+      except the Moon's simplified Earth-centered estimate.
+- [ ] Direct aim still uses the fixed launch-time target and can miss a moving body.
+- [ ] Low Earth orbit launch mode changes the direct/free-flight speed readout without
+      changing planet or moon data.
 
 ## Production Offline Check
 

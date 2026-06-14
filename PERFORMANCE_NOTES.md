@@ -16,6 +16,11 @@ Known build warning:
 - Full label density can add many `Html` labels.
 - Belt particles are regenerated when scale mode changes.
 - Browser screenshot capture can be slow while WebGL is actively rendering.
+- When a rocket is targeting a destination, `computeRocketView` samples the trajectory
+  (~40 points) each frame to estimate closest approach, and it runs in both the telemetry
+  panel and the scene object. This is cheap (a handful of Kepler solves per sample) and
+  only active during a destination mission, but if more concurrent rockets are added,
+  share one computed `RocketView` per frame instead of recomputing per consumer.
 
 ## Observed QA Notes
 

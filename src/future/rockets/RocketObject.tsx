@@ -24,6 +24,8 @@ const TARGET_COLOR = "#9fd2d9";
 export const RocketObject = () => {
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
   const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
+  const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
+  const activeLaunchMode = useRocketStore((state) => state.activeLaunchMode);
   const launchDateMs = useRocketStore((state) => state.launchDateMs);
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
@@ -36,35 +38,74 @@ export const RocketObject = () => {
     if (!profile || launchDateMs === null) {
       return [0, 0, 0, 1] as const;
     }
-    const view = computeRocketView(profile, launchDateMs, launchDateMs, mode, destination);
+    const view = computeRocketView(profile, launchDateMs, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode);
     const dir = new THREE.Vector3(...view.sceneDirection);
     if (dir.lengthSq() === 0) {
       return [0, 0, 0, 1] as const;
     }
     return new THREE.Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
-  }, [profile, launchDateMs, mode, destination]);
+  }, [profile, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode]);
 
   if (!profile || launchDateMs === null) {
     return null;
   }
 
-  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination);
+  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, activeMissionMode, activeLaunchMode);
   const markerScale = mode === "real" || mode === "readable" ? 2.4 : 1;
   const accent = profile.accentColor;
   const target = view.destination;
   const highlightRadius = target ? Math.max(target.destSceneRadius * 2.4, 0.3) : 0;
+  const transfer = view.transfer;
+  const progressIndex = transfer
+    ? Math.max(1, Math.min(Math.floor(transfer.progress * (transfer.arcScenePoints.length - 1)), transfer.arcScenePoints.length - 1))
+    : 0;
+  const completedTransferPoints = transfer
+    ? [...transfer.arcScenePoints.slice(0, progressIndex + 1), view.scenePosition]
+    : [];
 
   return (
     <group>
-      {/* outbound path: launch point -> rocket */}
-      <Line
-        points={[view.launchScenePosition, view.scenePosition]}
-        color={accent}
-        lineWidth={1.4}
-        transparent
-        opacity={0.5}
-        raycast={noopRaycast}
-      />
+      {transfer ? (
+        <>
+          <Line
+            points={transfer.arcScenePoints}
+            color={accent}
+            lineWidth={1.1}
+            transparent
+            opacity={0.34}
+            raycast={noopRaycast}
+          />
+          <Line
+            points={completedTransferPoints}
+            color={accent}
+            lineWidth={1.5}
+            transparent
+            opacity={0.78}
+            raycast={noopRaycast}
+          />
+          <mesh position={view.launchScenePosition} raycast={noopRaycast}>
+            <sphereGeometry args={[0.055 * markerScale, 12, 12]} />
+            <meshBasicMaterial color={accent} transparent opacity={0.78} depthWrite={false} />
+          </mesh>
+          <mesh position={transfer.interceptScenePosition} raycast={noopRaycast}>
+            <ringGeometry args={[0.11 * markerScale, 0.15 * markerScale, 28]} />
+            <meshBasicMaterial color={TARGET_COLOR} transparent opacity={0.68} side={THREE.DoubleSide} depthWrite={false} />
+          </mesh>
+          <mesh position={transfer.targetArrivalScenePosition} raycast={noopRaycast}>
+            <sphereGeometry args={[0.045 * markerScale, 12, 12]} />
+            <meshBasicMaterial color={TARGET_COLOR} transparent opacity={0.58} depthWrite={false} />
+          </mesh>
+        </>
+      ) : (
+        <Line
+          points={[view.launchScenePosition, view.scenePosition]}
+          color={accent}
+          lineWidth={1.4}
+          transparent
+          opacity={0.5}
+          raycast={noopRaycast}
+        />
+      )}
 
       {target && (
         <>
