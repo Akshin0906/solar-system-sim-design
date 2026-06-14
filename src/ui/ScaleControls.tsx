@@ -15,10 +15,12 @@ const labelOptions: Array<{ id: LabelDensity; label: string }> = [
 export const ScaleControls = () => {
   const mode = useScaleStore((state) => state.mode);
   const labelDensity = useScaleStore((state) => state.labelDensity);
+  const showGrid = useScaleStore((state) => state.showGrid);
   const showOrbits = useScaleStore((state) => state.showOrbits);
   const showTrails = useScaleStore((state) => state.showTrails);
   const setMode = useScaleStore((state) => state.setMode);
   const setLabelDensity = useScaleStore((state) => state.setLabelDensity);
+  const setShowGrid = useScaleStore((state) => state.setShowGrid);
   const setShowOrbits = useScaleStore((state) => state.setShowOrbits);
   const setShowTrails = useScaleStore((state) => state.setShowTrails);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
@@ -82,6 +84,10 @@ export const ScaleControls = () => {
         </select>
       </label>
       <div className="toggle-row">
+        <label>
+          <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
+          <span>Grid</span>
+        </label>
         <label>
           <input type="checkbox" checked={showOrbits} onChange={(event) => setShowOrbits(event.target.checked)} />
           <span>Orbits</span>

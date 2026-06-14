@@ -18,6 +18,7 @@ import { RocketObject } from "../future/rockets/RocketObject";
 export const SolarScene = () => {
   const dateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
+  const showGrid = useScaleStore((state) => state.showGrid);
   const showOrbits = useScaleStore((state) => state.showOrbits);
   const showTrails = useScaleStore((state) => state.showTrails);
   const selectedId = useSelectionStore((state) => state.selectedId);
@@ -113,7 +114,7 @@ export const SolarScene = () => {
       <fog attach="fog" args={["#050609", 150, 590]} />
       <Stars radius={500} depth={90} count={2_300} factor={2.35} saturation={0.28} fade speed={0.16} />
       <Lighting />
-      <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />
+      {showGrid && <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />}
       <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.28 : 1} />
       {showOrbits &&
         bodies.map((body) => (
