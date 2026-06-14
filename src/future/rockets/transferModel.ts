@@ -109,13 +109,6 @@ const progradeTangentFromSun = ([x, _y, z]: Vec3): Vec3 => {
   return vectorLength(tangent) === 0 ? [0, 0, 1] : tangent;
 };
 
-const getTransferTarget = (destinationBody: CelestialBody, bodiesById: Map<string, CelestialBody>) => {
-  if (destinationBody.type === "moon" && destinationBody.parentId && destinationBody.parentId !== EARTH_ID) {
-    return bodiesById.get(destinationBody.parentId) ?? destinationBody;
-  }
-  return destinationBody;
-};
-
 const estimateLocalMoonTransfer = (
   earth: CelestialBody,
   destinationBody: CelestialBody,
@@ -184,7 +177,11 @@ export const estimateTransfer = (
     return estimateLocalMoonTransfer(earth, destinationBody, launchDateMs);
   }
 
-  const transferTarget = getTransferTarget(destinationBody, bodiesById);
+  if (destinationBody.type === "moon") {
+    return null;
+  }
+
+  const transferTarget = destinationBody;
   if (!transferTarget.orbit || transferTarget.parentId !== SUN_ID) {
     return null;
   }
@@ -217,13 +214,7 @@ export const estimateTransfer = (
       transferSpeed(muSun, destinationRadiusKm, transferSemiMajorAxisKm),
   );
 
-  const notes =
-    transferTarget.id === destinationBody.id
-      ? ["Hohmann estimate assumes circular, coplanar heliocentric orbits."]
-      : [
-          `Transfer estimate targets ${transferTarget.name}'s heliocentric orbit; local moon capture is not modeled.`,
-          "Hohmann estimate assumes circular, coplanar heliocentric orbits.",
-        ];
+  const notes = ["Hohmann estimate assumes circular, coplanar heliocentric orbits."];
 
   return {
     centralBodyId: "sun",
@@ -243,7 +234,7 @@ export const estimateTransfer = (
     launchWindowQuality,
     favorable: launchWindowQuality === "excellent" || launchWindowQuality === "good",
     approximate: true,
-    targetIsMoon: destinationBody.type === "moon",
+    targetIsMoon: false,
     notes,
   };
 };

@@ -49,9 +49,9 @@ closest-approach readout shows whether the simple intercept lined up.
 Transfer preview adds a separate approximate transfer model. For planets and dwarf
 planets it estimates a Hohmann-style heliocentric transfer between Earth's orbit and
 the destination orbit, then samples a phase-aware visual arc to the destination's
-arrival position. For major moons outside Earth, the transfer targets the parent
-planet's heliocentric orbit and clearly notes that local moon capture is not modeled.
-For the Moon, it uses a simplified Earth-centered parking-orbit transfer estimate.
+arrival position. For the Moon, it uses a simplified Earth-centered parking-orbit
+transfer estimate. Non-Earth moons are intentionally not rocket destinations until
+local capture can be modeled honestly.
 
 The transfer model estimates:
 
@@ -94,13 +94,13 @@ or mutates celestial body data.
 Current destination groups:
 
 - Flight: Free flight.
-- Planets: Mercury, Venus, Moon, Mars, Jupiter, Saturn, Uranus, Neptune.
+- Planets: Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune.
 - Dwarf planets: Ceres, Pluto, Eris, Haumea, Makemake.
-- Moons: Io, Europa, Ganymede, Callisto, Titan, Enceladus, Triton.
+- Moons: Moon.
 
-Moon transfer previews are deliberately approximate. Non-Earth moon destinations use
-the parent planet's heliocentric transfer window and retain the moon as the highlighted
-destination.
+Moon transfer previews are deliberately approximate and use an Earth-centered
+parking-orbit estimate. Non-Earth moon destinations are excluded so the UI does not
+imply moon-local capture that the model does not perform.
 
 ## Architecture
 
@@ -141,6 +141,7 @@ Run:
 
 ```bash
 npm run verify:math
+npm run verify:app
 npm run build
 ```
 
@@ -150,6 +151,13 @@ npm run build
 - Outer-planet transfer times increase with destination distance.
 - phase-angle normalization handles wraparound correctly.
 - departure and arrival delta-v values are positive and plausible.
+
+`npm run verify:app` imports the TypeScript app modules directly and checks:
+
+- rocket destinations do not include non-Earth moons,
+- pre-launch rocket telemetry stays attached to Earth,
+- app orbit positions stay close to independent JPL approximate elements,
+- app transfer estimates stay in plausible ranges.
 
 Manual QA should confirm:
 

@@ -45,11 +45,19 @@ const TimeDriver = () => {
   const tick = useTimeStore((state) => state.tick);
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
+  const accumulatedTimeRef = useRef(0);
 
   useEffect(() => {
+    const targetTickSeconds = 1 / 30;
+
     const loop = (time: number) => {
       if (lastTimeRef.current !== null) {
-        tick(Math.min((time - lastTimeRef.current) / 1_000, 0.12));
+        accumulatedTimeRef.current += Math.min((time - lastTimeRef.current) / 1_000, 0.12);
+
+        if (accumulatedTimeRef.current >= targetTickSeconds) {
+          tick(accumulatedTimeRef.current);
+          accumulatedTimeRef.current = 0;
+        }
       }
 
       lastTimeRef.current = time;
@@ -62,6 +70,7 @@ const TimeDriver = () => {
       if (frameRef.current !== null) {
         window.cancelAnimationFrame(frameRef.current);
       }
+      accumulatedTimeRef.current = 0;
     };
   }, [tick]);
 

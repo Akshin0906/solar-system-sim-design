@@ -33,6 +33,9 @@ jobs:
       - name: Verify orbital math
         run: npm run verify:math
 
+      - name: Verify app logic
+        run: npm run verify:app
+
       - name: Build Pages artifact
         run: npm run build:github
 

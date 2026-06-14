@@ -31,13 +31,6 @@ export const rocketDestinations: RocketDestination[] = [
   { id: "eris", label: "Eris", bodyId: "eris", group: "Dwarf planets" },
   { id: "haumea", label: "Haumea", bodyId: "haumea", group: "Dwarf planets" },
   { id: "makemake", label: "Makemake", bodyId: "makemake", group: "Dwarf planets" },
-  { id: "io", label: "Io (Jupiter)", bodyId: "io", group: "Moons" },
-  { id: "europa", label: "Europa (Jupiter)", bodyId: "europa", group: "Moons" },
-  { id: "ganymede", label: "Ganymede (Jupiter)", bodyId: "ganymede", group: "Moons" },
-  { id: "callisto", label: "Callisto (Jupiter)", bodyId: "callisto", group: "Moons" },
-  { id: "titan", label: "Titan (Saturn)", bodyId: "titan", group: "Moons" },
-  { id: "enceladus", label: "Enceladus (Saturn)", bodyId: "enceladus", group: "Moons" },
-  { id: "triton", label: "Triton (Neptune)", bodyId: "triton", group: "Moons" },
 ];
 
 export const defaultDestinationId = "free";

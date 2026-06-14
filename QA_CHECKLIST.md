@@ -32,7 +32,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - `npm run verify:math` passed (destination feature does not touch orbital math).
 - `tsc --noEmit` and `npm run build` passed; service worker regenerated.
 - Desktop 1280×800 and phone 390×844 checked in browser, no console errors.
-- Target selector offers Free flight, Moon, Mars, Jupiter, Saturn, Neptune.
+- Target selector offers Free flight, Moon, Mars, Jupiter, Saturn, Neptune, and no non-Earth moon targets.
 - Launched Saturn V → Mars and → Jupiter: rocket + gold trail render, a cyan dashed line
   connects the rocket to the target, and the target body shows a subtle highlight ring.
 - Telemetry adds destination, distance-to-target, arrival estimate, closest approach, and
@@ -138,7 +138,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 
 ## Rocket Destination Targeting Checks
 
-- [ ] The Target selector groups Free flight, planets, dwarf planets, and major moon targets.
+- [ ] The Target selector groups Free flight, planets, dwarf planets, and Moon only.
 - [ ] The mission mode selector offers Direct aim and Transfer preview, and disables for Free flight.
 - [ ] The launch assumption selector offers Earth departure, Low Earth orbit, and Surface launch.
 - [ ] The Launch button label reflects the target and mission mode (e.g. "Launch to Mars", "Preview transfer to Mars", "Launch from Earth").
@@ -165,8 +165,8 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
       Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
 - [ ] Transfer math is clearly labeled approximate and not a professional mission planner.
 - [ ] Launch-window quality changes with target/date and includes a phase offset.
-- [ ] Transfer preview to a major moon explains that local moon capture is not modeled,
-      except the Moon's simplified Earth-centered estimate.
+- [ ] Transfer preview to the Moon uses the simplified Earth-centered estimate.
+- [ ] Non-Earth moons are absent from rocket destinations until local capture is modeled.
 - [ ] Direct aim predicts a moving-target straight-line intercept and can report Arrived near the target.
 - [ ] Low Earth orbit launch mode changes the direct/free-flight speed readout without
       changing planet or moon data.

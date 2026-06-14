@@ -457,8 +457,8 @@ const buildFreeFlightView = (
   const rocketRadiusKm = launchRadiusKm + flight.distanceTraveledKm;
   const scenePosition = mul(physicalDir, scaleDistanceFromSun(rocketRadiusKm, mode));
   const rocketHelioKm = add(earthLaunchKm, mul(physicalDir, flight.distanceTraveledKm));
-  const distanceFromEarthKm = vectorLength(sub(rocketHelioKm, earthNowKm));
   const preLaunch = simulationDateMs < launchDateMs;
+  const distanceFromEarthKm = preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm));
 
   return {
     elapsedSeconds,
@@ -567,7 +567,7 @@ export const computeRocketView = (
         elapsedSeconds,
         speedKmS: averageSpeedKmS,
         distanceTraveledKm: plan.arc.arcLengthKm * progress,
-        distanceFromEarthKm: vectorLength(sub(rocketHelioKm, earthNowKm)),
+        distanceFromEarthKm: preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm)),
         status,
         missionMode,
         launchMode,
@@ -680,7 +680,7 @@ export const computeRocketView = (
     elapsedSeconds,
     speedKmS: flight.speedKmS,
     distanceTraveledKm: flight.distanceTraveledKm,
-    distanceFromEarthKm: vectorLength(sub(rocketHelioKm, earthNowKm)),
+    distanceFromEarthKm: preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm)),
     status,
     missionMode: "direct",
     launchMode,
