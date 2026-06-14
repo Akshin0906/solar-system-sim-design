@@ -31,15 +31,16 @@ export const ScaleControls = () => {
 
   const controls = (
     <>
-      <div className="segmented-control">
+      <div className="segmented-control" role="radiogroup" aria-label="Scale mode">
         {SCALE_MODES.map((item) => (
           <button
             key={item.id}
             type="button"
+            role="radio"
+            aria-checked={mode === item.id}
             className={mode === item.id ? "selected" : ""}
             onClick={() => setMode(item.id as ScaleMode)}
             title={item.note}
-            aria-pressed={mode === item.id}
           >
             {item.label}
           </button>
@@ -76,6 +77,11 @@ export const ScaleControls = () => {
         >
           <Route size={16} />
         </button>
+        {cameraMode === "free" && (
+          <span className="free-look-pill" role="status" title="Free look">
+            Free
+          </span>
+        )}
       </div>
       <label className="compact-select">
         <Tags size={14} />

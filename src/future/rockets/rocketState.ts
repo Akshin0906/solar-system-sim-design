@@ -738,4 +738,4 @@ export const formatDeltaV = (deltaVKmS: number | null): string => {
   return `${deltaVKmS.toFixed(deltaVKmS >= 10 ? 1 : 2)} km/s`;
 };
 
-export const formatPhaseAngle = (degrees: number): string => `${degrees >= 0 ? "+" : ""}${degrees.toFixed(1)} deg`;
+export const formatPhaseAngle = (degrees: number): string => `${degrees >= 0 ? "+" : ""}${degrees.toFixed(1)}°`;

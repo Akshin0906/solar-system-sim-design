@@ -26,8 +26,10 @@ export const useMediaQuery = (query: string): boolean => {
   return matches;
 };
 
-// The compact breakpoint, kept in lockstep with the `@media (max-width: 900px)`
-// rules in App.css so JS and CSS agree on when panels become bottom sheets.
-export const MOBILE_QUERY = "(max-width: 900px)";
+// The compact/touch breakpoint, kept in lockstep with the matching media rules
+// in App.css so JS and CSS agree on when panels become bottom sheets.
+export const MOBILE_QUERY = "(max-width: 900px), (pointer: coarse)";
 
 export const useIsMobile = () => useMediaQuery(MOBILE_QUERY);
+
+export const useReducedMotion = () => useMediaQuery("(prefers-reduced-motion: reduce)");

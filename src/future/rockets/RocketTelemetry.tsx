@@ -26,6 +26,12 @@ type RocketTelemetryProps = {
 // the flight model + ephemeris (the source of truth); the panel only formats them.
 // Re-renders each frame because it subscribes to the simulation clock.
 const formatDate = (dateMs: number) => new Date(dateMs).toISOString().slice(0, 10);
+const launchWindowQualityLabel: Record<string, string> = {
+  excellent: "Excellent",
+  good: "Good",
+  fair: "Fair",
+  poor: "Poor",
+};
 
 export const RocketTelemetry = ({
   profile,
@@ -59,10 +65,6 @@ export const RocketTelemetry = ({
         <div>
           <dt>Mission mode</dt>
           <dd>{missionModeLabel[view.missionMode]}</dd>
-        </div>
-        <div>
-          <dt>Phase</dt>
-          <dd>{missionStatusLabel[view.status]}</dd>
         </div>
         <div>
           <dt>Launch</dt>
@@ -111,9 +113,10 @@ export const RocketTelemetry = ({
               <dd>{formatDate(transfer.estimate.arrivalDateMs)}</dd>
             </div>
             <div>
-              <dt>Launch window</dt>
+              <dt>Planet alignment</dt>
               <dd>
-                {transfer.estimate.launchWindowQuality} ({formatPhaseAngle(transfer.estimate.phaseOffsetDeg)})
+                {launchWindowQualityLabel[transfer.estimate.launchWindowQuality]}{" "}
+                ({formatPhaseAngle(transfer.estimate.phaseOffsetDeg)})
               </dd>
             </div>
             <div>

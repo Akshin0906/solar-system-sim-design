@@ -4,21 +4,16 @@ import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { estimateOrbitalSpeedKmS, getOrbitRadiusKm } from "../simulation/solveOrbit";
-import { formatDistance, formatPeriod, formatRadius } from "../simulation/units";
+import { formatBodyType, formatDistance, formatPeriod, formatRadius } from "../simulation/units";
 import { BottomSheet } from "./BottomSheet";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
-
-const titleCaseType = (value: string) =>
-  value
-    .replace(/([A-Z])/g, " $1")
-    .replace(/^./, (char) => char.toUpperCase())
-    .trim();
 
 export const ObjectInspector = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
+  const selectBody = useSelectionStore((state) => state.selectBody);
   const isMobile = useIsMobile();
   const inspectorPresented = useUiStore((state) => state.inspectorPresented);
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -52,7 +47,7 @@ export const ObjectInspector = () => {
           <dd>{formatRadius(body.physical.radiusKm)}</dd>
         </div>
         <div>
-          <dt>Distance (est.)</dt>
+          <dt>{parent ? `Distance from ${parent.name}` : "Distance"}</dt>
           <dd>
             <BodyDistance body={body} />
           </dd>
@@ -62,7 +57,7 @@ export const ObjectInspector = () => {
           <dd>{body.orbit ? formatPeriod(body.orbit.orbitalPeriodDays) : "N/A"}</dd>
         </div>
         <div>
-          <dt>Speed (Kepler)</dt>
+          <dt title="Instantaneous orbital speed (vis-viva)">Orbital speed</dt>
           <dd>
             <BodySpeed body={body} />
           </dd>
@@ -83,7 +78,7 @@ export const ObjectInspector = () => {
       {moons.length > 0 && (
         <div className="moon-list">
           {moons.slice(0, 6).map((moon) => (
-            <button key={moon.id} type="button" onClick={() => useSelectionStore.getState().focusBody(moon.id)}>
+            <button key={moon.id} type="button" onClick={() => selectBody(moon.id)}>
               {moon.name}
             </button>
           ))}
@@ -94,16 +89,31 @@ export const ObjectInspector = () => {
 
   const actions = (
     <div className="inspector-actions">
-      <button className={cameraMode === "focus" ? "active" : ""} type="button" onClick={() => setCameraMode("focus")}>
+      <button
+        className={cameraMode === "focus" ? "active" : ""}
+        type="button"
+        onClick={() => setCameraMode("focus")}
+        aria-pressed={cameraMode === "focus"}
+      >
         <Crosshair size={15} />
         Focus
       </button>
-      <button className={cameraMode === "follow" ? "active" : ""} type="button" onClick={() => setCameraMode("follow")}>
+      <button
+        className={cameraMode === "follow" ? "active" : ""}
+        type="button"
+        onClick={() => setCameraMode("follow")}
+        aria-pressed={cameraMode === "follow"}
+      >
         <LocateFixed size={15} />
         Follow
       </button>
       {moons.length > 0 && (
-        <button className={cameraMode === "moons" ? "active" : ""} type="button" onClick={() => setCameraMode("moons")}>
+        <button
+          className={cameraMode === "moons" ? "active" : ""}
+          type="button"
+          onClick={() => setCameraMode("moons")}
+          aria-pressed={cameraMode === "moons"}
+        >
           <Satellite size={15} />
           Moons
         </button>
@@ -131,7 +141,7 @@ export const ObjectInspector = () => {
               <span className="inspector-peek-text">
                 <span className="inspector-peek-name">{body.name}</span>
                 <span className="inspector-peek-stat">
-                  {titleCaseType(body.type)} · <BodyDistance body={body} />
+                  {formatBodyType(body.type)} · <BodyDistance body={body} />
                 </span>
               </span>
               <ChevronUp size={18} aria-hidden />
@@ -147,7 +157,7 @@ export const ObjectInspector = () => {
           </div>
         )}
         <BottomSheet open={expanded} onClose={dismissInspector} label={`${body.name} details`} title={body.name} footer={actions}>
-          <p className="inspector-kicker">{titleCaseType(body.type)}</p>
+          <p className="inspector-kicker">{formatBodyType(body.type)}</p>
           {details}
         </BottomSheet>
       </>
@@ -157,7 +167,7 @@ export const ObjectInspector = () => {
   return (
     <aside className="object-inspector">
       <div className="inspector-heading">
-        <span>{titleCaseType(body.type)}</span>
+        <span>{formatBodyType(body.type)}</span>
         <h2>{body.name}</h2>
       </div>
       {details}

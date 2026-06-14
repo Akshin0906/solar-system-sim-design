@@ -1,6 +1,8 @@
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
+import { X } from "lucide-react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
+import { bodiesById } from "../data";
 import { SolarScene } from "../scene/SolarScene";
 import { ObjectInspector } from "../ui/ObjectInspector";
 import { ScaleControls } from "../ui/ScaleControls";
@@ -9,7 +11,9 @@ import { TopBar } from "../ui/TopBar";
 import { BottomSheet } from "../ui/BottomSheet";
 import { RocketLauncherPanel } from "../future/rockets/RocketLauncherPanel";
 import { useRocketStore } from "../future/rockets/rocketStore";
+import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
+import { formatTimeScale } from "../simulation/units";
 import { useUiStore } from "../ui/uiStore";
 import { useIsMobile } from "../ui/useMediaQuery";
 
@@ -41,6 +45,9 @@ const isInteractiveTarget = (target: EventTarget | null) => {
   return tagName === "button";
 };
 
+const isCanvasTarget = (target: EventTarget | null) =>
+  target instanceof HTMLCanvasElement && target.classList.contains("solar-canvas");
+
 const canCreateWebGlContext = () => {
   if (typeof document === "undefined") {
     return true;
@@ -55,16 +62,28 @@ const canCreateWebGlContext = () => {
   }
 };
 
-const WebGlFallback = ({ onRetry }: { onRetry: () => void }) => (
-  <section className="webgl-fallback" role="alert" aria-live="polite">
+const WebGlFallback = ({ onRetry, restoring = false }: { onRetry: () => void; restoring?: boolean }) => (
+  <section className="webgl-fallback" role={restoring ? "status" : "alert"} aria-live="polite">
     <span className="webgl-fallback-kicker">Rendering paused</span>
-    <h1>WebGL unavailable</h1>
-    <p>This browser cannot create the graphics context needed for the simulator.</p>
-    <button className="reset-time webgl-retry" type="button" onClick={onRetry}>
-      Retry
-    </button>
+    <h1>{restoring ? "Restoring WebGL" : "WebGL unavailable"}</h1>
+    <p>
+      {restoring
+        ? "The graphics context was interrupted. The scene will resume automatically."
+        : "This browser cannot create the graphics context needed for the simulator."}
+    </p>
+    {!restoring && (
+      <button className="reset-time webgl-retry" type="button" onClick={onRetry}>
+        Retry
+      </button>
+    )}
   </section>
 );
+
+const liveDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
 
 type CanvasGlFactory = Extract<NonNullable<ComponentProps<typeof Canvas>["gl"]>, (defaultProps: any) => unknown>;
 type CanvasRendererProps = Parameters<CanvasGlFactory>[0];
@@ -149,12 +168,18 @@ const KeyboardShortcuts = () => {
       }
 
       if (event.key === "ArrowLeft") {
+        if (isCanvasTarget(event.target)) {
+          return;
+        }
         event.preventDefault();
         stepDays(-1);
         return;
       }
 
       if (event.key === "ArrowRight") {
+        if (isCanvasTarget(event.target)) {
+          return;
+        }
         event.preventDefault();
         stepDays(1);
       }
@@ -168,22 +193,64 @@ const KeyboardShortcuts = () => {
 };
 
 const SimulationLiveRegion = () => {
+  const selectedId = useSelectionStore((state) => state.selectedId);
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const isPaused = useTimeStore((state) => state.isPaused);
-  const direction = useTimeStore((state) => state.direction);
-  const preset = useTimeStore((state) => state.preset);
-  const message = `${isPaused ? "Simulation paused" : "Simulation playing"} ${
-    direction === 1 ? "forward" : "in reverse"
-  } at ${preset === "custom" ? "custom speed" : `${preset} speed`}.`;
+  const timeScale = useTimeStore((state) => state.timeScale);
+  const selected = bodiesById.get(selectedId);
+  const message = `${selected?.name ?? "Object"} selected · ${liveDateFormatter.format(
+    new Date(simulationDateMs),
+  )} · ${isPaused ? "paused" : "playing"} · ${formatTimeScale(timeScale)}`;
 
   return (
-    <span className="sr-only" aria-live="polite">
+    <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
       {message}
     </span>
   );
 };
 
+const DISCOVERY_HINT_KEY = "solar-system-sim.discoveryHintDismissed";
+
+const DiscoverabilityCue = () => {
+  const [visible, setVisible] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    return window.localStorage.getItem(DISCOVERY_HINT_KEY) !== "true";
+  });
+
+  const dismiss = useCallback(() => {
+    setVisible(false);
+    window.localStorage.setItem(DISCOVERY_HINT_KEY, "true");
+  }, []);
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    const timer = window.setTimeout(dismiss, 9_000);
+    return () => window.clearTimeout(timer);
+  }, [dismiss, visible]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div className="discoverability-cue">
+      <span>Click a planet · press / to search</span>
+      <button type="button" onClick={dismiss} aria-label="Dismiss hint">
+        <X size={12} />
+      </button>
+    </div>
+  );
+};
+
 export const App = () => {
   const [webglUnavailable, setWebglUnavailable] = useState(() => !canCreateWebGlContext());
+  const [webglRestoring, setWebglRestoring] = useState(false);
+  const restoreTimerRef = useRef<number | null>(null);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -193,6 +260,19 @@ export const App = () => {
   // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
   // open" overlap hack must not apply.
   const layerClass = `ui-layer${rocketPanelOpen && !isMobile ? " rocket-open" : ""}`;
+
+  useEffect(() => {
+    document.getElementById("prehydrate-splash")?.remove();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (restoreTimerRef.current !== null) {
+        window.clearTimeout(restoreTimerRef.current);
+      }
+    };
+  }, []);
+
   const createRenderer = useCallback(async (defaultProps: CanvasRendererProps) => {
     try {
       return new WebGLRenderer({
@@ -221,7 +301,9 @@ export const App = () => {
       ) : (
         <Canvas
           className="solar-canvas"
+          role="img"
           aria-label="Interactive 3D solar system simulation"
+          tabIndex={0}
           camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
           dpr={[1, 1.65]}
           fallback={<p>WebGL unavailable</p>}
@@ -230,14 +312,28 @@ export const App = () => {
             gl.toneMapping = ACESFilmicToneMapping;
             gl.toneMappingExposure = 1.08;
             gl.outputColorSpace = SRGBColorSpace;
-            gl.domElement.addEventListener(
-              "webglcontextlost",
-              (event) => {
-                event.preventDefault();
+            gl.domElement.classList.add("solar-canvas");
+            gl.domElement.setAttribute("role", "img");
+            gl.domElement.setAttribute("aria-label", "Interactive 3D solar system simulation");
+            gl.domElement.addEventListener("webglcontextlost", (event) => {
+              event.preventDefault();
+              setWebglRestoring(true);
+              if (restoreTimerRef.current !== null) {
+                window.clearTimeout(restoreTimerRef.current);
+              }
+              restoreTimerRef.current = window.setTimeout(() => {
+                setWebglRestoring(false);
                 setWebglUnavailable(true);
-              },
-              { once: true },
-            );
+              }, 6_000);
+            });
+            gl.domElement.addEventListener("webglcontextrestored", () => {
+              if (restoreTimerRef.current !== null) {
+                window.clearTimeout(restoreTimerRef.current);
+                restoreTimerRef.current = null;
+              }
+              setWebglRestoring(false);
+              setWebglUnavailable(false);
+            });
           }}
         >
           <Suspense fallback={null}>
@@ -248,6 +344,7 @@ export const App = () => {
       {!webglUnavailable && (
         <div id="main-controls" className={layerClass} tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
           <TopBar />
+          <DiscoverabilityCue />
           <ScaleControls />
           <ObjectInspector />
           {isMobile ? (
@@ -260,6 +357,7 @@ export const App = () => {
           <TimeControls />
         </div>
       )}
+      {webglRestoring && <WebGlFallback restoring onRetry={() => undefined} />}
     </main>
   );
 };

@@ -56,6 +56,7 @@ export const TimeControls = () => {
   const scrubDays = Math.max(minScrubDays, Math.min(maxScrubDays, getDaysFromEpoch(simulationDateMs)));
   const speedLabel = formatTimeScale(timeScale);
   const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
+  const absoluteDateLabel = scrubDateFormatter.format(new Date(simulationDateMs));
 
   const presetSelect = (
     <select
@@ -153,12 +154,23 @@ export const TimeControls = () => {
         >
           <div className="speed-sheet">
             <div className="sheet-field">
+              <span className="sheet-date-line">{absoluteDateLabel}</span>
               <span className="sheet-field-label">Time direction</span>
               <div className="segmented-control direction-control">
-                <button type="button" className={direction === 1 ? "selected" : ""} onClick={() => setDirection(1)}>
+                <button
+                  type="button"
+                  className={direction === 1 ? "selected" : ""}
+                  onClick={() => setDirection(1)}
+                  aria-pressed={direction === 1}
+                >
                   <RotateCw size={15} aria-hidden /> Forward
                 </button>
-                <button type="button" className={direction === -1 ? "selected" : ""} onClick={() => setDirection(-1)}>
+                <button
+                  type="button"
+                  className={direction === -1 ? "selected" : ""}
+                  onClick={() => setDirection(-1)}
+                  aria-pressed={direction === -1}
+                >
                   <RotateCcw size={15} aria-hidden /> Reverse
                 </button>
               </div>
@@ -198,6 +210,7 @@ export const TimeControls = () => {
         onClick={() => setDirection(direction === 1 ? -1 : 1)}
         title={direction === 1 ? "Forward time" : "Reverse time"}
         aria-label={direction === 1 ? "Forward time" : "Reverse time"}
+        aria-pressed={direction === -1}
       >
         {direction === 1 ? <RotateCw size={16} /> : <RotateCcw size={16} />}
       </button>

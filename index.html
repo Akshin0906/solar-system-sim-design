@@ -9,9 +9,51 @@
     <meta name="theme-color" content="#090907" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <link rel="icon" href="%BASE_URL%icons/solar-icon.svg" type="image/svg+xml" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/venus.jpg" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/earth.jpg" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/mars.jpg" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/jupiter.jpg" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/saturn.jpg" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/neptune.jpg" />
+    <link rel="preload" as="image" href="%BASE_URL%textures/moon.jpg" />
     <title>Solar System</title>
+    <style>
+      #prehydrate-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #090907;
+        color: rgba(245, 241, 232, 0.74);
+        font:
+          12px/1.2 Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "SF Pro Text",
+          sans-serif;
+      }
+
+      #prehydrate-splash span {
+        display: grid;
+        gap: 10px;
+        min-width: 128px;
+        text-align: center;
+      }
+
+      #prehydrate-splash span::before {
+        width: 128px;
+        height: 2px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, transparent, rgba(217, 173, 105, 0.72), transparent);
+        content: "";
+      }
+    </style>
   </head>
   <body>
+    <div id="prehydrate-splash" aria-hidden="true"><span>Solar System</span></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

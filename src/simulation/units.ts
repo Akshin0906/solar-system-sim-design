@@ -7,10 +7,16 @@ export type LabelDensity = "minimal" | "standard" | "full";
 
 export const SCALE_MODES: Array<{ id: ScaleMode; label: string; note: string }> = [
   { id: "real", label: "Real", note: "True distance and true radius" },
-  { id: "readable", label: "Bodies", note: "True distance with readable bodies" },
-  { id: "compressed", label: "Compact", note: "Compressed distance and readable bodies" },
+  { id: "readable", label: "Readable", note: "True distance with readable body size" },
+  { id: "compressed", label: "Compact", note: "Recommended compressed distance with readable body size" },
   { id: "overview", label: "Map", note: "System overview scale" },
 ];
+
+export const formatBodyType = (value: string) =>
+  value
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, (char) => char.toUpperCase())
+    .trim();
 
 const realUnitsPerAu = 7;
 export const READABLE_MOON_DISTANCE_EXPONENT = 0.72;

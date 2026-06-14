@@ -1,12 +1,14 @@
 import { Html } from "@react-three/drei";
 import { ThreeEvent, useFrame } from "@react-three/fiber";
-import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AdditiveBlending,
   BackSide,
+  CanvasTexture,
   ClampToEdgeWrapping,
   Color,
   DoubleSide,
+  LinearFilter,
   PerspectiveCamera,
   RepeatWrapping,
   SRGBColorSpace,
@@ -40,6 +42,7 @@ type BodyMeshProps = {
   positionsRef: ScenePositionsRef;
   selected: boolean;
   showLabel: boolean;
+  labelSuppressed?: boolean;
   emphasis: BodyEmphasis;
 };
 
@@ -90,6 +93,29 @@ const atmosphereFragmentShader = `
   }
 `;
 
+const createCoronaTexture = () => {
+  const canvas = document.createElement("canvas");
+  canvas.width = 192;
+  canvas.height = 192;
+  const context = canvas.getContext("2d");
+
+  if (context) {
+    const gradient = context.createRadialGradient(96, 96, 8, 96, 96, 96);
+    gradient.addColorStop(0, "rgba(255, 224, 166, 0.32)");
+    gradient.addColorStop(0.34, "rgba(247, 178, 96, 0.18)");
+    gradient.addColorStop(0.7, "rgba(247, 178, 96, 0.055)");
+    gradient.addColorStop(1, "rgba(247, 178, 96, 0)");
+    context.fillStyle = gradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  return texture;
+};
+
 const useBodyImageTexture = (url?: string) => {
   const [texture, setTexture] = useState<Texture>();
 
@@ -134,22 +160,64 @@ const useBodyImageTexture = (url?: string) => {
   return texture;
 };
 
-export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, emphasis }: BodyMeshProps) => {
+const useIdleTexture = (factory: () => Texture | undefined, dependencies: readonly unknown[]) => {
+  const [texture, setTexture] = useState<Texture>();
+
+  useEffect(() => {
+    let disposed = false;
+    setTexture(undefined);
+
+    const load = () => {
+      const nextTexture = factory();
+      if (disposed) {
+        nextTexture?.dispose();
+        return;
+      }
+      setTexture(nextTexture);
+    };
+
+    const canRequestIdle =
+      typeof window !== "undefined" &&
+      "requestIdleCallback" in window &&
+      typeof window.requestIdleCallback === "function";
+    const idleId = canRequestIdle ? window.requestIdleCallback(load, { timeout: 700 }) : undefined;
+    const timeoutId = canRequestIdle ? undefined : window.setTimeout(load, 0);
+
+    return () => {
+      disposed = true;
+      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+        window.cancelIdleCallback(idleId);
+      } else if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+    // The dependency list is intentionally supplied by the caller because these
+    // texture factories are body-specific and expensive.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, dependencies);
+
+  return texture;
+};
+
+export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, labelSuppressed = false, emphasis }: BodyMeshProps) => {
   const groupRef = useRef<Group>(null);
   const meshRef = useRef<Mesh>(null);
   const cloudRef = useRef<Mesh>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  const labelButtonRef = useRef<HTMLButtonElement>(null);
+  const detachLabelButtonRef = useRef<(() => void) | null>(null);
   const objectWorldPosition = useMemo(() => new Vector3(), []);
   const cameraWorldPosition = useMemo(() => new Vector3(), []);
-  const focusBody = useSelectionStore((state) => state.focusBody);
+  const selectBody = useSelectionStore((state) => state.selectBody);
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
   const visual = useMemo(() => getVisualProfile(body), [body]);
-  const proceduralSurfaceTexture = useMemo(() => createSurfaceTexture(body), [body]);
+  const coronaTexture = useMemo(() => createCoronaTexture(), []);
+  const proceduralSurfaceTexture = useIdleTexture(() => createSurfaceTexture(body), [body]);
   const imageSurfaceTexture = useBodyImageTexture(body.physical.texture);
   const surfaceTexture = imageSurfaceTexture ?? proceduralSurfaceTexture;
-  const bumpTexture = useMemo(() => createBodyBumpTexture(body), [body]);
-  const cloudTexture = useMemo(() => createCloudTexture(body), [body]);
+  const bumpTexture = useIdleTexture(() => createBodyBumpTexture(body), [body]);
+  const cloudTexture = useIdleTexture(() => createCloudTexture(body), [body]);
   const emphasisOpacity = getEmphasisOpacity(emphasis);
   const isTransparent = emphasisOpacity < 1;
   const renderRadius = Math.max(radius, MIN_FIT_RADIUS);
@@ -157,7 +225,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
   const cloudRadius = renderRadius * 1.018;
   const atmosphereRadius = renderRadius * 1.11;
   const selectionRingRadius = visualRadius * 1.15;
-  const selectionTubeRadius = Math.max(visualRadius * 0.018, MIN_FIT_RADIUS * 0.06);
+  const selectionTubeRadius = Math.max(visualRadius * 0.036, MIN_FIT_RADIUS * 0.09);
   const selectionHaloRadius = visualRadius * 1.34;
   const labelOffset = visualRadius * 1.45;
   const ringConfig = ringConfigById[body.id as keyof typeof ringConfigById];
@@ -181,6 +249,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
     selected ? "selected" : "",
     emphasis === "muted" ? "quiet-label" : "",
     emphasis === "related" ? "related-label" : "",
+    labelSuppressed && !selected ? "suppressed-label" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -189,6 +258,48 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
   useEffect(() => () => bumpTexture?.dispose(), [bumpTexture]);
   useEffect(() => () => cloudTexture?.dispose(), [cloudTexture]);
   useEffect(() => () => ringTexture?.dispose(), [ringTexture]);
+  useEffect(() => () => coronaTexture.dispose(), [coronaTexture]);
+
+  const attachLabelButton = useCallback(
+    (button: HTMLButtonElement | null) => {
+      detachLabelButtonRef.current?.();
+      detachLabelButtonRef.current = null;
+      labelButtonRef.current = button;
+
+      if (!button) {
+        return;
+      }
+
+      const stop = (event: Event) => {
+        event.stopPropagation();
+      };
+      const select = (event: Event) => {
+        stop(event);
+        selectBody(body.id);
+      };
+      const selectFromKeyboard = (event: KeyboardEvent) => {
+        if (event.key !== "Enter" && event.key !== " ") {
+          return;
+        }
+
+        event.preventDefault();
+        select(event);
+      };
+      const stoppedEvents = ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick"];
+
+      stoppedEvents.forEach((eventName) => button.addEventListener(eventName, stop, true));
+      button.addEventListener("click", select, true);
+      button.addEventListener("keydown", selectFromKeyboard, true);
+      detachLabelButtonRef.current = () => {
+        stoppedEvents.forEach((eventName) => button.removeEventListener(eventName, stop, true));
+        button.removeEventListener("click", select, true);
+        button.removeEventListener("keydown", selectFromKeyboard, true);
+      };
+    },
+    [body.id, selectBody],
+  );
+
+  useEffect(() => () => detachLabelButtonRef.current?.(), []);
 
   useFrame(({ camera }) => {
     const position = positionsRef.current[body.id];
@@ -223,44 +334,22 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
 
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    focusBody(body.id);
-  };
-
-  const handleLabelKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    focusBody(body.id);
+    selectBody(body.id);
   };
 
   return (
     <group ref={groupRef} onClick={handleClick}>
       {body.type === "star" && (
-        <>
-          <mesh>
-            <sphereGeometry args={[renderRadius * 2.6, 48, 48]} />
-            <meshBasicMaterial
-              color="#f7b260"
-              transparent
-              opacity={0.08 * emphasisOpacity}
-              blending={AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-          <mesh>
-            <sphereGeometry args={[renderRadius * 1.55, 48, 48]} />
-            <meshBasicMaterial
-              color="#ffd08a"
-              transparent
-              opacity={0.14 * emphasisOpacity}
-              blending={AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-        </>
+        <sprite scale={[renderRadius * 5.2, renderRadius * 5.2, 1]}>
+          <spriteMaterial
+            map={coronaTexture}
+            color="#ffd08a"
+            transparent
+            opacity={0.95 * emphasisOpacity}
+            blending={AdditiveBlending}
+            depthWrite={false}
+          />
+        </sprite>
       )}
       <group rotation={[0, 0, tiltRad]}>
         <mesh ref={meshRef}>
@@ -268,7 +357,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
           {body.type === "star" ? (
             <meshBasicMaterial
               map={surfaceTexture}
-              color={visual.baseColor}
+              color={surfaceTexture ? visual.baseColor : "#ffd08a"}
               toneMapped={false}
               transparent={isTransparent}
               opacity={emphasisOpacity}
@@ -276,7 +365,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
           ) : (
             <meshStandardMaterial
               map={surfaceTexture}
-              color="#ffffff"
+              color={surfaceTexture ? "#ffffff" : visual.baseColor}
               roughness={visual.roughness}
               metalness={visual.metalness ?? 0.015}
               bumpMap={bumpTexture}
@@ -353,7 +442,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
             <meshBasicMaterial
               color="#f1dfb8"
               transparent
-              opacity={0.025}
+              opacity={0.07}
               blending={AdditiveBlending}
               depthWrite={false}
             />
@@ -367,18 +456,20 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, e
           center
           distanceFactor={mode === "real" ? undefined : BODY_LABEL_DISTANCE_FACTOR}
           zIndexRange={SCENE_HTML_Z_INDEX_RANGE}
-          className={labelClassName}
+          className="body-label-anchor"
           style={labelStyle}
-          role="button"
-          tabIndex={0}
-          aria-label={`Select ${body.name}`}
-          onClick={(event) => {
-            event.stopPropagation();
-            focusBody(body.id);
-          }}
-          onKeyDown={handleLabelKeyDown}
         >
-          {body.name}
+          <button
+            ref={attachLabelButton}
+            className={labelClassName}
+            type="button"
+            tabIndex={labelSuppressed && !selected ? -1 : 0}
+            aria-hidden={labelSuppressed && !selected ? "true" : undefined}
+            aria-label={`Select ${body.name}`}
+            data-body-id={body.id}
+          >
+            {body.name}
+          </button>
         </Html>
       )}
     </group>

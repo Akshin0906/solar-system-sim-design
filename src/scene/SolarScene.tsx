@@ -13,6 +13,7 @@ import { EclipticCues } from "./EclipticCues";
 import { Lighting } from "./Lighting";
 import { MotionTrail } from "./MotionTrail";
 import { OrbitRing } from "./OrbitRing";
+import { useSceneLabelLayout } from "./labelLayout";
 import type { BodyEmphasis } from "./planetVisuals";
 import { RocketObject } from "../future/rockets/RocketObject";
 import type { ScenePositions } from "./scenePositions";
@@ -100,6 +101,7 @@ export const SolarScene = () => {
 
     return ids;
   }, [isMoonContext, labelDensity, moonFocusParentId, selectedBody, selectedId]);
+  const suppressedLabelIds = useSceneLabelLayout({ bodies, labelledIds, selectedId });
 
   const trailBodies = useMemo(() => {
     if (!showTrails) {
@@ -133,7 +135,7 @@ export const SolarScene = () => {
   return (
     <>
       <color attach="background" args={["#050609"]} />
-      <fog attach="fog" args={["#050609", 150, 590]} />
+      <fog attach="fog" args={["#050609", 240, 980]} />
       <Stars radius={500} depth={90} count={2_300} factor={2.35} saturation={0.28} fade speed={0.16} />
       <Lighting />
       {showGrid && <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />}
@@ -160,6 +162,7 @@ export const SolarScene = () => {
           positionsRef={positionsRef}
           selected={body.id === selectedId}
           showLabel={labelledIds.has(body.id)}
+          labelSuppressed={suppressedLabelIds.has(body.id)}
           emphasis={emphasisById.get(body.id) ?? "normal"}
         />
       ))}

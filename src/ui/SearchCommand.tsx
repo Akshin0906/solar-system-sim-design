@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { selectableBodies } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
+import { formatBodyType } from "../simulation/units";
 import { useFocusTrap } from "./focusTrap";
 
 type SearchCommandProps = {
@@ -12,7 +13,7 @@ type SearchCommandProps = {
 export const SearchCommand = ({ open, onClose }: SearchCommandProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
-  const focusBody = useSelectionStore((state) => state.focusBody);
+  const selectBody = useSelectionStore((state) => state.selectBody);
 
   useFocusTrap(containerRef, open, onClose);
 
@@ -70,15 +71,20 @@ export const SearchCommand = ({ open, onClose }: SearchCommandProps) => {
             className="search-result"
             type="button"
             onClick={() => {
-              focusBody(body.id);
+              selectBody(body.id);
               onClose();
               setQuery("");
             }}
           >
             <span>{body.name}</span>
-            <small>{body.type}</small>
+            <small>{formatBodyType(body.type)}</small>
           </button>
         ))}
+        {results.length === 0 && query.trim() && (
+          <div className="search-empty" role="status">
+            No objects match &quot;{query.trim()}&quot;
+          </div>
+        )}
       </div>
     </div>
   );

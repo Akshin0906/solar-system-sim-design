@@ -67,6 +67,7 @@ export const TopBar = () => {
           }}
           title={`Search objects (/ or ${commandKey})`}
           aria-label="Search objects"
+          aria-pressed={searchOpen}
         >
           <Search size={16} />
         </button>
@@ -92,7 +93,7 @@ export const TopBar = () => {
           onClick={handleRocket}
           title="Rocket preview"
           aria-label="Rocket preview"
-          aria-pressed={isMobile ? rocketActive : undefined}
+          aria-pressed={rocketActive}
         >
           <Rocket size={16} />
         </button>

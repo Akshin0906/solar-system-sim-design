@@ -6,6 +6,7 @@ type SelectionState = {
   selectedId: string;
   cameraMode: CameraMode;
   setSelectedId: (selectedId: string) => void;
+  selectBody: (selectedId: string) => void;
   setCameraMode: (cameraMode: CameraMode) => void;
   focusBody: (selectedId: string) => void;
 };
@@ -14,6 +15,7 @@ export const useSelectionStore = create<SelectionState>((set) => ({
   selectedId: "earth",
   cameraMode: "overview",
   setSelectedId: (selectedId) => set({ selectedId }),
+  selectBody: (selectedId) => set({ selectedId }),
   setCameraMode: (cameraMode) => set({ cameraMode }),
   focusBody: (selectedId) => set({ selectedId, cameraMode: "focus" }),
 }));

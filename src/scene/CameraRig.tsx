@@ -1,10 +1,11 @@
 import { OrbitControls } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useRef, type ComponentRef } from "react";
+import { useEffect, useRef, type ComponentRef } from "react";
 import { Vector3 } from "three";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
+import { useReducedMotion } from "../ui/useMediaQuery";
 import {
   FOCUS_FRAMING_SAFETY,
   cameraNearForTarget,
@@ -40,10 +41,13 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
   const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null);
   const cameraRangeRef = useRef<{ near: number; far: number } | null>(null);
   const controlsRangeRef = useRef<{ minDistance: number; maxDistance: number } | null>(null);
+  const cameraModeRef = useRef<ReturnType<typeof useSelectionStore.getState>["cameraMode"]>("overview");
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const selectedId = useSelectionStore((state) => state.selectedId);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
-  const { camera } = useThree();
+  const { camera, gl } = useThree();
+  const reducedMotion = useReducedMotion();
 
   const selectedBody = bodiesById.get(selectedId);
   const selectedRadius = selectedBody ? getBodySceneRadius(selectedBody, mode) : 0.4;
@@ -52,6 +56,10 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
   const controlsTargetBody =
     cameraMode === "moons" && moonFocusParentId ? bodiesById.get(moonFocusParentId) ?? selectedBody : selectedBody;
   const controlsTargetRadius = controlsTargetBody ? getBodySceneRadius(controlsTargetBody, mode) : 0;
+
+  useEffect(() => {
+    cameraModeRef.current = cameraMode;
+  }, [cameraMode]);
 
   const getDesiredCamera = () => {
     const positions = positionsRef.current;
@@ -134,12 +142,17 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
     }
 
     if (cameraMode !== "free") {
-      const targetAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_TARGET_DAMPING : FOCUS_TARGET_DAMPING, delta);
-      const positionAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
       const desired = getDesiredCamera();
 
-      controls.target.lerp(desired.target, targetAlpha);
-      camera.position.lerp(desired.position, positionAlpha);
+      if (reducedMotion) {
+        controls.target.copy(desired.target);
+        camera.position.copy(desired.position);
+      } else {
+        const targetAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_TARGET_DAMPING : FOCUS_TARGET_DAMPING, delta);
+        const positionAlpha = dampingAlpha(cameraMode === "follow" ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
+        controls.target.lerp(desired.target, targetAlpha);
+        camera.position.lerp(desired.position, positionAlpha);
+      }
       controls.update();
     }
 
@@ -180,19 +193,72 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
     }
   });
 
+  useEffect(() => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return;
+    }
+
+    gl.domElement.tabIndex = 0;
+    controls.keyPanSpeed = 18;
+    controls.listenToKeyEvents(gl.domElement);
+    return () => controls.stopListenToKeyEvents();
+  }, [gl.domElement]);
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const enterFreeLook = () => {
+      if (cameraModeRef.current !== "free") {
+        setCameraMode("free");
+      }
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      pointerStartRef.current = { x: event.clientX, y: event.clientY };
+    };
+    const handlePointerMove = (event: PointerEvent) => {
+      const start = pointerStartRef.current;
+      if (!start) {
+        return;
+      }
+
+      if (Math.hypot(event.clientX - start.x, event.clientY - start.y) >= 6) {
+        enterFreeLook();
+      }
+    };
+    const clearPointerStart = () => {
+      pointerStartRef.current = null;
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "ArrowDown") {
+        enterFreeLook();
+      }
+    };
+
+    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointerup", clearPointerStart);
+    canvas.addEventListener("pointercancel", clearPointerStart);
+    canvas.addEventListener("wheel", enterFreeLook, { passive: true });
+    canvas.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerup", clearPointerStart);
+      canvas.removeEventListener("pointercancel", clearPointerStart);
+      canvas.removeEventListener("wheel", enterFreeLook);
+      canvas.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [gl.domElement, setCameraMode]);
+
   return (
     <OrbitControls
       ref={controlsRef}
-      enableDamping
-      dampingFactor={0.055}
+      enableDamping={!reducedMotion}
+      dampingFactor={reducedMotion ? 0 : 0.055}
       rotateSpeed={0.42}
       zoomSpeed={0.62}
       panSpeed={0.45}
-      onStart={() => {
-        if (cameraMode !== "free") {
-          setCameraMode("free");
-        }
-      }}
     />
   );
 };
