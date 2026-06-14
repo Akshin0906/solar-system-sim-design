@@ -38,7 +38,8 @@ Important limitations:
 - It does not curve under gravity.
 - It does not compute transfer windows.
 - It assumes the rocket can hold a straight course to the predicted intercept.
-- After the intercept or flyby, the target keeps orbiting and the rocket keeps coasting.
+- After arrival, the scene keeps the rocket attached to the destination body so
+  scrubbing beyond arrival still reads as an arrived mission.
 
 Telemetry still measures distance to the destination's current position, so the
 closest-approach readout shows whether the simple intercept lined up.
@@ -64,9 +65,11 @@ The transfer model estimates:
 - whether the current launch date is favorable.
 
 The scene renders transfer missions as curved arcs with a launch marker, progress
-line, intercept marker, current rocket marker, and target highlight. The rocket's
-position on the arc is based on elapsed mission time divided by the estimated transfer
-time.
+line, intercept marker, current rocket marker, and target highlight. Before arrival,
+the rocket's position on the arc is based on elapsed mission time divided by the
+estimated transfer time. After arrival, the rocket follows the destination's current
+scene position and the route ends at the current destination instead of freezing at
+the old intercept point.
 
 ## Launch Assumptions
 

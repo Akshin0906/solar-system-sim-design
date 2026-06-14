@@ -25,10 +25,10 @@ import {
 // assumption, and current simulation time into a scale-independent scene/telemetry
 // view. It never mutates celestial body data.
 //
-// Direct aim is the original educational model: freeze the target's launch-time
-// position and fly a straight line toward it. Transfer preview is a separate
-// approximate Hohmann-style model: compute transfer-window math once per launch,
-// draw a curved transfer arc, and place the rocket along that arc by elapsed time.
+// Direct aim predicts a straight-line intercept with the moving target. Transfer
+// preview uses approximate Hohmann-style timing and a visual route to the arrival
+// point. After arrival, both modes keep the rocket attached to the destination so
+// the scene keeps reading as "arrived" while the simulation clock continues.
 
 const EARTH_ID = "earth";
 
@@ -106,6 +106,7 @@ type CachedTransferPlan = {
 };
 
 type DirectAimPlan = {
+  canIntercept: boolean;
   interceptSeconds: number;
   physicalDir: Vec3;
   aimDistanceKm: number;
@@ -157,13 +158,15 @@ const getDirectStatus = (
   distanceToTargetKm: number,
   closestApproachKm: number,
   aimDistanceKm: number,
+  canIntercept: boolean,
   interceptSeconds: number,
   targetBody: CelestialBody,
 ): MissionStatus => {
   const arrivalToleranceKm = getArrivalToleranceKm(targetBody, aimDistanceKm);
   const atOrPastIntercept =
-    progress >= ARRIVAL_PROGRESS_THRESHOLD ||
-    elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= interceptSeconds;
+    canIntercept &&
+    (progress >= ARRIVAL_PROGRESS_THRESHOLD ||
+      elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= interceptSeconds);
 
   if (atOrPastIntercept) {
     return closestApproachKm <= arrivalToleranceKm ? "arrived" : "missed";
@@ -226,6 +229,7 @@ const buildLaunchTimeDirectPlan = (
   const toTarget = sub(interceptPointKm, launchOriginKm);
   const aimDistanceKm = vectorLength(toTarget) || 1;
   return {
+    canIntercept: false,
     interceptSeconds: 0,
     physicalDir: normalize(toTarget),
     aimDistanceKm,
@@ -273,6 +277,7 @@ const getDirectAimPlan = (
     const toIntercept = sub(interceptPointKm, launchOriginKm);
     const aimDistanceKm = vectorLength(toIntercept) || 1;
     plan = {
+      canIntercept: true,
       interceptSeconds,
       physicalDir: normalize(toIntercept),
       aimDistanceKm,
@@ -387,6 +392,19 @@ const getTransferSceneArc = (
   return plan.arc.pointsKm.map((point) => scaleVectorFromSun(point, mode));
 };
 
+const makeDestinationFollowScenePoints = (
+  destBody: CelestialBody,
+  startDateMs: number,
+  endDateMs: number,
+  mode: ScaleMode,
+): Vec3[] => {
+  if (endDateMs <= startDateMs) {
+    return [];
+  }
+
+  return [computeBodyScenePosition(destBody, bodiesById, new Date(endDateMs), mode)];
+};
+
 const getDirectScenePosition = (
   rocketHelioKm: Vec3,
   progress: number,
@@ -405,18 +423,18 @@ const getDirectScenePosition = (
 const makeDirectScenePoints = (
   launchOriginKm: Vec3,
   physicalDir: Vec3,
-  distanceTraveledKm: number,
-  scenePosition: Vec3,
+  pathDistanceKm: number,
   launchScene: Vec3,
+  pathEndScene: Vec3,
   destinationBody: CelestialBody,
   mode: ScaleMode,
 ): Vec3[] => {
   if (destinationBody.type === "moon") {
-    return [launchScene, scenePosition];
+    return [launchScene, pathEndScene];
   }
 
   return Array.from({ length: DIRECT_SCENE_PATH_SAMPLES + 1 }, (_value, index) => {
-    const distanceKm = (distanceTraveledKm * index) / DIRECT_SCENE_PATH_SAMPLES;
+    const distanceKm = (pathDistanceKm * index) / DIRECT_SCENE_PATH_SAMPLES;
     return scaleVectorFromSun(add(launchOriginKm, mul(physicalDir, distanceKm)), mode);
   });
 };
@@ -498,22 +516,33 @@ export const computeRocketView = (
       const progress = clamp01(elapsedSeconds / plan.estimate.transferTimeSeconds);
       const arrivalDate = new Date(plan.estimate.arrivalDateMs);
       const transferTargetBody = bodiesById.get(plan.estimate.transferTargetBodyId) ?? destBody;
+      const arrived =
+        progress >= ARRIVAL_PROGRESS_THRESHOLD ||
+        elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= plan.estimate.transferTimeSeconds;
       const targetArrivalScenePosition = computeBodyScenePosition(destBody, bodiesById, arrivalDate, mode);
       const interceptScenePosition = computeBodyScenePosition(transferTargetBody, bodiesById, arrivalDate, mode);
-      const arcScenePoints = getTransferSceneArc(plan, destBody, launchDateMs, mode);
-      const scenePosition = interpolatePoints(arcScenePoints, progress);
+      const transferScenePoints = getTransferSceneArc(plan, destBody, launchDateMs, mode);
+      const followScenePoints = arrived
+        ? makeDestinationFollowScenePoints(destBody, plan.estimate.arrivalDateMs, simulationDateMs, mode)
+        : [];
+      const arcScenePoints = [...transferScenePoints, ...followScenePoints];
+      const scenePosition = arrived
+        ? computeBodyScenePosition(destBody, bodiesById, simDate, mode)
+        : interpolatePoints(arcScenePoints, progress);
       const sceneDirection = directionAlongPoints(arcScenePoints, progress);
-      const rocketHelioKm = interpolateTransferArcKm(plan.arc, progress);
       const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
-      const distanceToTargetKm = vectorLength(sub(destNowKm, rocketHelioKm));
-      const closestApproachKm = closestTransferApproachSoFar(
-        plan.arc,
-        plan.estimate,
-        destBody,
-        launchDateMs,
-        elapsedSeconds,
-        distanceToTargetKm,
-      );
+      const rocketHelioKm = arrived ? destNowKm : interpolateTransferArcKm(plan.arc, progress);
+      const distanceToTargetKm = arrived ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
+      const closestApproachKm = arrived
+        ? 0
+        : closestTransferApproachSoFar(
+            plan.arc,
+            plan.estimate,
+            destBody,
+            launchDateMs,
+            elapsedSeconds,
+            distanceToTargetKm,
+          );
       const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
       const preLaunch = simulationDateMs < launchDateMs;
       const averageSpeedKmS = plan.arc.arcLengthKm / plan.estimate.transferTimeSeconds;
@@ -528,11 +557,10 @@ export const computeRocketView = (
         status = "burn";
       } else if (progress < 0.82) {
         status = "transfer";
-      } else if (progress < ARRIVAL_PROGRESS_THRESHOLD) {
+      } else if (!arrived) {
         status = "approach";
       } else {
-        const arrivalToleranceKm = getArrivalToleranceKm(destBody, plan.arc.arcLengthKm);
-        status = closestApproachKm <= arrivalToleranceKm ? "arrived" : "missed";
+        status = "arrived";
       }
 
       return {
@@ -576,37 +604,43 @@ export const computeRocketView = (
   const interceptDate = new Date(launchDateMs + directPlan.interceptSeconds * 1_000);
   const destInterceptScene = computeBodyScenePosition(destBody, bodiesById, interceptDate, mode);
   const progress = flight.distanceTraveledKm / aimDistanceKm;
-  const rocketHelioKm = add(earthLaunchKm, mul(physicalDir, flight.distanceTraveledKm));
-  const scenePosition = getDirectScenePosition(
-    rocketHelioKm,
-    progress,
+  const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
+  const arrived =
+    directPlan.canIntercept &&
+    (progress >= ARRIVAL_PROGRESS_THRESHOLD ||
+      elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= directPlan.interceptSeconds);
+  const rocketHelioKm = arrived ? destNowKm : add(earthLaunchKm, mul(physicalDir, flight.distanceTraveledKm));
+  const scenePosition = arrived
+    ? computeBodyScenePosition(destBody, bodiesById, simDate, mode)
+    : getDirectScenePosition(rocketHelioKm, progress, earthLaunchScene, destInterceptScene, destBody, mode);
+  const pathDistanceKm = directPlan.canIntercept ? Math.min(flight.distanceTraveledKm, aimDistanceKm) : flight.distanceTraveledKm;
+  const pathEndKm = add(earthLaunchKm, mul(physicalDir, pathDistanceKm));
+  const pathEndScene = getDirectScenePosition(
+    pathEndKm,
+    directPlan.canIntercept ? Math.min(progress, 1) : progress,
     earthLaunchScene,
     destInterceptScene,
     destBody,
     mode,
   );
-  const directScenePoints = makeDirectScenePoints(
-    earthLaunchKm,
-    physicalDir,
-    flight.distanceTraveledKm,
-    scenePosition,
-    earthLaunchScene,
-    destBody,
-    mode,
-  );
-  const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
-  const distanceToTargetKm = vectorLength(sub(destNowKm, rocketHelioKm));
-  const sampledClosestApproachKm = closestDirectApproachSoFar(
-    adjustedProfile,
-    earthLaunchKm,
-    physicalDir,
-    destBody,
-    launchDateMs,
-    elapsedSeconds,
-    distanceToTargetKm,
-  );
+  const directScenePoints = [
+    ...makeDirectScenePoints(earthLaunchKm, physicalDir, pathDistanceKm, earthLaunchScene, pathEndScene, destBody, mode),
+    ...(arrived ? makeDestinationFollowScenePoints(destBody, interceptDate.getTime(), simulationDateMs, mode) : []),
+  ];
+  const distanceToTargetKm = arrived ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
+  const sampledClosestApproachKm = arrived
+    ? 0
+    : closestDirectApproachSoFar(
+        adjustedProfile,
+        earthLaunchKm,
+        physicalDir,
+        destBody,
+        launchDateMs,
+        elapsedSeconds,
+        distanceToTargetKm,
+      );
   const plannedClosestApproachKm =
-    elapsedSeconds >= directPlan.interceptSeconds
+    directPlan.canIntercept && elapsedSeconds >= directPlan.interceptSeconds
       ? distanceToDestAt(
           adjustedProfile,
           earthLaunchKm,
@@ -637,6 +671,7 @@ export const computeRocketView = (
         distanceToTargetKm,
         closestApproachKm,
         aimDistanceKm,
+        directPlan.canIntercept,
         directPlan.interceptSeconds,
         destBody,
       );
@@ -658,7 +693,9 @@ export const computeRocketView = (
       label: destination.label,
       distanceToTargetKm,
       etaSeconds:
-        elapsedSeconds < directPlan.interceptSeconds ? directPlan.interceptSeconds - elapsedSeconds : null,
+        directPlan.canIntercept && elapsedSeconds < directPlan.interceptSeconds
+          ? directPlan.interceptSeconds - elapsedSeconds
+          : null,
       closestApproachKm,
       destScenePosition: computeBodyScenePosition(destBody, bodiesById, simDate, mode),
       destSceneRadius: getBodySceneRadius(destBody, mode),

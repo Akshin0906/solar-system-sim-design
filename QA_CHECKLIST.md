@@ -159,6 +159,8 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Transfer preview renders a curved transfer arc instead of only a straight line.
 - [ ] The arc shows a launch marker, current rocket marker, and intercept/arrival cue.
 - [ ] Rocket progress advances along the arc as time runs and updates when time is scrubbed.
+- [ ] After the transfer arrival date, the rocket remains visually attached to the current destination
+      and the target distance reads 0 km instead of drifting from the old intercept point.
 - [ ] Telemetry shows Mission mode, Phase, Launch mode, Transfer time, Intercept date,
       Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
 - [ ] Transfer math is clearly labeled approximate and not a professional mission planner.

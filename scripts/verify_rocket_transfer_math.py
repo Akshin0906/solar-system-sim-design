@@ -222,6 +222,16 @@ def main() -> None:
     transfer_length = sum(vec_len(vec_sub(transfer_arc[index], transfer_arc[index - 1])) for index in range(1, len(transfer_arc)))
     assert transfer_length > transfer_chord * 1.02, (transfer_length, transfer_chord)
 
+    # Once a mission has arrived, the scene should keep the rocket with the
+    # destination body as time continues, not frozen at the old intercept point.
+    post_arrival_elapsed = (mars_transfer_days + 365.256 * 4) * DAY_SECONDS
+    stale_arrival_point = mars_at(mars_transfer_days * DAY_SECONDS)
+    current_target_point = mars_at(post_arrival_elapsed)
+    stale_post_arrival_miss = vec_len(vec_sub(stale_arrival_point, current_target_point))
+    locked_post_arrival_miss = vec_len(vec_sub(current_target_point, current_target_point))
+    assert stale_post_arrival_miss > AU_KM, stale_post_arrival_miss
+    assert locked_post_arrival_miss == 0
+
     print("Rocket transfer math checks passed")
     print(f"Earth-Mars Hohmann transfer: {mars_transfer_days:.1f} days")
     print("Outer transfer days:", ", ".join(f"{days:.1f}" for days in outer_transfer_days))
@@ -229,6 +239,7 @@ def main() -> None:
     print(f"Jupiter delta-v departure/arrival: {jupiter_departure:.2f}/{jupiter_arrival:.2f} km/s")
     print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
     print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")
+    print(f"Post-arrival stale miss avoided: {stale_post_arrival_miss / AU_KM:.2f} AU")
 
 
 if __name__ == "__main__":
