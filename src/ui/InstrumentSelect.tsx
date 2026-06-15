@@ -116,6 +116,7 @@ export const InstrumentSelect = <T extends string,>({
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const activeOptionRef = useRef<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
@@ -225,6 +226,14 @@ export const InstrumentSelect = <T extends string,>({
     };
   }, [closeMenu, open, updateMenuRect]);
 
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    activeOptionRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, open]);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) {
       return;
@@ -323,6 +332,7 @@ export const InstrumentSelect = <T extends string,>({
                   className={`instrument-select-option ${selected ? "selected" : ""} ${active ? "active" : ""}`.trim()}
                   type="button"
                   role="option"
+                  ref={active ? activeOptionRef : undefined}
                   aria-selected={selected}
                   disabled={option.disabled}
                   onMouseEnter={() => setActiveIndex(currentIndex)}
