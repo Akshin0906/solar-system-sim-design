@@ -20,6 +20,11 @@ type Runtime = {
   bodies: CelestialBody[];
   bodiesById: Map<string, CelestialBody>;
   frozenDate: Date;
+  // The scale mode the frozen base layer was last written for. The non-participant bodies
+  // (dwarfs, distant moons, belts) sit at the frozen launch date and never move during a
+  // scenario, so their Kepler positions only need recomputing when the mode changes — not
+  // every frame. null = not yet written.
+  baseLayerMode: ScaleMode | null;
 };
 
 let current: Runtime | null = null;
@@ -51,6 +56,7 @@ export const startRuntime = (
     bodies,
     bodiesById,
     frozenDate: new Date(startDateMs),
+    baseLayerMode: null,
   };
 };
 
@@ -84,8 +90,14 @@ export const writeScenePositions = (
   }
   const { state, bodies, bodiesById, frozenDate } = current;
 
-  // 1. Base layer: every body at the frozen launch date in the current scale mode.
-  computeScenePositions(bodies, bodiesById, frozenDate, mode, positions);
+  // 1. Base layer: every body at the frozen launch date in the current scale mode. The
+  //    frozen bodies don't move during the scenario, so this only needs recomputing when
+  //    the scale mode changes — participants and their moons are overwritten every frame
+  //    below regardless. This skips a full Kepler solve of the whole system per frame.
+  if (current.baseLayerMode !== mode) {
+    computeScenePositions(bodies, bodiesById, frozenDate, mode, positions);
+    current.baseLayerMode = mode;
+  }
 
   // 2. Overwrite live participants with integrated positions.
   for (const sb of state.bodies) {

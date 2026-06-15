@@ -1,6 +1,6 @@
 import { Stars } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
@@ -55,6 +55,23 @@ export const SolarScene = () => {
   // re-seeds on start and on every param edit (both bump the store's instanceId).
   const scenarioInstanceRef = useRef<number | null>(null);
   const elapsedReportRef = useRef(0);
+
+  // When a live catastrophe consumes the body the camera is on, hand the camera to a
+  // surviving world instead of snapping abruptly back to the origin. Prefer a large, stable
+  // outer planet, falling back inward and to the Sun.
+  useEffect(() => {
+    if (!activeScenarioId || !consumedIds.includes(selectedId)) {
+      return;
+    }
+    const consumed = new Set(consumedIds);
+    const survivor = ["jupiter", "saturn", "neptune", "uranus", "sun", "earth", "venus", "mars", "mercury"].find(
+      (id) => bodiesById.has(id) && !consumed.has(id),
+    );
+    if (survivor && survivor !== selectedId) {
+      useSelectionStore.getState().setSelectedId(survivor);
+    }
+  }, [activeScenarioId, consumedIds, selectedId]);
+
   const selectedBody = bodiesById.get(selectedId);
   const moonFocusParentId =
     selectedBody?.type === "moon"

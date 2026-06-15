@@ -159,10 +159,23 @@ export const addSimBody = (state: IntegratorState, body: SimBody) => {
   state.revision += 1;
 };
 
+// Reusable acceleration scratch. Grown as the live-body count rises (debris) and zeroed
+// per call, so the hot loop allocates nothing — JS is single-threaded and each stepFixed
+// fully consumes the buffer before the next call, so one shared buffer is safe.
+const accScratch: Vec3[] = [];
+
 // Newtonian acceleration on every live body from every other massive live body.
 // O(n^2) over a handful of bodies — trivial. Softened to stay finite on close passes.
 const accelerations = (live: SimBody[]): Vec3[] => {
-  const acc: Vec3[] = live.map(() => [0, 0, 0]);
+  for (let i = accScratch.length; i < live.length; i += 1) {
+    accScratch.push([0, 0, 0]);
+  }
+  const acc = accScratch;
+  for (let i = 0; i < live.length; i += 1) {
+    acc[i][0] = 0;
+    acc[i][1] = 0;
+    acc[i][2] = 0;
+  }
 
   for (let i = 0; i < live.length; i += 1) {
     for (let j = i + 1; j < live.length; j += 1) {
