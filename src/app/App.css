@@ -636,6 +636,7 @@ kbd {
   padding: 6px;
   border-radius: 8px;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   animation: dropdown-in 140ms ease-out;
 }
 

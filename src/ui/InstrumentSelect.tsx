@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 
 export type InstrumentSelectOption<T extends string = string> = {
   value: T;
@@ -28,8 +29,7 @@ type MenuRect = {
   side: "top" | "bottom";
   left: number;
   width: number;
-  top?: number;
-  bottom?: number;
+  top: number;
   maxHeight: number;
 };
 
@@ -79,6 +79,26 @@ const getLastEnabledIndex = <T extends string,>(options: Array<InstrumentSelectO
   return -1;
 };
 
+const getVisibleViewportRect = () => {
+  const viewport = window.visualViewport;
+
+  if (viewport) {
+    return {
+      top: viewport.offsetTop,
+      left: viewport.offsetLeft,
+      right: viewport.offsetLeft + viewport.width,
+      bottom: viewport.offsetTop + viewport.height,
+    };
+  }
+
+  return {
+    top: 0,
+    left: 0,
+    right: window.innerWidth,
+    bottom: window.innerHeight,
+  };
+};
+
 export const InstrumentSelect = <T extends string,>({
   value,
   onChange,
@@ -116,28 +136,29 @@ export const InstrumentSelect = <T extends string,>({
 
     const viewportPadding = 12;
     const gap = 8;
-    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
-    const availableAbove = rect.top - viewportPadding;
-    const resolvedSide = side === "auto" ? (availableBelow < 220 && availableAbove > availableBelow ? "top" : "bottom") : side;
-    const left = Math.min(Math.max(rect.left, viewportPadding), window.innerWidth - rect.width - viewportPadding);
-
-    setMenuRect(
+    const viewport = getVisibleViewportRect();
+    const availableBelow = viewport.bottom - rect.bottom - viewportPadding;
+    const availableAbove = rect.top - viewport.top - viewportPadding;
+    const maxHeightBelow = Math.max(1, availableBelow - gap);
+    const maxHeightAbove = Math.max(1, availableAbove - gap);
+    const resolvedSide =
+      side === "auto" ? (maxHeightBelow < 220 && maxHeightAbove > maxHeightBelow ? "top" : "bottom") : side;
+    const maxHeight = resolvedSide === "top" ? maxHeightAbove : maxHeightBelow;
+    const top =
       resolvedSide === "top"
-        ? {
-            side: "top",
-            left,
-            width: rect.width,
-            bottom: window.innerHeight - rect.top + gap,
-            maxHeight: Math.max(140, availableAbove - gap),
-          }
-        : {
-            side: "bottom",
-            left,
-            width: rect.width,
-            top: rect.bottom + gap,
-            maxHeight: Math.max(140, availableBelow - gap),
-          },
-    );
+        ? Math.max(viewport.top + viewportPadding, rect.top - gap - maxHeight)
+        : rect.bottom + gap;
+    const minLeft = viewport.left + viewportPadding;
+    const maxLeft = Math.max(minLeft, viewport.right - rect.width - viewportPadding);
+    const left = Math.min(Math.max(rect.left, minLeft), maxLeft);
+
+    setMenuRect({
+      side: resolvedSide,
+      left,
+      width: rect.width,
+      top,
+      maxHeight,
+    });
   }, [side]);
 
   const openMenu = useCallback(() => {
@@ -192,11 +213,15 @@ export const InstrumentSelect = <T extends string,>({
     window.addEventListener("pointerdown", handlePointerDown);
     window.addEventListener("resize", updateMenuRect);
     window.addEventListener("scroll", updateMenuRect, true);
+    window.visualViewport?.addEventListener("resize", updateMenuRect);
+    window.visualViewport?.addEventListener("scroll", updateMenuRect);
 
     return () => {
       window.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("resize", updateMenuRect);
       window.removeEventListener("scroll", updateMenuRect, true);
+      window.visualViewport?.removeEventListener("resize", updateMenuRect);
+      window.visualViewport?.removeEventListener("scroll", updateMenuRect);
     };
   }, [closeMenu, open, updateMenuRect]);
 
@@ -266,13 +291,58 @@ export const InstrumentSelect = <T extends string,>({
     ? ({
         left: menuRect.left,
         top: menuRect.top,
-        bottom: menuRect.bottom,
         width: menuRect.width,
         maxHeight: menuRect.maxHeight,
       } satisfies CSSProperties)
     : undefined;
 
   let optionIndex = -1;
+  const menu =
+    open && menuRect ? (
+      <div
+        ref={menuRef}
+        id={listboxId}
+        className={`instrument-select-menu ${menuRect.side}`}
+        role="listbox"
+        aria-label={ariaLabel ?? label}
+        style={menuStyle}
+      >
+        {optionGroups.map((group, groupIndex) => (
+          <div className="instrument-select-group" key={`${group.label ?? "group"}-${groupIndex}`}>
+            {group.label && <div className="instrument-select-group-label">{group.label}</div>}
+            {group.options.map((option) => {
+              optionIndex += 1;
+              const currentIndex = optionIndex;
+              const selected = option.value === value;
+              const active = currentIndex === activeIndex;
+
+              return (
+                <button
+                  key={option.value}
+                  id={`${listboxId}-option-${currentIndex}`}
+                  className={`instrument-select-option ${selected ? "selected" : ""} ${active ? "active" : ""}`.trim()}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  disabled={option.disabled}
+                  onMouseEnter={() => setActiveIndex(currentIndex)}
+                  onClick={() => selectOption(option)}
+                >
+                  <span className="instrument-select-option-mark" aria-hidden>
+                    {selected && <Check size={14} />}
+                  </span>
+                  <span className="instrument-select-option-copy">
+                    <span>{option.label}</span>
+                    {option.description && <small>{option.description}</small>}
+                  </span>
+                  {option.meta && <span className="instrument-select-option-meta">{option.meta}</span>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    ) : null;
 
   return (
     <div
@@ -307,51 +377,7 @@ export const InstrumentSelect = <T extends string,>({
         <ChevronDown className="instrument-select-chevron" size={15} aria-hidden />
       </button>
 
-      {open && menuRect && (
-        <div
-          ref={menuRef}
-          id={listboxId}
-          className={`instrument-select-menu ${menuRect.side}`}
-          role="listbox"
-          aria-label={ariaLabel ?? label}
-          style={menuStyle}
-        >
-          {optionGroups.map((group, groupIndex) => (
-            <div className="instrument-select-group" key={`${group.label ?? "group"}-${groupIndex}`}>
-              {group.label && <div className="instrument-select-group-label">{group.label}</div>}
-              {group.options.map((option) => {
-                optionIndex += 1;
-                const currentIndex = optionIndex;
-                const selected = option.value === value;
-                const active = currentIndex === activeIndex;
-
-                return (
-                  <button
-                    key={option.value}
-                    id={`${listboxId}-option-${currentIndex}`}
-                    className={`instrument-select-option ${selected ? "selected" : ""} ${active ? "active" : ""}`.trim()}
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    disabled={option.disabled}
-                    onMouseEnter={() => setActiveIndex(currentIndex)}
-                    onClick={() => selectOption(option)}
-                  >
-                    <span className="instrument-select-option-mark" aria-hidden>
-                      {selected && <Check size={14} />}
-                    </span>
-                    <span className="instrument-select-option-copy">
-                      <span>{option.label}</span>
-                      {option.description && <small>{option.description}</small>}
-                    </span>
-                    {option.meta && <span className="instrument-select-option-meta">{option.meta}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      )}
+      {menu && createPortal(menu, document.body)}
     </div>
   );
 };
