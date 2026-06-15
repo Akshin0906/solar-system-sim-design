@@ -4,6 +4,15 @@ import react from "@vitejs/plugin-react";
 export default defineConfig(({ mode }) => ({
   base: mode === "github-pages" ? "/solar-system-sim-design/" : "/",
   plugins: [react()],
+  // postprocessing renders R3F components, so React/three/fiber must resolve to a
+  // single instance — otherwise the dev pre-bundle hands postprocessing its own React
+  // copy and every hook throws "Invalid hook call".
+  resolve: {
+    dedupe: ["react", "react-dom", "@react-three/fiber", "three"],
+  },
+  optimizeDeps: {
+    include: ["@react-three/postprocessing", "postprocessing"],
+  },
   build: {
     chunkSizeWarningLimit: 700,
     rolldownOptions: {

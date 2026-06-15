@@ -16,7 +16,19 @@ import { OrbitRing } from "./OrbitRing";
 import { useSceneLabelLayout } from "./labelLayout";
 import type { BodyEmphasis } from "./planetVisuals";
 import { RocketObject } from "../future/rockets/RocketObject";
+import { ScenarioLayer } from "./ScenarioLayer";
+import { PostFx } from "./effects/PostFx";
+import { RedGiantStar } from "./effects/RedGiantStar";
 import type { ScenePositions } from "./scenePositions";
+import { useScenarioStore } from "../scenarios/scenarioStore";
+import {
+  drainConsumed,
+  getElapsedSimSeconds,
+  startRuntime,
+  stepRuntime,
+  stopRuntime,
+  writeScenePositions,
+} from "../scenarios/scenarioRuntime";
 
 export const SolarScene = () => {
   const mode = useScaleStore((state) => state.mode);
@@ -28,6 +40,12 @@ export const SolarScene = () => {
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const positionsRef = useRef<ScenePositions>({});
   const positionsInitializedRef = useRef(false);
+  const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const consumedIds = useScenarioStore((state) => state.consumedIds);
+  // Tracks which scenario instance the integrator was seeded for, so the frame loop
+  // re-seeds on start and on every param edit (both bump the store's instanceId).
+  const scenarioInstanceRef = useRef<number | null>(null);
+  const elapsedReportRef = useRef(0);
   const selectedBody = bodiesById.get(selectedId);
   const moonFocusParentId =
     selectedBody?.type === "moon"
@@ -104,12 +122,35 @@ export const SolarScene = () => {
   const suppressedLabelIds = useSceneLabelLayout({ bodies, labelledIds, selectedId });
 
   const trailBodies = useMemo(() => {
-    if (!showTrails) {
+    // Motion trails are sampled from the Kepler orbit, which no longer describes the
+    // path once a scenario hands bodies to the live integrator — so suppress them.
+    if (!showTrails || activeScenarioId) {
       return [];
     }
 
     return bodies.filter((body) => body.orbit);
-  }, [showTrails]);
+  }, [showTrails, activeScenarioId]);
+
+  // While the red-giant scenario runs, its overlay (RedGiantStar) renders the swelling
+  // Sun, so hide the normal Sun mesh to avoid a doubled, undersized disc inside it.
+  const isRedGiant = activeScenarioId === "red-giant";
+
+  // Bodies destroyed by an active catastrophe stop being drawn (mesh, orbit, trail).
+  // A consumed planet also takes its moons with it — otherwise they linger as an
+  // orphaned cluster pinned to where the planet was. (Only cascade to moons, so a
+  // consumed Sun doesn't wrongly erase every planet.)
+  const renderBodies = useMemo(() => {
+    if (consumedIds.length === 0 && !isRedGiant) {
+      return bodies;
+    }
+    const consumed = new Set(consumedIds);
+    return bodies.filter(
+      (body) =>
+        !(isRedGiant && body.id === "sun") &&
+        !consumed.has(body.id) &&
+        !(body.type === "moon" && body.parentId !== null && consumed.has(body.parentId)),
+    );
+  }, [consumedIds, isRedGiant]);
 
   if (!positionsInitializedRef.current) {
     computeScenePositions(
@@ -122,7 +163,54 @@ export const SolarScene = () => {
     positionsInitializedRef.current = true;
   }
 
-  useFrame(() => {
+  useFrame((_, delta) => {
+    const scenario = useScenarioStore.getState();
+
+    // --- Catastrophe path: the live N-body integrator owns positions ---
+    if (scenario.activeScenarioId) {
+      // (Re)seed when a scenario starts or a sandbox slider changes (instanceId bump).
+      if (scenarioInstanceRef.current !== scenario.instanceId) {
+        startRuntime(
+          scenario.instanceId,
+          scenario.activeScenarioId,
+          scenario.params,
+          bodies,
+          bodiesById,
+          useTimeStore.getState().simulationDateMs,
+        );
+        scenarioInstanceRef.current = scenario.instanceId;
+        elapsedReportRef.current = 0;
+      }
+
+      if (scenario.status === "running") {
+        // Clamp the real delta exactly like the Kepler clock (timeStore caps to 1/30s)
+        // so a backgrounded-then-refocused tab can't dump a multi-second gap into the
+        // integrator at once — that would spike to the substep cap, jank, and desync T+.
+        stepRuntime(Math.min(delta, 1 / 30), scenario.timeScaleDaysPerSec);
+      }
+
+      writeScenePositions(positionsRef.current, mode);
+
+      // Push the slow-changing facts back to React, throttled to ~8 Hz so the panel's
+      // T+ clock and destroyed-planet list update without re-rendering every frame.
+      const consumed = drainConsumed();
+      if (consumed.length > 0) {
+        useScenarioStore.getState().reportConsumed(consumed);
+      }
+      elapsedReportRef.current += delta;
+      if (elapsedReportRef.current >= 0.12) {
+        elapsedReportRef.current = 0;
+        useScenarioStore.getState().reportElapsed(getElapsedSimSeconds());
+      }
+      return;
+    }
+
+    // --- Normal path: pristine Kepler positions from the J2000 clock ---
+    if (scenarioInstanceRef.current !== null) {
+      // A scenario just ended: discard the integrator so the system snaps back.
+      stopRuntime();
+      scenarioInstanceRef.current = null;
+    }
     computeScenePositions(
       bodies,
       bodiesById,
@@ -141,7 +229,7 @@ export const SolarScene = () => {
       {showGrid && <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />}
       <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.28 : 1} />
       {showOrbits &&
-        bodies.map((body) => (
+        renderBodies.map((body) => (
           <OrbitRing
             key={body.id}
             body={body}
@@ -154,7 +242,7 @@ export const SolarScene = () => {
       {trailBodies.map((body) => (
         <MotionTrail key={body.id} body={body} mode={mode} selected={body.id === selectedId} />
       ))}
-      {bodies.map((body) => (
+      {renderBodies.map((body) => (
         <BodyMesh
           key={body.id}
           body={body}
@@ -166,8 +254,11 @@ export const SolarScene = () => {
           emphasis={emphasisById.get(body.id) ?? "normal"}
         />
       ))}
+      <ScenarioLayer mode={mode} />
+      {isRedGiant && <RedGiantStar mode={mode} />}
       <RocketObject />
       <CameraRig positionsRef={positionsRef} mode={mode} />
+      <PostFx />
     </>
   );
 };

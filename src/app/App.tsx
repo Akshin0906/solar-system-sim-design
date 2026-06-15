@@ -6,6 +6,7 @@ import { bodiesById } from "../data";
 import { SolarScene } from "../scene/SolarScene";
 import { ObjectInspector } from "../ui/ObjectInspector";
 import { ScaleControls } from "../ui/ScaleControls";
+import { ScenarioPanel } from "../ui/ScenarioPanel";
 import { TimeControls } from "../ui/TimeControls";
 import { TopBar } from "../ui/TopBar";
 import { BottomSheet } from "../ui/BottomSheet";
@@ -358,6 +359,7 @@ export const App = () => {
           ) : (
             <RocketLauncherPanel />
           )}
+          <ScenarioPanel />
           <TimeControls />
         </div>
       )}

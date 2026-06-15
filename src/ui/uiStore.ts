@@ -4,7 +4,7 @@ import { create } from "zustand";
 // open at a time, so this is a single value rather than a set of booleans — opening
 // one implicitly closes the others. Desktop ignores this entirely (it renders the
 // always-on panels instead), so the store is a no-op there.
-export type SheetId = "none" | "view" | "rocket" | "speed" | "inspector";
+export type SheetId = "none" | "view" | "rocket" | "speed" | "inspector" | "scenario";
 
 type UiState = {
   activeSheet: SheetId;

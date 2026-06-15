@@ -38,6 +38,7 @@ export const majorBodies: CelestialBody[] = [
       color: "#a89f93",
       axialTiltDeg: 0.03,
       rotationPeriodHours: 1_407.6,
+      gravitationalParameterKm3S2: 22_031.86,
     },
     orbit: {
       semiMajorAxisKm: 0.387_099_27 * AU_KM,
@@ -70,6 +71,7 @@ export const majorBodies: CelestialBody[] = [
       texture: "textures/venus.jpg",
       axialTiltDeg: 177.36,
       rotationPeriodHours: -5_832.5,
+      gravitationalParameterKm3S2: 324_858.592,
     },
     orbit: {
       semiMajorAxisKm: 0.723_335_66 * AU_KM,
