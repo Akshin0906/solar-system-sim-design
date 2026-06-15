@@ -18,6 +18,12 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
+const SEARCH_DIALOG_ID = "search-command-dialog";
+const VIEW_SHEET_ID = "view-settings-sheet";
+const ROCKET_PANEL_ID = "rocket-preview-panel";
+const ROCKET_SHEET_ID = "rocket-preview-sheet";
+const HELP_POPOVER_ID = "help-popover";
+
 export const TopBar = () => {
   const [helpOpen, setHelpOpen] = useState(false);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
@@ -37,6 +43,7 @@ export const TopBar = () => {
   // sheet state on those buttons; on desktop the rocket button keeps its own panel.
   const rocketActive = isMobile ? activeSheet === "rocket" : rocketPanelOpen;
   const viewActive = activeSheet === "view";
+  const rocketControlId = isMobile ? ROCKET_SHEET_ID : ROCKET_PANEL_ID;
 
   const handleRocket = () => {
     closeSearch();
@@ -55,7 +62,7 @@ export const TopBar = () => {
         <strong>{selected?.name ?? "Overview"}</strong>
       </div>
       <div className="top-date" title="Simulation date">
-        <CalendarDays size={15} />
+        <CalendarDays size={15} aria-hidden />
         <SimClock />
       </div>
       <div className="top-actions">
@@ -69,9 +76,12 @@ export const TopBar = () => {
           }}
           data-tooltip={`Search objects (/ or ${commandKey})`}
           aria-label="Search objects"
+          aria-haspopup="dialog"
+          aria-expanded={searchOpen}
+          aria-controls={searchOpen ? SEARCH_DIALOG_ID : undefined}
           aria-pressed={searchOpen}
         >
-          <Search size={16} />
+          <Search size={16} aria-hidden />
         </button>
         {isMobile && (
           <button
@@ -84,9 +94,12 @@ export const TopBar = () => {
             }}
             data-tooltip="View settings"
             aria-label="View settings"
+            aria-haspopup="dialog"
+            aria-expanded={viewActive}
+            aria-controls={viewActive ? VIEW_SHEET_ID : undefined}
             aria-pressed={viewActive}
           >
-            <SlidersHorizontal size={16} />
+            <SlidersHorizontal size={16} aria-hidden />
           </button>
         )}
         <button
@@ -95,9 +108,12 @@ export const TopBar = () => {
           onClick={handleRocket}
           data-tooltip="Rocket preview"
           aria-label="Rocket preview"
+          aria-haspopup={isMobile ? "dialog" : undefined}
+          aria-expanded={rocketActive}
+          aria-controls={rocketActive ? rocketControlId : undefined}
           aria-pressed={rocketActive}
         >
-          <Rocket size={16} />
+          <Rocket size={16} aria-hidden />
         </button>
         <button
           ref={helpButtonRef}
@@ -111,9 +127,9 @@ export const TopBar = () => {
           aria-label="Help and shortcuts"
           aria-haspopup="dialog"
           aria-expanded={helpOpen}
-          aria-controls="help-popover"
+          aria-controls={helpOpen ? HELP_POPOVER_ID : undefined}
         >
-          <CircleHelp size={16} />
+          <CircleHelp size={16} aria-hidden />
         </button>
       </div>
       <SearchCommand open={searchOpen} onClose={closeSearch} restoreFocusRef={searchButtonRef} />

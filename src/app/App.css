@@ -1816,16 +1816,21 @@ input[type="range"] {
   }
 
   .top-bar {
+    display: flex;
     left: 12px;
     width: calc(100vw - 24px);
-    grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     min-height: 58px;
     padding: 7px 8px 7px 12px;
     transform: none;
   }
 
+  .top-bar .focus-title {
+    flex: 1 1 0;
+  }
+
   .top-actions {
+    flex: 0 0 auto;
     gap: 6px;
   }
 
@@ -1876,6 +1881,22 @@ input[type="range"] {
   .discoverability-cue {
     bottom: calc(var(--mobile-control-bottom) + 72px);
     width: min(340px, calc(100vw - 20px));
+  }
+}
+
+@media (max-width: 430px) {
+  .top-bar {
+    gap: 8px;
+    padding-right: 7px;
+  }
+
+  .top-actions {
+    gap: 4px;
+  }
+
+  .top-bar .icon-button {
+    width: 40px;
+    height: 40px;
   }
 }
 

@@ -5,6 +5,7 @@ import { useFocusTrap } from "./focusTrap";
 type BottomSheetProps = {
   open: boolean;
   onClose: () => void;
+  id?: string;
   label: string;
   title: ReactNode;
   children: ReactNode;
@@ -18,7 +19,7 @@ const DISMISS_THRESHOLD = 96;
 // the backdrop, swiping the grab handle down, the close button, or Esc. The header
 // and footer stay pinned while the body scrolls. Mirrors HelpPopover's focus
 // contract — focus moves in on open and is restored to the prior element on close.
-export const BottomSheet = ({ open, onClose, label, title, children, footer }: BottomSheetProps) => {
+export const BottomSheet = ({ open, onClose, id, label, title, children, footer }: BottomSheetProps) => {
   const sheetRef = useRef<HTMLDivElement>(null);
   // Keep the latest onClose without re-running the focus effect; callers often pass a
   // fresh closure each render (the clock re-renders ancestors every frame).
@@ -79,6 +80,7 @@ export const BottomSheet = ({ open, onClose, label, title, children, footer }: B
       <div className="sheet-backdrop" onClick={onClose} aria-hidden />
       <div
         ref={sheetRef}
+        id={id}
         className={`sheet${dragging ? " dragging" : ""}`}
         role="dialog"
         aria-modal="true"

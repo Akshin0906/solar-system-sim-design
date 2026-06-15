@@ -348,7 +348,13 @@ export const App = () => {
           <ScaleControls />
           <ObjectInspector />
           {isMobile ? (
-            <BottomSheet open={activeSheet === "rocket"} onClose={closeSheet} label="Rocket preview" title="Rocket preview">
+            <BottomSheet
+              open={activeSheet === "rocket"}
+              onClose={closeSheet}
+              id="rocket-preview-sheet"
+              label="Rocket preview"
+              title="Rocket preview"
+            >
               <RocketLauncherPanel forceOpen embedded onClose={closeSheet} />
             </BottomSheet>
           ) : (

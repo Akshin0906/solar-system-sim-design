@@ -340,6 +340,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   return (
     <div
       ref={containerRef}
+      id="search-command-dialog"
       className="search-popover command-popover"
       role="dialog"
       aria-modal="true"

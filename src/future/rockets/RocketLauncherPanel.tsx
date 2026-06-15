@@ -146,7 +146,11 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   );
 
   return (
-    <section className={`rocket-panel${embedded ? " rocket-panel-sheet" : ""}`} aria-label="Rocket preview">
+    <section
+      id={embedded ? undefined : "rocket-preview-panel"}
+      className={`rocket-panel${embedded ? " rocket-panel-sheet" : ""}`}
+      aria-label="Rocket preview"
+    >
       {!embedded && (
         <header className="rocket-panel-head">
           <div className="rocket-panel-title">

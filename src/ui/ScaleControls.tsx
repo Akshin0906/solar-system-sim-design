@@ -118,7 +118,13 @@ export const ScaleControls = () => {
 
   if (isMobile) {
     return (
-      <BottomSheet open={activeSheet === "view"} onClose={closeSheet} label="View settings" title="View">
+      <BottomSheet
+        open={activeSheet === "view"}
+        onClose={closeSheet}
+        id="view-settings-sheet"
+        label="View settings"
+        title="View"
+      >
         <div className="sheet-scale">{controls}</div>
       </BottomSheet>
     );
