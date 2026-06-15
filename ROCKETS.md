@@ -51,8 +51,10 @@ closest-approach readout shows whether the simple intercept lined up.
 
 Transfer preview adds a separate approximate educational transfer model. For planets and dwarf
 planets it estimates a Hohmann-style heliocentric transfer between Earth's orbit and
-the destination orbit, then samples a phase-aware visual arc to the destination's
-arrival position. Short-burn, impulse-like profiles keep that orbital transfer time;
+the destination orbit, then samples a phase-aware visual arc to the ideal half-ellipse
+endpoint. The destination's actual arrival-time position stays visible separately so
+poor launch windows can show a miss instead of bending the trajectory to the planet.
+Short-burn, impulse-like profiles keep that orbital transfer time;
 only sustained-propulsion profiles layer their long burn onto the conceptual route
 time. For the Moon, it uses a simplified Earth-centered parking-orbit transfer
 estimate. Non-Earth moons are intentionally not rocket destinations until local
@@ -72,9 +74,9 @@ The transfer model estimates:
 The scene renders transfer missions as curved arcs with a launch marker, progress
 line, intercept marker, current rocket marker, and target highlight. Before arrival,
 the rocket's position on the arc is based on elapsed mission time divided by the
-estimated transfer time. After arrival, the rocket follows the destination's current
-scene position and the route ends at the current destination instead of freezing at
-the old intercept point.
+estimated transfer time. After arrival, close transfer windows follow the destination's
+current scene position; poor windows stay at the ideal transfer endpoint and read as
+a flyby.
 
 ## Launch Assumptions
 

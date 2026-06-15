@@ -149,6 +149,14 @@ def prograde_tangent_from_sun(point: tuple[float, float, float]) -> tuple[float,
     return (0, 0, 1) if vec_len(tangent) == 0 else tangent
 
 
+def opposite_orbit_point(
+    launch_point: tuple[float, float, float],
+    destination_radius_km: float,
+) -> tuple[float, float, float]:
+    direction = vec_normalize(launch_point)
+    return vec_mul(direction if vec_len(direction) else (1, 0, 0), -destination_radius_km)
+
+
 def sample_flight(profile: dict[str, float], elapsed_seconds: float) -> tuple[float, float]:
     t = max(0, elapsed_seconds)
     accel_km_s2 = profile["acceleration_m_s2"] / 1_000
@@ -291,11 +299,13 @@ def main() -> None:
 
     transfer_arc = sample_phase_aware_transfer_arc(
         earth_launch,
-        mars_at(mars_transfer_days * DAY_SECONDS),
+        opposite_orbit_point(earth_launch, mars),
         (earth + mars) / 2,
     )
     assert vec_len(vec_sub(transfer_arc[0], earth_launch)) < 1e-6
-    assert vec_len(vec_sub(transfer_arc[-1], mars_at(mars_transfer_days * DAY_SECONDS))) < 1e-6
+    assert vec_len(vec_sub(transfer_arc[-1], opposite_orbit_point(earth_launch, mars))) < 1e-6
+    poor_window_miss = vec_len(vec_sub(transfer_arc[-1], mars_at(mars_transfer_days * DAY_SECONDS)))
+    assert poor_window_miss > 0.1 * AU_KM, poor_window_miss
     transfer_chord = vec_len(vec_sub(transfer_arc[-1], transfer_arc[0]))
     transfer_length = sum(vec_len(vec_sub(transfer_arc[index], transfer_arc[index - 1])) for index in range(1, len(transfer_arc)))
     mars_decorative_arc_speed = transfer_length / hohmann_transfer_time_seconds(earth, mars)
@@ -329,6 +339,7 @@ def main() -> None:
     print(f"Saturn V Jupiter transfer remains Hohmann baseline: {saturn_v_jupiter_transfer_seconds / DAY_SECONDS:.1f} days")
     print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
     print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")
+    print(f"Poor-window Mars transfer endpoint miss: {poor_window_miss / AU_KM:.2f} AU")
     print(f"Post-arrival stale miss avoided: {stale_post_arrival_miss / AU_KM:.2f} AU")
 
 

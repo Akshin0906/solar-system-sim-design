@@ -176,6 +176,14 @@ const progradeTangentFromSun = ([x, _y, z]: Vec3): Vec3 => {
   return vectorLength(tangent) === 0 ? [0, 0, 1] : tangent;
 };
 
+const oppositeOrbitPoint = (launchPointKm: Vec3, destinationRadiusKm: number): Vec3 => {
+  const launchDirection = normalize(launchPointKm);
+  if (vectorLength(launchDirection) === 0) {
+    return [destinationRadiusKm, 0, 0];
+  }
+  return mul(launchDirection, -destinationRadiusKm);
+};
+
 const estimateLocalMoonTransfer = (
   earth: CelestialBody,
   destinationBody: CelestialBody,
@@ -313,8 +321,8 @@ export const estimateTransfer = (
 
   const notes = [
     profileAdjusted
-      ? "Sustained-profile Hohmann estimate assumes circular, coplanar heliocentric orbits."
-      : "Hohmann estimate assumes circular, coplanar heliocentric orbits.",
+      ? "Sustained-profile Hohmann estimate assumes circular, coplanar heliocentric orbits; poor windows can miss the target."
+      : "Hohmann estimate assumes circular, coplanar heliocentric orbits; poor windows can miss the target.",
   ];
 
   return {
@@ -357,12 +365,13 @@ export const sampleTransferArcKm = (
   const launchDate = new Date(launchDateMs);
   const arrivalDate = new Date(estimate.arrivalDateMs);
   const launchPointKm = getBodyPositionKm(earth, bodiesById, launchDate);
-  const interceptPointKm = getBodyPositionKm(transferTargetBody, bodiesById, arrivalDate);
+  const targetArrivalPointKm = getBodyPositionKm(transferTargetBody, bodiesById, arrivalDate);
 
   if (estimate.centralBodyId === "earth") {
+    const interceptPointKm = targetArrivalPointKm;
     const destinationLocalArrivalKm = destinationBody.orbit
       ? getOrbitPositionKm(destinationBody.orbit, arrivalDate)
-      : sub(interceptPointKm, getBodyPositionKm(earth, bodiesById, arrivalDate));
+      : sub(targetArrivalPointKm, getBodyPositionKm(earth, bodiesById, arrivalDate));
     const localLaunchKm: Vec3 = [0, 0, 0];
     const localChordLength = vectorLength(destinationLocalArrivalKm);
     const localLift: Vec3 = [0, Math.max(localChordLength * 0.24, EARTH_RADIUS_KM * 5), 0];
@@ -382,6 +391,7 @@ export const sampleTransferArcKm = (
     };
   }
 
+  const interceptPointKm = oppositeOrbitPoint(launchPointKm, estimate.destinationOrbitRadiusKm);
   const chordLength = vectorLength(sub(interceptPointKm, launchPointKm));
   const controlDistance = Math.min(chordLength * 0.42, estimate.transferSemiMajorAxisKm * 0.85);
   const launchTangent = progradeTangentFromSun(launchPointKm);

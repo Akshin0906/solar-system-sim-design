@@ -34,9 +34,8 @@ import {
 // view. It never mutates celestial body data.
 //
 // Direct aim predicts a straight-line intercept with the moving target. Transfer
-// preview uses approximate Hohmann-style timing and a visual route to the arrival
-// point. After arrival, both modes keep the rocket attached to the destination so
-// the scene keeps reading as "arrived" while the simulation clock continues.
+// preview uses approximate Hohmann-style timing and a visual route to the ideal
+// transfer endpoint. Good transfer windows can arrive; poor windows visibly miss.
 
 const EARTH_ID = "earth";
 
@@ -50,6 +49,9 @@ const DIRECT_INTERCEPT_SEARCH_ITERATIONS = 56;
 const DIRECT_SCENE_PATH_SAMPLES = 36;
 const DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS = 1;
 const ARRIVAL_PROGRESS_THRESHOLD = 0.999_999;
+const MIN_TRANSFER_ARRIVAL_TOLERANCE_KM = 100_000;
+const TRANSFER_ARRIVAL_RADIUS_MULTIPLIER = 8;
+const TRANSFER_EXCELLENT_PHASE_TOLERANCE_RAD = (5 * Math.PI) / 180;
 
 export type MissionStatus =
   | "pre-launch"
@@ -57,7 +59,8 @@ export type MissionStatus =
   | "coast"
   | "transfer"
   | "approach"
-  | "arrived";
+  | "arrived"
+  | "flyby";
 
 export const missionStatusLabel: Record<MissionStatus, string> = {
   "pre-launch": "Pre-launch",
@@ -66,6 +69,7 @@ export const missionStatusLabel: Record<MissionStatus, string> = {
   transfer: "Transfer",
   approach: "Approach",
   arrived: "Arrived",
+  flyby: "Flyby",
 };
 
 export type RocketDestinationView = {
@@ -172,6 +176,13 @@ const getDirectStatus = (
   }
   return "coast";
 };
+
+const getTransferArrivalToleranceKm = (destBody: CelestialBody, estimate: TransferEstimate): number =>
+  Math.max(
+    destBody.physical.radiusKm * TRANSFER_ARRIVAL_RADIUS_MULTIPLIER,
+    MIN_TRANSFER_ARRIVAL_TOLERANCE_KM,
+    2 * estimate.destinationOrbitRadiusKm * Math.sin(TRANSFER_EXCELLENT_PHASE_TOLERANCE_RAD / 2),
+  );
 
 /** Straight-line distance from the rocket to the moving destination at mission time tau. */
 const distanceToDestAt = (
@@ -531,13 +542,24 @@ export const computeRocketView = (
       const transferTimeSeconds = Math.max(plan.estimate.transferTimeSeconds, 1);
       const progress = clamp01(elapsedSeconds / transferTimeSeconds);
       const arrivalDate = new Date(plan.estimate.arrivalDateMs);
-      const transferTargetBody = bodiesById.get(plan.estimate.transferTargetBodyId) ?? destBody;
-      const arrived =
+      const atOrPastTransferEnd =
         progress >= ARRIVAL_PROGRESS_THRESHOLD ||
         elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= transferTimeSeconds;
       const targetArrivalScenePosition = computeBodyScenePosition(destBody, bodiesById, arrivalDate, mode);
-      const interceptScenePosition = computeBodyScenePosition(transferTargetBody, bodiesById, arrivalDate, mode);
+      const interceptScenePosition =
+        plan.estimate.centralBodyId === "earth"
+          ? targetArrivalScenePosition
+          : scaleVectorFromSun(plan.arc.interceptPointKm, mode);
       const transferScenePoints = getTransferSceneArc(plan, destBody, launchDateMs, mode);
+      const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
+      const plannedClosestApproachKm = getPlannedTransferClosestApproach(
+        plan.arc,
+        plan.estimate,
+        destBody,
+        launchDateMs,
+      );
+      const arrivalToleranceKm = getTransferArrivalToleranceKm(destBody, plan.estimate);
+      const arrived = atOrPastTransferEnd && plannedClosestApproachKm <= arrivalToleranceKm;
       const followScenePoints = arrived
         ? makeDestinationFollowScenePoints(destBody, plan.estimate.arrivalDateMs, simulationDateMs, mode)
         : [];
@@ -546,15 +568,8 @@ export const computeRocketView = (
         ? computeBodyScenePosition(destBody, bodiesById, simDate, mode)
         : interpolatePoints(arcScenePoints, progress);
       const sceneDirection = directionAlongPoints(arcScenePoints, progress);
-      const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
       const rocketHelioKm = arrived ? destNowKm : interpolateTransferArcKm(plan.arc, progress);
       const distanceToTargetKm = arrived ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
-      const plannedClosestApproachKm = getPlannedTransferClosestApproach(
-        plan.arc,
-        plan.estimate,
-        destBody,
-        launchDateMs,
-      );
       const closestApproachKm = arrived ? 0 : Math.min(plannedClosestApproachKm, distanceToTargetKm);
       const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
       const preLaunch = simulationDateMs < launchDateMs;
@@ -570,8 +585,10 @@ export const computeRocketView = (
         status = "burn";
       } else if (progress < 0.82) {
         status = "transfer";
-      } else if (!arrived) {
+      } else if (!atOrPastTransferEnd) {
         status = "approach";
+      } else if (!arrived) {
+        status = "flyby";
       } else {
         status = "arrived";
       }

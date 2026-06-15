@@ -6,7 +6,7 @@ import { getBodyPositionKm, vectorLength } from "../src/simulation/solveOrbit";
 import { destinationsById, rocketDestinations } from "../src/features/rockets/destinationCatalog";
 import { rocketsById } from "../src/features/rockets/rocketCatalog";
 import { computeRocketView } from "../src/features/rockets/rocketState";
-import { estimateTransfer } from "../src/features/rockets/transferModel";
+import { estimateTransfer, sampleTransferArcKm } from "../src/features/rockets/transferModel";
 import { clampCommandActiveIndex } from "../src/ui/commandIndex";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 
@@ -384,6 +384,55 @@ const assertTransferEstimateUsesAppCode = () => {
   );
 };
 
+const assertPoorTransferWindowMissesTarget = () => {
+  const mars = bodiesById.get("mars");
+  const saturnV = rocketsById.get("saturn-v");
+  const marsDestination = destinationsById.get("mars");
+  assert(mars);
+  assert(saturnV);
+  assert(marsDestination);
+
+  const launchDateMs = CHECK_DATE.getTime();
+  const estimate = estimateTransfer(mars, bodiesById, launchDateMs, saturnV);
+  assert(estimate);
+  assert.equal(estimate.launchWindowQuality, "poor");
+
+  const arc = sampleTransferArcKm(estimate, bodiesById, launchDateMs);
+  assert(arc);
+  const targetArrivalKm = getBodyPositionKm(mars, bodiesById, new Date(estimate.arrivalDateMs));
+  const endpointMissKm = distanceKm(arc.interceptPointKm, targetArrivalKm);
+  assert(
+    endpointMissKm > 0.5 * AU_KM,
+    `poor-window Mars transfer endpoint should miss target, got ${(endpointMissKm / AU_KM).toFixed(2)} AU`,
+  );
+
+  const launchView = computeRocketView(saturnV, launchDateMs, launchDateMs, "compressed", marsDestination, "transfer");
+  assert(launchView.destination);
+  assert(
+    launchView.destination.closestApproachKm > 0.5 * AU_KM,
+    `poor-window closest approach should stay nonzero, got ${(
+      launchView.destination.closestApproachKm / AU_KM
+    ).toFixed(2)} AU`,
+  );
+
+  const postArrivalView = computeRocketView(
+    saturnV,
+    launchDateMs,
+    estimate.arrivalDateMs + 1_000,
+    "compressed",
+    marsDestination,
+    "transfer",
+  );
+  assert.equal(postArrivalView.status, "flyby");
+  assert(postArrivalView.destination);
+  assert(
+    postArrivalView.destination.distanceToTargetKm > 0.5 * AU_KM,
+    `poor-window flyby should remain separated from target, got ${(
+      postArrivalView.destination.distanceToTargetKm / AU_KM
+    ).toFixed(2)} AU`,
+  );
+};
+
 const assertCommandPaletteIndexClamping = () => {
   assert.equal(clampCommandActiveIndex(0, 0), 0);
   assert.equal(clampCommandActiveIndex(8, 3), 2);
@@ -441,6 +490,7 @@ assertDirectRocketArrivalCapsTelemetry();
 assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
+assertPoorTransferWindowMissesTarget();
 assertCommandPaletteIndexClamping();
 assertSafeBooleanPreferences();
 
