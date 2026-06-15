@@ -152,3 +152,6 @@ console.log("== behavioural probes ==");
 console.log("\n==== PROBLEMS (" + problems.length + ") ====");
 for (const p of problems) console.log(" - " + p);
 if (!problems.length) console.log("none");
+if (problems.length > 0) {
+  process.exitCode = 1;
+}

@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build && node scripts/generate-service-worker.mjs",
     "build:github": "tsc --noEmit && vite build --mode github-pages && node scripts/generate-service-worker.mjs /solar-system-sim-design/",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "npm run verify:app",
+    "test": "npm run verify:app && npm run verify:rockets",
     "verify:app": "tsx scripts/verify_app_logic.ts",
     "verify:rockets": "tsx scripts/stress_rockets.ts",
     "verify:math": "python3 scripts/verify_orbit_math.py && python3 scripts/verify_camera_framing.py && python3 scripts/verify_planet_orbits_against_jpl.py && python3 scripts/verify_minor_body_data.py && python3 scripts/verify_label_scaling.py && python3 scripts/verify_moon_scaling.py && python3 scripts/verify_rocket_transfer_math.py"
