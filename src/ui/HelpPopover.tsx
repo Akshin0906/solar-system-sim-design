@@ -18,7 +18,7 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  useFocusTrap(containerRef, open, () => onCloseRef.current());
+  useFocusTrap(containerRef, open, () => onCloseRef.current(), triggerRef);
 
   if (!open) {
     return null;

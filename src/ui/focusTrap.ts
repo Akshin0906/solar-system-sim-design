@@ -18,6 +18,7 @@ export const useFocusTrap = (
   containerRef: RefObject<HTMLElement | null>,
   active: boolean,
   onEscape?: () => void,
+  restoreFocusRef?: RefObject<HTMLElement | null>,
 ) => {
   const onEscapeRef = useRef(onEscape);
   onEscapeRef.current = onEscape;
@@ -32,16 +33,18 @@ export const useFocusTrap = (
       return;
     }
 
-    const restoreTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const restoreTarget =
+      restoreFocusRef?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const focusFirst = () => {
       const focusables = getFocusableElements(container);
       (focusables[0] ?? container).focus();
     };
 
-    window.requestAnimationFrame(focusFirst);
+    const focusFrame = window.requestAnimationFrame(focusFirst);
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
         event.stopPropagation();
         onEscapeRef.current?.();
         return;
@@ -74,8 +77,12 @@ export const useFocusTrap = (
 
     window.addEventListener("keydown", handleKeyDown, true);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", handleKeyDown, true);
-      restoreTarget?.focus?.();
+      const target = restoreFocusRef?.current ?? restoreTarget;
+      if (target && document.contains(target)) {
+        target.focus();
+      }
     };
-  }, [active, containerRef]);
+  }, [active, containerRef, restoreFocusRef]);
 };

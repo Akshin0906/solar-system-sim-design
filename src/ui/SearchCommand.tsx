@@ -13,7 +13,7 @@ import {
   TimerReset,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import { selectableBodies } from "../data";
 import { useRocketStore } from "../future/rockets/rocketStore";
 import { useScaleStore } from "../simulation/scaleStore";
@@ -27,6 +27,7 @@ import { useIsMobile } from "./useMediaQuery";
 type SearchCommandProps = {
   open: boolean;
   onClose: () => void;
+  restoreFocusRef?: RefObject<HTMLElement | null>;
 };
 
 type CommandItem = {
@@ -43,7 +44,7 @@ type CommandItem = {
 
 const normalize = (value: string) => value.toLowerCase();
 
-export const SearchCommand = ({ open, onClose }: SearchCommandProps) => {
+export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -64,7 +65,7 @@ export const SearchCommand = ({ open, onClose }: SearchCommandProps) => {
   const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
   const openSheet = useUiStore((state) => state.openSheet);
 
-  useFocusTrap(containerRef, open, onClose);
+  useFocusTrap(containerRef, open, onClose, restoreFocusRef);
 
   useEffect(() => {
     if (!open) {

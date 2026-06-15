@@ -20,6 +20,7 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 
 export const TopBar = () => {
   const [helpOpen, setHelpOpen] = useState(false);
+  const searchButtonRef = useRef<HTMLButtonElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const selectedId = useSelectionStore((state) => state.selectedId);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
@@ -59,6 +60,7 @@ export const TopBar = () => {
       </div>
       <div className="top-actions">
         <button
+          ref={searchButtonRef}
           className={`icon-button tooltip-trigger ${searchOpen ? "active" : ""}`}
           type="button"
           onClick={() => {
@@ -114,7 +116,7 @@ export const TopBar = () => {
           <CircleHelp size={16} />
         </button>
       </div>
-      <SearchCommand open={searchOpen} onClose={closeSearch} />
+      <SearchCommand open={searchOpen} onClose={closeSearch} restoreFocusRef={searchButtonRef} />
       <HelpPopover open={helpOpen} onClose={() => setHelpOpen(false)} triggerRef={helpButtonRef} />
     </header>
   );
