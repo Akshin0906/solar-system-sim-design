@@ -343,8 +343,12 @@ const assertTransferEstimateUsesAppCode = () => {
   const launchDateMs = CHECK_DATE.getTime();
   const marsTransfer = estimateTransfer(mars, bodiesById, launchDateMs);
   const jupiterTransfer = estimateTransfer(jupiter, bodiesById, launchDateMs);
+  const saturnV = rocketsById.get("saturn-v");
+  const fusion = rocketsById.get("fusion-drive");
   assert(marsTransfer);
   assert(jupiterTransfer);
+  assert(saturnV);
+  assert(fusion);
 
   const marsTransferDays = marsTransfer.transferTimeSeconds / DAY_SECONDS;
   assert(marsTransferDays > 250 && marsTransferDays < 270, `unexpected Mars transfer days ${marsTransferDays}`);
@@ -352,6 +356,24 @@ const assertTransferEstimateUsesAppCode = () => {
   assert(marsTransfer.departureDeltaVKmS > 2.8 && marsTransfer.departureDeltaVKmS < 3.1);
   assert(marsTransfer.arrivalDeltaVKmS !== null);
   assert(marsTransfer.arrivalDeltaVKmS > 2.5 && marsTransfer.arrivalDeltaVKmS < 2.8);
+
+  const saturnMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, saturnV);
+  const fusionMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, fusion);
+  assert(saturnMarsTransfer);
+  assert(fusionMarsTransfer);
+  assert(
+    saturnMarsTransfer.transferTimeSeconds < marsTransfer.transferTimeSeconds,
+    "profile-adjusted Saturn V transfer should be faster than the orbital-only baseline",
+  );
+  assert(
+    fusionMarsTransfer.transferTimeSeconds < saturnMarsTransfer.transferTimeSeconds,
+    "faster rocket profiles should produce shorter transfer times",
+  );
+  assert.notEqual(
+    fusionMarsTransfer.arrivalDateMs,
+    saturnMarsTransfer.arrivalDateMs,
+    "profile-adjusted transfer intercept dates should vary by rocket profile",
+  );
 };
 
 const assertCommandPaletteIndexClamping = () => {

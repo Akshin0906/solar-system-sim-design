@@ -26,6 +26,13 @@ FUSION_PROFILE = {
     "burn_duration_s": 6_000_000,
 }
 
+SATURN_V_PROFILE = {
+    "initial_speed_km_s": 2,
+    "max_speed_km_s": 11,
+    "acceleration_m_s2": 22,
+    "burn_duration_s": 420,
+}
+
 
 def normalize_signed_radians(radians: float) -> float:
     normalized = ((radians + math.pi) % (2 * math.pi)) - math.pi
@@ -51,6 +58,33 @@ def mean_transfer_speed_km_s(origin_radius_km: float, destination_radius_km: flo
         transfer_speed_km_s(origin_radius_km, transfer_semimajor_axis_km)
         + transfer_speed_km_s(destination_radius_km, transfer_semimajor_axis_km)
     ) / 2
+
+
+def profile_adjusted_transfer_time_seconds(
+    profile: dict[str, float],
+    baseline_transfer_time_seconds: float,
+    baseline_mean_transfer_speed_km_s: float,
+) -> float:
+    route_distance_km = baseline_mean_transfer_speed_km_s * baseline_transfer_time_seconds
+
+    def covered_distance(seconds: float) -> float:
+        return baseline_mean_transfer_speed_km_s * seconds + sample_flight(profile, seconds)[1]
+
+    lower = 0.0
+    upper = max(baseline_transfer_time_seconds, 1.0)
+    max_seconds = 31_557_600 * 120
+    while upper < max_seconds and covered_distance(upper) < route_distance_km:
+        lower = upper
+        upper = min(upper * 2, max_seconds)
+
+    assert covered_distance(upper) >= route_distance_km, "profile-adjusted transfer did not bracket"
+    for _ in range(56):
+        mid = (lower + upper) / 2
+        if covered_distance(mid) >= route_distance_km:
+            upper = mid
+        else:
+            lower = mid
+    return upper
 
 
 def delta_v_pair(origin_radius_km: float, destination_radius_km: float) -> tuple[float, float]:
@@ -213,6 +247,26 @@ def main() -> None:
     assert jupiter_arrival > 5
     assert 22 < mars_mean_transfer_speed < 28, mars_mean_transfer_speed
 
+    mars_transfer_seconds = hohmann_transfer_time_seconds(earth, mars)
+    saturn_v_transfer_seconds = profile_adjusted_transfer_time_seconds(
+        SATURN_V_PROFILE,
+        mars_transfer_seconds,
+        mars_mean_transfer_speed,
+    )
+    fusion_transfer_seconds = profile_adjusted_transfer_time_seconds(
+        FUSION_PROFILE,
+        mars_transfer_seconds,
+        mars_mean_transfer_speed,
+    )
+    assert saturn_v_transfer_seconds < mars_transfer_seconds, (
+        saturn_v_transfer_seconds,
+        mars_transfer_seconds,
+    )
+    assert fusion_transfer_seconds < saturn_v_transfer_seconds, (
+        fusion_transfer_seconds,
+        saturn_v_transfer_seconds,
+    )
+
     earth_launch = circular_orbit_position(earth, 0, 0, 365.256)
     mars_phase = math.radians(65)
     mars_at = lambda t: circular_orbit_position(mars, mars_phase, t, 686.98)
@@ -253,6 +307,11 @@ def main() -> None:
     print(f"Mars delta-v departure/arrival: {mars_departure:.2f}/{mars_arrival:.2f} km/s")
     print(f"Mars vis-viva mean transfer speed: {mars_mean_transfer_speed:.2f} km/s")
     print(f"Jupiter delta-v departure/arrival: {jupiter_departure:.2f}/{jupiter_arrival:.2f} km/s")
+    print(
+        "Profile-adjusted Mars transfer days: "
+        f"Saturn V {saturn_v_transfer_seconds / DAY_SECONDS:.1f}, "
+        f"Fusion {fusion_transfer_seconds / DAY_SECONDS:.1f}"
+    )
     print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
     print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")
     print(f"Post-arrival stale miss avoided: {stale_post_arrival_miss / AU_KM:.2f} AU")

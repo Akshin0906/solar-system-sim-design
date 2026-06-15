@@ -301,14 +301,18 @@ export const clearRocketCaches = () => {
   transferClosestApproachCache.clear();
 };
 
-const getTransferPlan = (destBody: CelestialBody, launchDateMs: number): CachedTransferPlan | null => {
-  const key = `${destBody.id}|${launchDateMs}`;
+const getTransferPlan = (
+  profile: RocketProfile,
+  destBody: CelestialBody,
+  launchDateMs: number,
+): CachedTransferPlan | null => {
+  const key = `${profile.id}|${destBody.id}|${launchDateMs}`;
   const cached = transferPlanCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs);
+  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs, profile);
   if (!estimate) {
     return null;
   }
@@ -328,7 +332,7 @@ const getPlannedTransferClosestApproach = (
   destBody: CelestialBody,
   launchDateMs: number,
 ): number => {
-  const key = `${destBody.id}|${launchDateMs}`;
+  const key = `${destBody.id}|${launchDateMs}|${estimate.arrivalDateMs}`;
   const cached = transferClosestApproachCache.get(key);
   if (cached !== undefined) {
     return cached;
@@ -371,7 +375,7 @@ const getTransferSceneArc = (
   launchDateMs: number,
   mode: ScaleMode,
 ): Vec3[] => {
-  const cacheKey = `${destinationBody.id}|${launchDateMs}|${mode}`;
+  const cacheKey = `${destinationBody.id}|${launchDateMs}|${plan.estimate.arrivalDateMs}|${mode}`;
   const cached = transferSceneArcCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -521,7 +525,7 @@ export const computeRocketView = (
   }
 
   if (missionMode === "transfer") {
-    const plan = getTransferPlan(destBody, launchDateMs);
+    const plan = getTransferPlan(profile, destBody, launchDateMs);
     if (plan) {
       const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
       const transferTimeSeconds = Math.max(plan.estimate.transferTimeSeconds, 1);

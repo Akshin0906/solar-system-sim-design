@@ -176,7 +176,11 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
         {!embedded && conceptNote}
 
         {!active && effectiveMissionMode === "transfer" && selectedDestination.bodyId && (
-          <RocketTransferPreview destination={selectedDestination} launchDateMs={simulationDateMs} />
+          <RocketTransferPreview
+            destination={selectedDestination}
+            launchDateMs={simulationDateMs}
+            profile={selected}
+          />
         )}
 
         {/* When a rocket is active, telemetry is the priority — show it first so the

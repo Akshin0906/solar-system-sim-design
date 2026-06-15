@@ -13,11 +13,15 @@ import {
   normalizeVec3 as normalize,
   subVec3 as sub,
 } from "../../simulation/vec3";
+import { sampleFlight } from "./flightModel";
+import type { RocketProfile } from "./rocketCatalog";
 
 const EARTH_ID = "earth";
 const SUN_ID = "sun";
 const TWO_PI = Math.PI * 2;
 const LEO_ALTITUDE_KM = 400;
+const PROFILE_TRANSFER_SEARCH_ITERATIONS = 56;
+const PROFILE_TRANSFER_MAX_SECONDS = 31_557_600 * 120;
 
 export type LaunchWindowQuality = "excellent" | "good" | "fair" | "poor";
 export type TransferCentralBody = "sun" | "earth";
@@ -103,6 +107,65 @@ const circularSpeed = (muKm3S2: number, radiusKm: number) => Math.sqrt(muKm3S2 /
 const transferSpeed = (muKm3S2: number, radiusKm: number, transferSemiMajorAxisKm: number) =>
   Math.sqrt(muKm3S2 * (2 / radiusKm - 1 / transferSemiMajorAxisKm));
 
+const solveProfileAdjustedTransfer = (
+  profile: RocketProfile | null | undefined,
+  baselineTransferTimeSeconds: number,
+  baselineMeanTransferSpeedKmS: number,
+): { transferTimeSeconds: number; meanTransferSpeedKmS: number } => {
+  if (!profile) {
+    return {
+      transferTimeSeconds: baselineTransferTimeSeconds,
+      meanTransferSpeedKmS: baselineMeanTransferSpeedKmS,
+    };
+  }
+
+  const routeDistanceKm = baselineMeanTransferSpeedKmS * baselineTransferTimeSeconds;
+  if (!Number.isFinite(routeDistanceKm) || routeDistanceKm <= 0) {
+    return {
+      transferTimeSeconds: baselineTransferTimeSeconds,
+      meanTransferSpeedKmS: baselineMeanTransferSpeedKmS,
+    };
+  }
+
+  const coveredDistanceAt = (seconds: number) =>
+    baselineMeanTransferSpeedKmS * seconds + sampleFlight(profile, seconds).distanceTraveledKm;
+
+  let lowerSeconds = 0;
+  let upperSeconds = Math.min(
+    Math.max(baselineTransferTimeSeconds, 1),
+    PROFILE_TRANSFER_MAX_SECONDS,
+  );
+
+  while (
+    upperSeconds < PROFILE_TRANSFER_MAX_SECONDS &&
+    coveredDistanceAt(upperSeconds) < routeDistanceKm
+  ) {
+    lowerSeconds = upperSeconds;
+    upperSeconds = Math.min(upperSeconds * 2, PROFILE_TRANSFER_MAX_SECONDS);
+  }
+
+  if (coveredDistanceAt(upperSeconds) < routeDistanceKm) {
+    return {
+      transferTimeSeconds: baselineTransferTimeSeconds,
+      meanTransferSpeedKmS: baselineMeanTransferSpeedKmS,
+    };
+  }
+
+  for (let index = 0; index < PROFILE_TRANSFER_SEARCH_ITERATIONS; index += 1) {
+    const midSeconds = (lowerSeconds + upperSeconds) / 2;
+    if (coveredDistanceAt(midSeconds) >= routeDistanceKm) {
+      upperSeconds = midSeconds;
+    } else {
+      lowerSeconds = midSeconds;
+    }
+  }
+
+  return {
+    transferTimeSeconds: upperSeconds,
+    meanTransferSpeedKmS: routeDistanceKm / upperSeconds,
+  };
+};
+
 const progradeTangentFromSun = ([x, _y, z]: Vec3): Vec3 => {
   const tangent = normalize([-z, 0, x]);
   return vectorLength(tangent) === 0 ? [0, 0, 1] : tangent;
@@ -112,6 +175,7 @@ const estimateLocalMoonTransfer = (
   earth: CelestialBody,
   destinationBody: CelestialBody,
   launchDateMs: number,
+  profile?: RocketProfile | null,
 ): TransferEstimate | null => {
   if (!destinationBody.orbit) {
     return null;
@@ -127,14 +191,19 @@ const estimateLocalMoonTransfer = (
   const originRadiusKm = EARTH_RADIUS_KM + LEO_ALTITUDE_KM;
   const destinationRadiusKm = destinationOrbit.semiMajorAxisKm;
   const transferSemiMajorAxisKm = (originRadiusKm + destinationRadiusKm) / 2;
-  const transferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muEarth);
-  if (!Number.isFinite(transferTimeSeconds) || transferTimeSeconds <= 0) {
+  const baselineTransferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muEarth);
+  if (!Number.isFinite(baselineTransferTimeSeconds) || baselineTransferTimeSeconds <= 0) {
     return null;
   }
 
   const departureTransferSpeedKmS = transferSpeed(muEarth, originRadiusKm, transferSemiMajorAxisKm);
   const arrivalTransferSpeedKmS = transferSpeed(muEarth, destinationRadiusKm, transferSemiMajorAxisKm);
-  const meanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
+  const baselineMeanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
+  const { transferTimeSeconds, meanTransferSpeedKmS } = solveProfileAdjustedTransfer(
+    profile,
+    baselineTransferTimeSeconds,
+    baselineMeanTransferSpeedKmS,
+  );
   const departureDeltaVKmS = Math.abs(
     departureTransferSpeedKmS - circularSpeed(muEarth, originRadiusKm),
   );
@@ -162,7 +231,11 @@ const estimateLocalMoonTransfer = (
     favorable: true,
     approximate: true,
     targetIsMoon: true,
-    notes: ["Moon transfer uses a simplified Earth-centered parking-orbit estimate."],
+    notes: [
+      profile
+        ? "Profile-adjusted Moon transfer uses a simplified Earth-centered parking-orbit estimate."
+        : "Moon transfer uses a simplified Earth-centered parking-orbit estimate.",
+    ],
   };
 };
 
@@ -170,6 +243,7 @@ export const estimateTransfer = (
   destinationBody: CelestialBody,
   bodiesById: Map<string, CelestialBody>,
   launchDateMs: number,
+  profile?: RocketProfile | null,
 ): TransferEstimate | null => {
   const earth = bodiesById.get(EARTH_ID);
   const sun = bodiesById.get(SUN_ID);
@@ -182,7 +256,7 @@ export const estimateTransfer = (
   }
 
   if (destinationBody.type === "moon" && destinationBody.parentId === EARTH_ID) {
-    return estimateLocalMoonTransfer(earth, destinationBody, launchDateMs);
+    return estimateLocalMoonTransfer(earth, destinationBody, launchDateMs, profile);
   }
 
   if (destinationBody.type === "moon") {
@@ -205,11 +279,19 @@ export const estimateTransfer = (
   const originRadiusKm = earthOrbit.semiMajorAxisKm;
   const destinationRadiusKm = transferTargetOrbit.semiMajorAxisKm;
   const transferSemiMajorAxisKm = (originRadiusKm + destinationRadiusKm) / 2;
-  const transferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muSun);
-  if (!Number.isFinite(transferTimeSeconds) || transferTimeSeconds <= 0 || transferTargetOrbit.orbitalPeriodDays === 0) {
+  const baselineTransferTimeSeconds = Math.PI * Math.sqrt(transferSemiMajorAxisKm ** 3 / muSun);
+  if (!Number.isFinite(baselineTransferTimeSeconds) || baselineTransferTimeSeconds <= 0 || transferTargetOrbit.orbitalPeriodDays === 0) {
     return null;
   }
 
+  const departureTransferSpeedKmS = transferSpeed(muSun, originRadiusKm, transferSemiMajorAxisKm);
+  const arrivalTransferSpeedKmS = transferSpeed(muSun, destinationRadiusKm, transferSemiMajorAxisKm);
+  const baselineMeanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
+  const { transferTimeSeconds, meanTransferSpeedKmS } = solveProfileAdjustedTransfer(
+    profile,
+    baselineTransferTimeSeconds,
+    baselineMeanTransferSpeedKmS,
+  );
   const targetMeanMotion = TWO_PI / (Math.abs(transferTargetOrbit.orbitalPeriodDays) * DAY_SECONDS);
   const idealPhaseAngleRad = normalizeSignedRadians(Math.PI - targetMeanMotion * transferTimeSeconds);
 
@@ -219,16 +301,16 @@ export const estimateTransfer = (
   const phaseOffsetRad = normalizeSignedRadians(currentPhaseAngleRad - idealPhaseAngleRad);
   const phaseOffsetDeg = radiansToDegrees(phaseOffsetRad);
   const launchWindowQuality = qualityFromPhaseOffset(phaseOffsetDeg);
-
-  const departureTransferSpeedKmS = transferSpeed(muSun, originRadiusKm, transferSemiMajorAxisKm);
-  const arrivalTransferSpeedKmS = transferSpeed(muSun, destinationRadiusKm, transferSemiMajorAxisKm);
-  const meanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
   const departureDeltaVKmS = Math.abs(departureTransferSpeedKmS - circularSpeed(muSun, originRadiusKm));
   const arrivalDeltaVKmS = Math.abs(
     circularSpeed(muSun, destinationRadiusKm) - arrivalTransferSpeedKmS,
   );
 
-  const notes = ["Hohmann estimate assumes circular, coplanar heliocentric orbits."];
+  const notes = [
+    profile
+      ? "Profile-adjusted Hohmann estimate assumes circular, coplanar heliocentric orbits."
+      : "Hohmann estimate assumes circular, coplanar heliocentric orbits.",
+  ];
 
   return {
     centralBodyId: "sun",
