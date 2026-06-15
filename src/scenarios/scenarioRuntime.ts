@@ -99,10 +99,15 @@ export const writeScenePositions = (
     current.baseLayerMode = mode;
   }
 
-  // 2. Overwrite live participants with integrated positions.
+  // 2. Overwrite live participants with integrated positions. Refuse a non-finite vector
+  //    (e.g. a NaN that slipped through an extreme close pass) so the render cache — read
+  //    directly by CameraRig, outside React — never gets poisoned and frames/follows a NaN.
   for (const sb of state.bodies) {
     if (sb.sourceId && sb.alive && state.participantIds.has(sb.sourceId)) {
-      positions[sb.sourceId] = scaleVectorFromSun(sb.posKm, mode);
+      const scaled = scaleVectorFromSun(sb.posKm, mode);
+      if (Number.isFinite(scaled[0]) && Number.isFinite(scaled[1]) && Number.isFinite(scaled[2])) {
+        positions[sb.sourceId] = scaled;
+      }
     }
   }
 

@@ -103,10 +103,16 @@ const qualityFromPhaseOffset = (phaseOffsetDeg: number): LaunchWindowQuality => 
 
 const getCentralMu = (body: CelestialBody) => body.physical.gravitationalParameterKm3S2 ?? 0;
 
-const circularSpeed = (muKm3S2: number, radiusKm: number) => Math.sqrt(muKm3S2 / radiusKm);
+const circularSpeed = (muKm3S2: number, radiusKm: number) =>
+  radiusKm > 0 ? Math.sqrt(muKm3S2 / radiusKm) : 0;
 
-const transferSpeed = (muKm3S2: number, radiusKm: number, transferSemiMajorAxisKm: number) =>
-  Math.sqrt(muKm3S2 * (2 / radiusKm - 1 / transferSemiMajorAxisKm));
+const transferSpeed = (muKm3S2: number, radiusKm: number, transferSemiMajorAxisKm: number) => {
+  if (radiusKm <= 0 || transferSemiMajorAxisKm <= 0) {
+    return 0;
+  }
+  const speedSquared = muKm3S2 * (2 / radiusKm - 1 / transferSemiMajorAxisKm);
+  return speedSquared > 0 ? Math.sqrt(speedSquared) : 0;
+};
 
 const solveProfileAdjustedTransfer = (
   profile: RocketProfile | null | undefined,
@@ -216,6 +222,19 @@ const estimateLocalMoonTransfer = (
     circularSpeed(muEarth, destinationRadiusKm) - arrivalTransferSpeedKmS,
   );
 
+  // Phase geometry around Earth, mirroring the heliocentric planet path. The Moon's
+  // Earth-relative position gives its real angular position; the ideal lead angle is
+  // 180° minus how far the Moon travels during the transfer. Surfacing the live values
+  // keeps the launch-window readout honest instead of frozen placeholders.
+  const moonMeanMotion = TWO_PI / (Math.abs(destinationOrbit.orbitalPeriodDays) * DAY_SECONDS);
+  const idealPhaseAngleRad = normalizeSignedRadians(Math.PI - moonMeanMotion * transferTimeSeconds);
+  const moonRelativeToEarthKm = getOrbitPositionKm(destinationBody.orbit, launchDate);
+  const currentPhaseAngleRad = normalizeSignedRadians(angleFromSun(moonRelativeToEarthKm));
+  const phaseOffsetDeg = radiansToDegrees(
+    normalizeSignedRadians(currentPhaseAngleRad - idealPhaseAngleRad),
+  );
+  const launchWindowQuality = qualityFromPhaseOffset(phaseOffsetDeg);
+
   return {
     centralBodyId: "earth",
     originBodyId: EARTH_ID,
@@ -227,13 +246,13 @@ const estimateLocalMoonTransfer = (
     destinationOrbitRadiusKm: destinationRadiusKm,
     transferSemiMajorAxisKm,
     meanTransferSpeedKmS,
-    idealPhaseAngleDeg: 42,
-    currentPhaseAngleDeg: 42,
-    phaseOffsetDeg: 0,
+    idealPhaseAngleDeg: radiansToDegrees(idealPhaseAngleRad),
+    currentPhaseAngleDeg: radiansToDegrees(currentPhaseAngleRad),
+    phaseOffsetDeg,
     departureDeltaVKmS,
     arrivalDeltaVKmS,
-    launchWindowQuality: "good",
-    favorable: true,
+    launchWindowQuality,
+    favorable: launchWindowQuality === "excellent" || launchWindowQuality === "good",
     approximate: true,
     targetIsMoon: true,
     notes: [

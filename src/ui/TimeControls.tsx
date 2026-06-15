@@ -62,7 +62,10 @@ const TimelineScrubber = () => {
         min={minScrubDays}
         max={maxScrubDays}
         step={1}
-        value={scrubDays}
+        // Quantize to the integer step so the thumb sits exactly on a valid stop. The
+        // underlying date (and aria-valuetext) stay full-precision; only the thumb position
+        // is rounded, which avoids the visible jump when first dragging from a "now" offset.
+        value={Math.round(scrubDays)}
         onChange={(event) => setSimulationDateMs(getDateMsFromEpochDays(Number(event.target.value)))}
         aria-label="Timeline"
         aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}

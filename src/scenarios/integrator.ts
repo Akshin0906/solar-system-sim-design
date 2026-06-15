@@ -294,6 +294,8 @@ const killBody = (state: IntegratorState, sb: SimBody) => {
 };
 
 // Queue a transient visual event (impact flash / shockwave) for the scene's VFX layer.
+const IMPACT_FX_QUEUE_CAP = 256;
+
 const pushImpactFx = (
   state: IntegratorState,
   kind: "flash" | "shockwave",
@@ -301,6 +303,12 @@ const pushImpactFx = (
   scaleKm: number,
   color: string,
 ) => {
+  // These are purely cosmetic, transient events drained by the ImpactFx component each
+  // frame. Cap the queue so a context where the component isn't mounted/draining (headless
+  // run, unmount mid-burst) can't grow it without bound; dropping excess flashes is benign.
+  if (state.impactFx.length >= IMPACT_FX_QUEUE_CAP) {
+    return;
+  }
   state.impactFx.push({ kind, posKm: [posKm[0], posKm[1], posKm[2]], scaleKm, color });
 };
 
@@ -786,6 +794,29 @@ export const stepFixed = (state: IntegratorState, dt: number) => {
   logEjections(state);
 };
 
+// Drop dead debris out of the live set so a long, collision-heavy run (re-accreting
+// rings, repeated shatters) doesn't keep an ever-growing array that every step re-filters
+// and every acceleration pass walks. Only fragments are compacted: participants (Sun,
+// planets) and their dead markers are retained because writeScenePositions / CameraRig
+// still look them up by id to drop a destroyed body's ghost and re-glue or hide its moons.
+const compactDeadFragments = (state: IntegratorState) => {
+  let hasDeadFragment = false;
+  for (const sb of state.bodies) {
+    if (!sb.alive && sb.kind === "fragment") {
+      hasDeadFragment = true;
+      break;
+    }
+  }
+  if (!hasDeadFragment) {
+    return;
+  }
+  state.bodies = state.bodies.filter((sb) => sb.alive || sb.kind !== "fragment");
+  state.byId.clear();
+  for (const sb of state.bodies) {
+    state.byId.set(sb.id, sb);
+  }
+};
+
 // Advance the sim by a chunk of real frame time, scaled to sim-time. Returns the
 // number of fixed steps actually run (0 while paused or below one step of budget).
 // `beforeStep` runs once per fixed step (deterministic) for non-gravitational drivers
@@ -802,6 +833,9 @@ export const advance = (
     stepFixed(state, FIXED_STEP_SECONDS);
     state.accumulatorSeconds -= FIXED_STEP_SECONDS;
     steps += 1;
+  }
+  if (steps > 0) {
+    compactDeadFragments(state);
   }
   if (steps >= MAX_SUBSTEPS_PER_FRAME) {
     // Couldn't keep up this frame: drop the backlog so we don't spiral, and flag it.

@@ -55,10 +55,14 @@ export const useTimeStore = create<TimeState>((set, get) => ({
       ),
     }));
   },
-  stepDays: (days) =>
+  stepDays: (days) => {
+    // Respect the arrow-of-time direction so stepping stays consistent with playback
+    // (tick() applies the same factor): in reverse mode the step controls also reverse.
+    const { direction } = get();
     set((state) => ({
-      simulationDateMs: clampSimulationDateMs(state.simulationDateMs + days * DAY_MS),
-    })),
+      simulationDateMs: clampSimulationDateMs(state.simulationDateMs + days * direction * DAY_MS),
+    }));
+  },
   setDirection: (direction) => set({ direction }),
   setPreset: (preset) => {
     const match = TIME_PRESETS.find((item) => item.id === preset) ?? defaultPreset;

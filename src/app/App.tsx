@@ -369,25 +369,32 @@ export const App = () => {
             gl.domElement.classList.add("solar-canvas");
             gl.domElement.setAttribute("role", "img");
             gl.domElement.setAttribute("aria-label", "Interactive 3D solar system simulation");
-            gl.domElement.addEventListener("webglcontextlost", (event) => {
-              event.preventDefault();
-              setWebglRestoring(true);
-              if (restoreTimerRef.current !== null) {
-                window.clearTimeout(restoreTimerRef.current);
-              }
-              restoreTimerRef.current = window.setTimeout(() => {
+            // Attach the context-loss listeners at most once per canvas element. onCreated
+            // can run again for the same element (e.g. a Retry/remount cycle), and these
+            // listeners are never removed, so an unguarded add would stack duplicates that
+            // each fire and race the restore timer. The flag makes re-registration a no-op.
+            if (!gl.domElement.dataset.contextListenersAttached) {
+              gl.domElement.dataset.contextListenersAttached = "true";
+              gl.domElement.addEventListener("webglcontextlost", (event) => {
+                event.preventDefault();
+                setWebglRestoring(true);
+                if (restoreTimerRef.current !== null) {
+                  window.clearTimeout(restoreTimerRef.current);
+                }
+                restoreTimerRef.current = window.setTimeout(() => {
+                  setWebglRestoring(false);
+                  setWebglUnavailable(true);
+                }, 6_000);
+              });
+              gl.domElement.addEventListener("webglcontextrestored", () => {
+                if (restoreTimerRef.current !== null) {
+                  window.clearTimeout(restoreTimerRef.current);
+                  restoreTimerRef.current = null;
+                }
                 setWebglRestoring(false);
-                setWebglUnavailable(true);
-              }, 6_000);
-            });
-            gl.domElement.addEventListener("webglcontextrestored", () => {
-              if (restoreTimerRef.current !== null) {
-                window.clearTimeout(restoreTimerRef.current);
-                restoreTimerRef.current = null;
-              }
-              setWebglRestoring(false);
-              setWebglUnavailable(false);
-            });
+                setWebglUnavailable(false);
+              });
+            }
           }}
         >
           <Suspense fallback={null}>

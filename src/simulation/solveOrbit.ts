@@ -111,7 +111,10 @@ export const getOrbitElementsAtDate = (orbit: Orbit, date: Date): ResolvedOrbitE
       : rates.meanLongitudeDeg - (rates.longitudeOfPeriapsisDeg ?? 0);
 
   return {
-    semiMajorAxisKm: orbit.semiMajorAxisKm + (rates.semiMajorAxisAu ?? 0) * AU_KM * centuries,
+    // Secular rates can drive the semi-major axis to zero/negative over geological
+    // timespans (e.g. Jupiter's slightly negative adot); floor it so a far-future date
+    // never feeds a non-positive radius into the Kepler solver or transfer math.
+    semiMajorAxisKm: Math.max(orbit.semiMajorAxisKm + (rates.semiMajorAxisAu ?? 0) * AU_KM * centuries, 1e-6),
     eccentricity: orbit.eccentricity + (rates.eccentricity ?? 0) * centuries,
     inclinationDeg: orbit.inclinationDeg + (rates.inclinationDeg ?? 0) * centuries,
     longitudeOfAscendingNodeDeg: normalizeDegrees(longitudeOfAscendingNodeDeg),
@@ -197,9 +200,15 @@ export const estimateOrbitalSpeedKmS = (body: CelestialBody, date: Date) => {
   const periodSeconds = Math.abs(orbit.orbitalPeriodDays) * DAY_SECONDS;
   const semiMajorAxisKm = orbit.semiMajorAxisKm;
   const currentRadiusKm = getOrbitRadiusKm(body, date);
+  // Degenerate geometry (radius at the focus, zero period) would divide by zero or take
+  // the root of a negative; return 0 so the inspector reads "0 km/s" instead of NaN.
+  if (currentRadiusKm <= 0 || semiMajorAxisKm <= 0 || periodSeconds <= 0) {
+    return 0;
+  }
   const derivedMu = (4 * Math.PI * Math.PI * semiMajorAxisKm ** 3) / periodSeconds ** 2;
+  const speedSquared = derivedMu * (2 / currentRadiusKm - 1 / semiMajorAxisKm);
 
-  return Math.sqrt(derivedMu * (2 / currentRadiusKm - 1 / semiMajorAxisKm));
+  return speedSquared > 0 ? Math.sqrt(speedSquared) : 0;
 };
 
 export const sampleOrbitKm = (orbit: Orbit, samples = 192, date = new Date(orbit.epoch)) => {

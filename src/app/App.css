@@ -1862,9 +1862,12 @@ input[type="range"] {
   }
 
   .body-label {
-    min-width: 58px;
-    min-height: 58px;
-    padding: 3px 10px;
+    /* Touch-friendly without the oversized 58px square that read as chunky, overlapping
+       boxes near the Sun. A wider-than-tall pill keeps a comfortable tap target (matching
+       the 44px controls elsewhere) while staying legible and letting more labels coexist. */
+    min-width: 44px;
+    min-height: 36px;
+    padding: 4px 11px;
   }
 
   .segmented-control button,

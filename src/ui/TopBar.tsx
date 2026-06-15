@@ -63,6 +63,7 @@ export const TopBar = () => {
       </div>
       <div className="top-date" title="Simulation date">
         <CalendarDays size={15} aria-hidden />
+        <span className="sr-only">Simulation date </span>
         <SimClock />
       </div>
       <div className="top-actions">
@@ -141,5 +142,8 @@ export const TopBar = () => {
 const SimClock = () => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
 
-  return <span aria-hidden="true">{dateFormatter.format(new Date(simulationDateMs))}</span>;
+  // Not aria-hidden: a screen-reader user navigating the top bar should be able to read
+  // the current simulation date. It is a plain (non-live) value, so it is read on demand
+  // rather than re-announced every tick — the polite live region in App handles changes.
+  return <span>{dateFormatter.format(new Date(simulationDateMs))}</span>;
 };
