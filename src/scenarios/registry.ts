@@ -311,6 +311,9 @@ export const SCENARIOS: DoomsdayScenario[] = [
         alive: true,
         renderHint: "marker",
         label: isComet ? "Comet" : "Asteroid",
+        // Freeze the target now so a "Selected" target can't be hijacked by a mid-flight
+        // re-selection (impactTargetId reads the live selection store on the -1 path).
+        homingTargetId: targetId,
       });
     },
     // Targeted intercept: hold the impactor on a converging course toward the planet at the
@@ -324,7 +327,9 @@ export const SCENARIOS: DoomsdayScenario[] = [
       if (!impactor || !impactor.alive) {
         return;
       }
-      const target = state.byId.get(impactTargetId(params.target ?? 2, bodiesById));
+      // Use the target frozen at seed (not the live selection) so the impactor stays locked
+      // on the world it was launched at.
+      const target = state.byId.get(impactor.homingTargetId ?? impactTargetId(params.target ?? 2, bodiesById));
       if (!target || !target.alive) {
         return;
       }

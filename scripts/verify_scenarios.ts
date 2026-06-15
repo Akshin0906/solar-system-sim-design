@@ -13,6 +13,7 @@ import {
   tidalDisrupt,
 } from "../src/scenarios/integrator";
 import { IMPACTOR_ID, INTERLOPER_ID, scenarioById } from "../src/scenarios/registry";
+import { useSelectionStore } from "../src/simulation/selectionStore";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import type { IntegratorState, SimBody } from "../src/scenarios/types";
 
@@ -451,6 +452,34 @@ check("impact scenario steers the impactor to a reliable strike on its target", 
   assert.equal(state.byId.get("earth")!.alive, true, "Earth survives a 60 km impactor (cratered, not shattered)");
   assert.ok(fragCount(state) >= 1, "the strike throws ejecta");
   assert.ok(state.impactFx.length >= 2, "the strike queues impact VFX");
+});
+
+// --- 17b. Impact: a "Selected" target is frozen at seed, not hijacked mid-flight ---
+check("impact 'Selected' target is frozen at seed and survives a re-selection", () => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  const scenario = scenarioById.get("impact")!;
+  useSelectionStore.getState().setSelectedId("mars"); // launch aimed at the selected body
+  const params = { target: -1, impactorType: 0, sizeKm: 60, speedKmS: 28, impactAngleDeg: 45 };
+  scenario.seed!({ state, params, bodiesById });
+  const impactor = state.byId.get(IMPACTOR_ID)!;
+  assert.equal(impactor.homingTargetId, "mars", "the Selected target must be frozen to Mars at seed");
+  // Change the live selection mid-flight; the homing drive must still steer toward Mars.
+  useSelectionStore.getState().setSelectedId("venus");
+  scenario.drive!({ state, params, bodiesById }, FIXED_STEP_SECONDS);
+  const mars = state.byId.get("mars")!;
+  const rel: Vec3 = [
+    impactor.velKmS[0] - mars.velKmS[0],
+    impactor.velKmS[1] - mars.velKmS[1],
+    impactor.velKmS[2] - mars.velKmS[2],
+  ];
+  const toMars: Vec3 = [
+    mars.posKm[0] - impactor.posKm[0],
+    mars.posKm[1] - impactor.posKm[1],
+    mars.posKm[2] - impactor.posKm[2],
+  ];
+  const cos = (rel[0] * toMars[0] + rel[1] * toMars[1] + rel[2] * toMars[2]) / (magnitude(rel) * magnitude(toMars));
+  assert.ok(cos > 0.99, `impactor must home the frozen target (Mars), not the re-selected Venus (cos=${cos.toFixed(3)})`);
+  useSelectionStore.getState().setSelectedId("earth"); // restore default for any later checks
 });
 
 // --- 18. Collision: a low-speed giant impact → molten remnant + debris ring --

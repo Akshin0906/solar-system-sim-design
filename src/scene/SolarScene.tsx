@@ -58,9 +58,18 @@ export const SolarScene = () => {
 
   // When a live catastrophe consumes the body the camera is on, hand the camera to a
   // surviving world instead of snapping abruptly back to the origin. Prefer a large, stable
-  // outer planet, falling back inward and to the Sun.
+  // outer planet, falling back inward and to the Sun. Also fires when the selected body is a
+  // moon whose parent was consumed (moons aren't participants, so they never appear in
+  // consumedIds, but a consumed parent takes its moons' meshes + positions with it).
   useEffect(() => {
-    if (!activeScenarioId || !consumedIds.includes(selectedId)) {
+    if (!activeScenarioId) {
+      return;
+    }
+    const selected = bodiesById.get(selectedId);
+    const selectedGone =
+      consumedIds.includes(selectedId) ||
+      (selected?.type === "moon" && selected.parentId !== null && consumedIds.includes(selected.parentId));
+    if (!selectedGone) {
       return;
     }
     const consumed = new Set(consumedIds);

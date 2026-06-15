@@ -12,6 +12,7 @@ import { TopBar } from "../ui/TopBar";
 import { BottomSheet } from "../ui/BottomSheet";
 import { RocketLauncherPanel } from "../features/rockets/RocketLauncherPanel";
 import { useRocketStore } from "../features/rockets/rocketStore";
+import { useScenarioStore } from "../scenarios/scenarioStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatTimeScale } from "../simulation/units";
@@ -260,6 +261,12 @@ export const App = () => {
   const closeSheet = useUiStore((state) => state.closeSheet);
   const reducedMotion = useReducedMotion();
   const didReducedMotionPauseRef = useRef(false);
+  // A running scenario animates on its own T+ clock with the J2000 clock frozen, so the
+  // demand-mode render pump (the clock subscription below) goes silent. Switch the canvas
+  // to a continuous loop while a scenario runs so the integrator + VFX keep stepping.
+  const scenarioAnimating = useScenarioStore(
+    (state) => state.activeScenarioId !== null && state.status === "running",
+  );
 
   // On phones the panels become dismissible bottom sheets that manage their own
   // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
@@ -303,6 +310,19 @@ export const App = () => {
     [],
   );
 
+  // A scenario start/stop/pause/resume (or a param re-seed) must render at least one frame
+  // even in demand mode — so the catastrophe seeds, the system snaps back on exit, and a
+  // paused scenario repaints — since these don't advance the J2000 clock above.
+  useEffect(
+    () =>
+      useScenarioStore.subscribe((state, prev) => {
+        if (state.activeScenarioId !== prev.activeScenarioId || state.status !== prev.status || state.instanceId !== prev.instanceId) {
+          invalidate();
+        }
+      }),
+    [],
+  );
+
   const createRenderer = useCallback(async (defaultProps: CanvasRendererProps) => {
     try {
       return new WebGLRenderer({
@@ -331,12 +351,13 @@ export const App = () => {
       ) : (
         <Canvas
           className="solar-canvas"
-          // frameloop="demand": with body motion driven imperatively through refs, the
-          // renderer only needs to draw when the clock advances (TimeDriver invalidates)
-          // or the camera/scene changes. The a11y semantics (role/aria-label/tab focus)
-          // live on the inner <canvas> below — the keyboard-interactive element — so the
-          // scene is announced and tab-stopped exactly once, not twice.
-          frameloop="demand"
+          // frameloop="demand" for normal browsing: with body motion driven imperatively
+          // through refs, the renderer only draws when the clock advances (TimeDriver
+          // invalidates) or the camera/scene changes. A live scenario animates on its own
+          // frozen-clock T+ timeline, so it switches to "always" to pump frames continuously.
+          // The a11y semantics (role/aria-label/tab focus) live on the inner <canvas> below —
+          // the keyboard-interactive element — so the scene is announced and tab-stopped once.
+          frameloop={scenarioAnimating ? "always" : "demand"}
           camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
           dpr={[1, 1.65]}
           fallback={<p>WebGL unavailable</p>}
