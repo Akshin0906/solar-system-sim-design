@@ -10,7 +10,6 @@ import {
   DoubleSide,
   LinearFilter,
   PerspectiveCamera,
-  RepeatWrapping,
   SRGBColorSpace,
   TextureLoader,
   Vector3,
@@ -138,8 +137,12 @@ const useBodyImageTexture = (url?: string) => {
 
         nextTexture.colorSpace = SRGBColorSpace;
         nextTexture.anisotropy = 4;
-        nextTexture.wrapS = RepeatWrapping;
+        nextTexture.generateMipmaps = false;
+        nextTexture.minFilter = LinearFilter;
+        nextTexture.magFilter = LinearFilter;
+        nextTexture.wrapS = ClampToEdgeWrapping;
         nextTexture.wrapT = ClampToEdgeWrapping;
+        nextTexture.needsUpdate = true;
         setTexture(nextTexture);
       },
       undefined,
@@ -356,6 +359,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
           <sphereGeometry args={[renderRadius, body.type === "moon" ? 40 : 64, body.type === "moon" ? 24 : 40]} />
           {body.type === "star" ? (
             <meshBasicMaterial
+              key={surfaceTexture?.uuid ?? "surface-pending"}
               map={surfaceTexture}
               color={surfaceTexture ? visual.baseColor : "#ffd08a"}
               toneMapped={false}
@@ -364,6 +368,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
             />
           ) : (
             <meshStandardMaterial
+              key={`${surfaceTexture?.uuid ?? "surface-pending"}-${bumpTexture?.uuid ?? "bump-pending"}`}
               map={surfaceTexture}
               color={surfaceTexture ? "#ffffff" : visual.baseColor}
               roughness={visual.roughness}

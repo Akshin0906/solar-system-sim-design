@@ -1,8 +1,8 @@
 import {
   CanvasTexture,
   ClampToEdgeWrapping,
+  LinearFilter,
   NoColorSpace,
-  RepeatWrapping,
   SRGBColorSpace,
 } from "three";
 import type { CelestialBody } from "../simulation/orbitalElements";
@@ -402,7 +402,10 @@ export const createSurfaceTexture = (body: CelestialBody) => {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 4;
-  texture.wrapS = RepeatWrapping;
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = ClampToEdgeWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
@@ -447,7 +450,10 @@ export const createBodyBumpTexture = (body: CelestialBody) => {
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = NoColorSpace;
   texture.anisotropy = 4;
-  texture.wrapS = RepeatWrapping;
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = ClampToEdgeWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
@@ -496,7 +502,10 @@ export const createCloudTexture = (body: CelestialBody) => {
   context.putImageData(image, 0, 0);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.wrapS = RepeatWrapping;
+  texture.generateMipmaps = false;
+  texture.minFilter = LinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = ClampToEdgeWrapping;
   texture.wrapT = ClampToEdgeWrapping;
   return texture;
 };
