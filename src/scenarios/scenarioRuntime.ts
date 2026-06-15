@@ -5,7 +5,7 @@ import { addVec3 } from "../simulation/vec3";
 import { computeScenePositions, scaleMoonOffset, scaleVectorFromSun, type ScaleMode } from "../simulation/units";
 import { advance, seedIntegrator } from "./integrator";
 import { scenarioById } from "./registry";
-import type { DoomsdayScenario, IntegratorState, SimBody } from "./types";
+import type { DoomsdayScenario, ImpactFx, IntegratorState, SimBody } from "./types";
 
 // The live, mutable simulation. This deliberately lives OUTSIDE React/Zustand: it is
 // rewritten every animation frame across many fixed steps, and routing that through
@@ -162,6 +162,17 @@ export const drainConsumed = (): string[] => {
   const consumed = current.state.newlyConsumed;
   current.state.newlyConsumed = [];
   return consumed;
+};
+
+// Drain transient VFX events (impact flashes, shockwaves) emitted since the last call, for
+// the scene's ImpactFx layer to spawn billboards. Returns [] when there's nothing new.
+export const drainImpactFx = (): ImpactFx[] => {
+  if (!current || current.state.impactFx.length === 0) {
+    return [];
+  }
+  const fx = current.state.impactFx;
+  current.state.impactFx = [];
+  return fx;
 };
 
 export const getElapsedSimSeconds = () => current?.state.elapsedSimSeconds ?? 0;

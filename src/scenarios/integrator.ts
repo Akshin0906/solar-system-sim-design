@@ -47,8 +47,19 @@ const MAX_EVENT_FRAGMENTS = 24;
 // Fragment collision radii are inflated for the contact test only (not their drawn or
 // gravitating size): real shard radii are so small they'd almost never re-collide, so a
 // debris ring would never re-accrete. This keeps re-accretion observable without faking
-// mass. Applied symmetrically, so it never makes a fragment "reach into" a planet.
+// mass. Applied to fragments in the contact test only.
 const FRAGMENT_COLLISION_INFLATE = 6;
+// A mass-disparate contact (small body into a much larger one) cratering threshold: above
+// this μ the larger body is a star or black hole — infalling matter is swallowed with no
+// ejecta. Below it the larger body is planet-scale, so a fast small impactor excavates a
+// crater and throws ejecta. (Sun μ≈1.3e11, Jupiter μ≈1.3e8, so 1e10 cleanly splits them.)
+const STELLAR_MU = 1e10;
+// Below this relative speed a disparate contact is gentle accretion, not a cratering hit.
+const CRATER_SPEED_MIN = 3;
+// Cratering ejecta mass ≈ this × the impactor mass (capped to a slice of the target).
+const EJECTA_MASS_FACTOR = 4;
+const MIN_EJECTA = 4;
+const MAX_EJECTA = 10;
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5)); // ≈2.39996 rad — Fibonacci-sphere step
 const GOLDEN_FRAC = 0.618_033_988_749_895; // 1/φ — low-discrepancy index hashing
@@ -127,6 +138,7 @@ export const seedIntegrator = (
     fragmentCap: DEFAULT_FRAGMENT_CAP,
     fragmentCapHit: 0,
     fragmentSeq: 0,
+    impactFx: [],
   };
 };
 
@@ -265,6 +277,17 @@ const killBody = (state: IntegratorState, sb: SimBody) => {
   }
 };
 
+// Queue a transient visual event (impact flash / shockwave) for the scene's VFX layer.
+const pushImpactFx = (
+  state: IntegratorState,
+  kind: "flash" | "shockwave",
+  posKm: Vec3,
+  scaleKm: number,
+  color: string,
+) => {
+  state.impactFx.push({ kind, posKm: [posKm[0], posKm[1], posKm[2]], scaleKm, color });
+};
+
 // Clamp a desired fragment count to the global cap (counting fragments already live).
 // Records the cap on fragmentCapHit when it bites so the panel can surface the coalesce.
 const fragmentBudget = (state: IntegratorState, desired: number): number => {
@@ -383,6 +406,9 @@ const shatter = (state: IntegratorState, a: SimBody, b: SimBody, speedRel: numbe
   const totalVol = a.radiusKm ** 3 + b.radiusKm ** 3;
   const color = a.muKm3S2 >= b.muKm3S2 ? a.color : b.color;
   const impactAxis = subVec3(a.velKmS, b.velKmS);
+  const flashScale = Math.cbrt(totalVol);
+  pushImpactFx(state, "flash", comPos, flashScale, "#fff2d0");
+  pushImpactFx(state, "shockwave", comPos, flashScale, color);
   killBody(state, a);
   killBody(state, b);
   emitFragments(state, count, totalMu, totalVol, comPos, comVel, SHATTER_DISPERSAL_FACTOR * speedRel, color, {
@@ -428,6 +454,9 @@ const mergeWithRing = (state: IntegratorState, a: SimBody, b: SimBody, ringFract
   survivor.velKmS = [comVel[0], comVel[1], comVel[2]];
   survivor.muKm3S2 = totalMu - ringMu;
   survivor.radiusKm = Math.cbrt(Math.max(totalVol - ringVol, 1));
+  const ringFlashScale = Math.cbrt(totalVol);
+  pushImpactFx(state, "flash", comPos, ringFlashScale, "#ffe6c4");
+  pushImpactFx(state, "shockwave", comPos, ringFlashScale, survivor.color);
   killBody(state, victim);
 
   emitFragments(state, count, ringMu, ringVol, comPos, comVel, escSpeed * 0.95, survivor.color);
@@ -437,6 +466,121 @@ const mergeWithRing = (state: IntegratorState, a: SimBody, b: SimBody, ringFract
     aId: survivor.id,
     bId: victim.id,
     detail: `${victim.sourceId ?? victim.id} → ${survivor.sourceId ?? survivor.id} + ring (${count})`,
+  });
+};
+
+// Directed cratering ejecta: fragments sprayed into the hemisphere around `normalDir`
+// (the impact normal) at ~`speed`. Returns the net momentum the spray carries about
+// `baseVel`, so the caller can recoil the target and conserve momentum exactly.
+const emitEjecta = (
+  state: IntegratorState,
+  count: number,
+  totalMu: number,
+  totalVolumeKm3: number,
+  originPos: Vec3,
+  baseVel: Vec3,
+  normalDir: Vec3,
+  speed: number,
+  color: string,
+): Vec3 => {
+  const n = normalizeVec3(normalDir);
+  const weights: number[] = [];
+  let wSum = 0;
+  for (let i = 0; i < count; i += 1) {
+    const w = 1 / Math.pow(i + 1, 0.8);
+    weights.push(w);
+    wSum += w;
+  }
+  for (let i = 0; i < count; i += 1) {
+    weights[i] /= wSum;
+  }
+  const parentRadius = Math.cbrt(Math.max(totalVolumeKm3, 1));
+  const pSplash: Vec3 = [0, 0, 0];
+  for (let i = 0; i < count; i += 1) {
+    let d = fibSphere(i, count);
+    // Fold into the +n hemisphere, then bias toward n for an ejecta cone.
+    const dn = d[0] * n[0] + d[1] * n[1] + d[2] * n[2];
+    if (dn < 0) {
+      d = [d[0] - 2 * dn * n[0], d[1] - 2 * dn * n[1], d[2] - 2 * dn * n[2]];
+    }
+    d = normalizeVec3([d[0] * 0.55 + n[0] * 0.9, d[1] * 0.55 + n[1] * 0.9, d[2] * 0.55 + n[2] * 0.9]);
+    const sp = speed * (0.5 + 0.8 * goldenFrac(i));
+    const ejMu = totalMu * weights[i];
+    const splash: Vec3 = [d[0] * sp, d[1] * sp, d[2] * sp];
+    pSplash[0] += ejMu * splash[0];
+    pSplash[1] += ejMu * splash[1];
+    pSplash[2] += ejMu * splash[2];
+    const radiusKm = Math.cbrt(Math.max(totalVolumeKm3 * weights[i], 1));
+    const off = parentRadius * 0.4 + radiusKm;
+    addSimBody(state, {
+      id: `frag-${state.fragmentSeq}`,
+      kind: "fragment",
+      posKm: [originPos[0] + d[0] * off, originPos[1] + d[1] * off, originPos[2] + d[2] * off],
+      velKmS: [baseVel[0] + splash[0], baseVel[1] + splash[1], baseVel[2] + splash[2]],
+      muKm3S2: ejMu,
+      radiusKm,
+      color,
+      alive: true,
+    });
+    state.fragmentSeq += 1;
+  }
+  return pSplash;
+};
+
+// Cratering surface impact: a fast small impactor is absorbed by a planet-scale target,
+// excavating a crater and throwing ejecta back out of the impact point. The target recoils
+// so mass and momentum are conserved exactly. Emits an impact flash + shockwave.
+const crater = (state: IntegratorState, a: SimBody, b: SimBody, speedRel: number) => {
+  const planet = a.muKm3S2 >= b.muKm3S2 ? a : b;
+  const impactor = planet === a ? b : a;
+  const totalMu = planet.muKm3S2 + impactor.muKm3S2;
+  const totalVol = planet.radiusKm ** 3 + impactor.radiusKm ** 3;
+  const comVel = massWeighted(planet.velKmS, planet.muKm3S2, impactor.velKmS, impactor.muKm3S2);
+  const normal = normalizeVec3(subVec3(impactor.posKm, planet.posKm));
+  const impactPos: Vec3 = [
+    planet.posKm[0] + normal[0] * planet.radiusKm,
+    planet.posKm[1] + normal[1] * planet.radiusKm,
+    planet.posKm[2] + normal[2] * planet.radiusKm,
+  ];
+  // Impact flash + shockwave fire regardless of whether ejecta fit under the cap.
+  pushImpactFx(state, "flash", impactPos, planet.radiusKm, "#fff0c8");
+  pushImpactFx(state, "shockwave", impactPos, planet.radiusKm, planet.color);
+
+  const ejectaMu = Math.min(impactor.muKm3S2 * EJECTA_MASS_FACTOR, planet.muKm3S2 * 0.05);
+  const ejectaVol = Math.min(impactor.radiusKm ** 3 * EJECTA_MASS_FACTOR, totalVol * 0.05);
+  const desired = Math.round(MIN_EJECTA + (MAX_EJECTA - MIN_EJECTA) * clamp01(speedRel / 40));
+  const count = fragmentBudget(state, Math.max(MIN_EJECTA, desired));
+  if (count < 2 || ejectaMu <= 0) {
+    merge(state, a, b);
+    return;
+  }
+  const pSplash = emitEjecta(
+    state,
+    count,
+    ejectaMu,
+    ejectaVol,
+    impactPos,
+    comVel,
+    normal,
+    SHATTER_DISPERSAL_FACTOR * speedRel,
+    planet.color,
+  );
+  const survivorMu = totalMu - ejectaMu;
+  killBody(state, impactor);
+  planet.muKm3S2 = survivorMu;
+  planet.radiusKm = Math.cbrt(Math.max(totalVol - ejectaVol, 1));
+  // Recoil so total momentum = totalMu·comVel (the ejecta carry pSplash about comVel).
+  planet.velKmS = [
+    comVel[0] - pSplash[0] / survivorMu,
+    comVel[1] - pSplash[1] / survivorMu,
+    comVel[2] - pSplash[2] / survivorMu,
+  ];
+  state.events.push({
+    type: "collision",
+    simSeconds: state.elapsedSimSeconds,
+    aId: planet.id,
+    bId: impactor.id,
+    detail: `${impactor.sourceId ?? impactor.id} cratered ${planet.sourceId ?? planet.id} → ${count} ejecta`,
   });
 };
 
@@ -474,11 +618,14 @@ export const tidalDisrupt = (state: IntegratorState, body: SimBody, streamDir: V
   return true;
 };
 
-export type ContactOutcome = "merge" | "ring" | "shatter";
+export type ContactOutcome = "merge" | "crater" | "ring" | "shatter";
 
-// Decide how a contact resolves when debris is enabled. Mass-disparate pairs (a small body
-// into a much larger one, or anything with a massless test particle) always merge; otherwise
-// relative speed vs. mutual escape speed picks clean merge / giant-impact ring / shatter.
+// Decide how a contact resolves when debris is enabled.
+//   - massless test particle → absorbed (merge).
+//   - mass-disparate (small into much larger): a star/black hole swallows it (merge); a
+//     planet-scale target is cratered by a fast impactor (crater), or accretes a slow one.
+//   - comparable masses: relative speed vs. mutual escape speed picks
+//     clean merge / giant-impact ring / catastrophic shatter.
 export const contactOutcome = (a: SimBody, b: SimBody): ContactOutcome => {
   if (a.muKm3S2 <= 0 || b.muKm3S2 <= 0) {
     return "merge";
@@ -486,7 +633,11 @@ export const contactOutcome = (a: SimBody, b: SimBody): ContactOutcome => {
   const small = Math.min(a.muKm3S2, b.muKm3S2);
   const large = Math.max(a.muKm3S2, b.muKm3S2);
   if (small / large < SHATTER_MASS_RATIO_MIN) {
-    return "merge";
+    if (large >= STELLAR_MU) {
+      return "merge"; // swallowed by a star or black hole — no ejecta splash
+    }
+    const speedRel = vectorLength(subVec3(a.velKmS, b.velKmS));
+    return speedRel > CRATER_SPEED_MIN ? "crater" : "merge";
   }
   const speedRel = vectorLength(subVec3(a.velKmS, b.velKmS));
   const escSpeed = escapeSpeedKmS(a, b);
@@ -499,7 +650,7 @@ export const contactOutcome = (a: SimBody, b: SimBody): ContactOutcome => {
   return "merge";
 };
 
-// Resolve a single contact under the active debris policy (merge / ring / shatter).
+// Resolve a single contact under the active debris policy (merge / crater / ring / shatter).
 // Exposed so tests can exercise the physics directly without collision-timing games.
 export const resolveContact = (state: IntegratorState, a: SimBody, b: SimBody) => {
   if (!state.shatterEnabled) {
@@ -512,6 +663,10 @@ export const resolveContact = (state: IntegratorState, a: SimBody, b: SimBody) =
     return;
   }
   const speedRel = vectorLength(subVec3(a.velKmS, b.velKmS));
+  if (outcome === "crater") {
+    crater(state, a, b, speedRel);
+    return;
+  }
   if (outcome === "shatter") {
     shatter(state, a, b, speedRel);
     return;

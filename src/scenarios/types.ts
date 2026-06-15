@@ -41,6 +41,17 @@ export type SimEvent = {
   detail: string;
 };
 
+// A transient visual event emitted by a violent contact (impact flash, expanding
+// shockwave) for the scene's VFX layer to draw. Decoupled from physics — purely a
+// drain queue the scene consumes each frame, like newlyConsumed.
+export type ImpactFxKind = "flash" | "shockwave";
+export type ImpactFx = {
+  kind: ImpactFxKind;
+  posKm: Vec3; // heliocentric position of the event
+  scaleKm: number; // characteristic size (≈ the larger body's radius)
+  color: string;
+};
+
 export type IntegratorState = {
   bodies: SimBody[];
   byId: Map<string, SimBody>;
@@ -73,6 +84,8 @@ export type IntegratorState = {
   // Monotonic counter for unique fragment ids. Lives on state (not a module global) so
   // every run starts at 0 and stays deterministic / resumable.
   fragmentSeq: number;
+  // Transient VFX events (impact flashes, shockwaves) the scene drains each frame.
+  impactFx: ImpactFx[];
 };
 
 // A discrete option for a "choice" param (rendered as a segmented control, not a slider).

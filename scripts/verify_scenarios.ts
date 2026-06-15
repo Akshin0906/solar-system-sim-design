@@ -12,7 +12,7 @@ import {
   stepFixed,
   tidalDisrupt,
 } from "../src/scenarios/integrator";
-import { INTERLOPER_ID, scenarioById } from "../src/scenarios/registry";
+import { IMPACTOR_ID, INTERLOPER_ID, scenarioById } from "../src/scenarios/registry";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import type { IntegratorState, SimBody } from "../src/scenarios/types";
 
@@ -394,6 +394,63 @@ check("rogue black hole pass is deterministic and never goes NaN", () => {
   assert.equal(holeA.alive, true, "the black hole survives the pass");
   const b = run();
   assert.deepEqual(holeA.posKm, b.byId.get(INTERLOPER_ID)!.posKm, "two identical black-hole runs diverged");
+});
+
+// --- 15. Impact: a small fast impactor craters a planet (survives) + ejecta --
+check("a small fast impactor craters a planet, conserving mass/momentum with ejecta", () => {
+  const planet = blob("planet", [0, 0, 0], [0, 30, 0]);
+  const impactor = blob("impactor", [EARTH_R * 1.5, 0, 0], [-40, 30, 0], EARTH_MU * 0.0005, 80); // rel 40 km/s
+  const state = bareDebrisState();
+  addSimBody(state, planet);
+  addSimBody(state, impactor);
+  assert.equal(contactOutcome(planet, impactor), "crater", "a small fast hit must crater, not shatter");
+  const muSum = planet.muKm3S2 + impactor.muKm3S2;
+  const pBefore = totalMomentum(state);
+  resolveContact(state, planet, impactor);
+  assert.equal(planet.alive, true, "the planet survives a small impact");
+  assert.equal(impactor.alive, false, "the impactor is absorbed");
+  assert.ok(fragCount(state) >= 2, `ejecta expected, got ${fragCount(state)}`);
+  assert.ok(state.impactFx.length >= 2, "an impact flash + shockwave must be queued for VFX");
+  const muAll = state.bodies.filter((b) => b.alive).reduce((s, b) => s + b.muKm3S2, 0);
+  assert.ok(Math.abs(muAll - muSum) / muSum < 1e-9, "crater mass not conserved");
+  const pErr = momentumErr(totalMomentum(state), pBefore);
+  assert.ok(pErr < 1e-9, `crater momentum error ${pErr.toExponential(2)}`);
+});
+
+// --- 16. Impact: a large comparable impactor shatters the planet -------------
+check("a large hypervelocity impactor shatters the target planet", () => {
+  const planet = blob("planet", [0, 0, 0], [0, 30, 0]);
+  const big = blob("big", [EARTH_R * 1.5, 0, 0], [-40, 30, 0], EARTH_MU * 0.5, EARTH_R * 0.6);
+  const state = bareDebrisState();
+  addSimBody(state, planet);
+  addSimBody(state, big);
+  assert.equal(contactOutcome(planet, big), "shatter", "a comparable hypervelocity hit must shatter");
+  resolveContact(state, planet, big);
+  assert.equal(planet.alive, false, "the planet is fractured");
+  assert.ok(fragCount(state) >= 2, "a debris cloud is produced");
+});
+
+// --- 17. Impact scenario reliably lands its strike --------------------------
+check("impact scenario steers the impactor to a reliable strike on its target", () => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  const scenario = scenarioById.get("impact");
+  assert.ok(scenario?.seed && scenario?.drive, "impact needs a seed + drive");
+  const params = { target: 2, impactorType: 0, sizeKm: 60, speedKmS: 28, impactAngleDeg: 45 };
+  scenario!.seed!({ state, params, bodiesById });
+  assert.ok(state.byId.get(IMPACTOR_ID), "the impactor must be injected");
+  let struck = false;
+  const steps = Math.round((90 * DAY_SECONDS) / FIXED_STEP_SECONDS);
+  for (let i = 0; i < steps && !struck; i += 1) {
+    scenario!.drive!({ state, params, bodiesById }, FIXED_STEP_SECONDS);
+    stepFixed(state, FIXED_STEP_SECONDS);
+    if (!state.byId.get(IMPACTOR_ID)!.alive) {
+      struck = true;
+    }
+  }
+  assert.ok(struck, "the impactor should strike Earth within 90 days");
+  assert.equal(state.byId.get("earth")!.alive, true, "Earth survives a 60 km impactor (cratered, not shattered)");
+  assert.ok(fragCount(state) >= 1, "the strike throws ejecta");
+  assert.ok(state.impactFx.length >= 2, "the strike queues impact VFX");
 });
 
 console.log("");

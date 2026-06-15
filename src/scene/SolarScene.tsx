@@ -21,6 +21,8 @@ import { ScenarioLayer } from "./ScenarioLayer";
 import { PostFx } from "./effects/PostFx";
 import { RedGiantStar } from "./effects/RedGiantStar";
 import { Interloper } from "./effects/Interloper";
+import { ImpactFx } from "./effects/ImpactFx";
+import { CometTail } from "./effects/CometTail";
 import type { ScenePositions } from "./scenePositions";
 import { useScenarioStore } from "../scenarios/scenarioStore";
 import {
@@ -268,6 +270,8 @@ export const SolarScene = () => {
       <ScenarioLayer mode={mode} />
       {isRedGiant && <RedGiantStar mode={mode} />}
       {activeScenarioId === "rogue-blackhole" && <Interloper mode={mode} />}
+      {activeScenarioId === "impact" && <CometTail mode={mode} />}
+      {activeScenarioId && <ImpactFx mode={mode} />}
       <RocketObject />
       <CameraRig positionsRef={positionsRef} mode={mode} />
       <PostFx />

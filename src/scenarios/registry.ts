@@ -1,5 +1,8 @@
 import { AU_KM, DAY_SECONDS } from "../data/constants";
-import { DEFAULT_FRAGMENT_CAP, addSimBody, enableDebris, tidalDisrupt } from "./integrator";
+import type { CelestialBody } from "../simulation/orbitalElements";
+import { useSelectionStore } from "../simulation/selectionStore";
+import { normalizeVec3, subVec3, vectorLength } from "../simulation/vec3";
+import { DEFAULT_FRAGMENT_CAP, addSimBody, enableDebris, resolveContact, tidalDisrupt } from "./integrator";
 import type { DoomsdayScenario, SimBody } from "./types";
 
 // GM of the Sun (km^3/s^2) — used to express a rogue interloper's mass in solar masses.
@@ -26,6 +29,29 @@ export const INTERLOPER_TYPES = [
 
 export const interloperType = (index: number) =>
   INTERLOPER_TYPES[Math.max(0, Math.min(INTERLOPER_TYPES.length - 1, Math.round(index)))];
+
+// --- Asteroid / comet impact ------------------------------------------------
+export const IMPACTOR_ID = "impactor";
+
+// Planets an impactor can be aimed at (index = the target param's value). The special
+// value -1 means "whatever body is currently selected" (falling back to Earth).
+const IMPACT_TARGETS = ["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"];
+const IMPACT_TARGET_SELECTED = -1;
+const GRAV_CONST_KM = 6.674e-20; // G in km^3 kg^-1 s^-2, to turn a size+density into μ
+
+export const impactTargetId = (value: number, bodiesById: Map<string, CelestialBody>): string => {
+  if (Math.round(value) === IMPACT_TARGET_SELECTED) {
+    const selected = useSelectionStore.getState().selectedId;
+    return bodiesById.get(selected)?.type === "planet" ? selected : "earth";
+  }
+  return IMPACT_TARGETS[Math.max(0, Math.min(IMPACT_TARGETS.length - 1, Math.round(value)))] ?? "earth";
+};
+
+const impactorMu = (radiusKm: number, isComet: boolean) => {
+  const densityKgM3 = isComet ? 600 : 2500; // icy comet vs rocky asteroid
+  const massKg = (4 / 3) * Math.PI * (radiusKm * 1000) ** 3 * densityKgM3;
+  return GRAV_CONST_KM * massKg;
+};
 
 // Built-in scenarios. The framework slice ships two:
 //   1. "freefall" — the correctness oracle. Seeding is right iff the real system
@@ -188,6 +214,126 @@ export const SCENARIOS: DoomsdayScenario[] = [
           tidalDisrupt(state, sb, [-dx, -dy, -dz]);
         }
       }
+    },
+  },
+  {
+    id: "impact",
+    name: "Asteroid / comet impact",
+    tagline: "A small body slams into a planet — a cratering airburst, or a world-shattering blow.",
+    science: {
+      realTimescale:
+        "City-killer impacts happen every few centuries; a Chicxulub-scale (~10 km) impactor that ended the dinosaurs lands roughly every 100 million years.",
+      summary:
+        "Aims an impactor at a target planet and lets it strike at real impact speed. A small fast body excavates a crater and throws ejecta; a large enough one (raise the size) exceeds the planet's binding energy and shatters it into debris.",
+      watch:
+        "A ~10 km impactor is the dinosaur-killer — devastating, but the planet survives. Push the size into the hundreds of km to fracture the world entirely. Comets are lower-density but faster, and trail a tail blown back from the Sun.",
+    },
+    params: [
+      {
+        key: "target",
+        label: "Target",
+        default: 2,
+        options: [
+          { value: IMPACT_TARGET_SELECTED, label: "Selected" },
+          { value: 0, label: "Mercury" },
+          { value: 1, label: "Venus" },
+          { value: 2, label: "Earth" },
+          { value: 3, label: "Mars" },
+          { value: 4, label: "Jupiter" },
+        ],
+        help: "Which planet to aim at. ‘Selected’ uses the body you have selected (a planet).",
+      },
+      {
+        key: "impactorType",
+        label: "Impactor",
+        default: 0,
+        options: [
+          { value: 0, label: "Asteroid" },
+          { value: 1, label: "Comet" },
+        ],
+      },
+      { key: "sizeKm", label: "Impactor size", min: 5, max: 3000, step: 5, default: 60, unit: "km", help: "Radius. ~10 km is Chicxulub-scale; hundreds of km can shatter a planet." },
+      { key: "speedKmS", label: "Impact speed", min: 5, max: 72, step: 1, default: 28, unit: "km/s" },
+      { key: "impactAngleDeg", label: "Impact angle", min: 10, max: 90, step: 5, default: 45, unit: "°", help: "90° is a head-on radial strike; lower angles graze in along the orbit." },
+    ],
+    defaultTimeScaleDaysPerSec: 8,
+    seed: ({ state, params, bodiesById }) => {
+      const targetId = impactTargetId(params.target ?? 2, bodiesById);
+      const target = state.byId.get(targetId);
+      if (!target) {
+        return;
+      }
+      enableDebris(state, DEFAULT_FRAGMENT_CAP);
+      const isComet = (params.impactorType ?? 0) === 1;
+      const radiusKm = Math.max(params.sizeKm ?? 60, 1);
+      const speed = params.speedKmS ?? 28;
+      const angle = ((params.impactAngleDeg ?? 45) * Math.PI) / 180;
+      // Approach-from direction in the orbital plane: 90° = radially outward (head-on),
+      // low angle = along the prograde direction (grazing).
+      const out = normalizeVec3(target.posKm);
+      const along = normalizeVec3(target.velKmS);
+      const s = Math.sin(angle);
+      const c = Math.cos(angle);
+      const fromDir = normalizeVec3([
+        out[0] * s + along[0] * c,
+        out[1] * s + along[1] * c,
+        out[2] * s + along[2] * c,
+      ]);
+      const standoff = 0.3 * AU_KM;
+      addSimBody(state, {
+        id: IMPACTOR_ID,
+        kind: "rogue",
+        posKm: [
+          target.posKm[0] + fromDir[0] * standoff,
+          target.posKm[1] + fromDir[1] * standoff,
+          target.posKm[2] + fromDir[2] * standoff,
+        ],
+        // Closes on the target at `speed` in the target's frame (the impact speed).
+        velKmS: [
+          target.velKmS[0] - fromDir[0] * speed,
+          target.velKmS[1] - fromDir[1] * speed,
+          target.velKmS[2] - fromDir[2] * speed,
+        ],
+        muKm3S2: impactorMu(radiusKm, isComet),
+        radiusKm,
+        color: isComet ? "#bfe6ff" : "#9a8a76",
+        alive: true,
+        renderHint: "marker",
+        label: isComet ? "Comet" : "Asteroid",
+      });
+    },
+    // Targeted intercept: hold the impactor on a converging course toward the planet at the
+    // chosen impact speed (its frame), so the demonstration reliably lands the strike. Only
+    // the impactor's aim is steered — every other body's gravity stays fully real, and the
+    // impact itself (crater / shatter / ejecta) is honest Newtonian physics. Because a small,
+    // fast impactor would tunnel through a tiny planet between fixed steps, the drive resolves
+    // the contact itself the step before it would arrive.
+    drive: ({ state, params, bodiesById }, dtSeconds) => {
+      const impactor = state.byId.get(IMPACTOR_ID);
+      if (!impactor || !impactor.alive) {
+        return;
+      }
+      const target = state.byId.get(impactTargetId(params.target ?? 2, bodiesById));
+      if (!target || !target.alive) {
+        return;
+      }
+      const toTarget = subVec3(target.posKm, impactor.posKm);
+      const distKm = vectorLength(toTarget);
+      if (distKm <= 0) {
+        return;
+      }
+      const speed = params.speedKmS ?? 28;
+      const contactKm = impactor.radiusKm + target.radiusKm;
+      if (distKm <= contactKm + speed * dtSeconds) {
+        resolveContact(state, target, impactor); // strike now, before it could tunnel through
+        return;
+      }
+      const dir = normalizeVec3(toTarget);
+      impactor.velKmS = [
+        target.velKmS[0] + dir[0] * speed,
+        target.velKmS[1] + dir[1] * speed,
+        target.velKmS[2] + dir[2] * speed,
+      ];
     },
   },
 ];
