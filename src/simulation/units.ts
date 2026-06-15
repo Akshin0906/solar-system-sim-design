@@ -19,8 +19,8 @@ export const formatBodyType = (value: string) =>
     .trim();
 
 const realUnitsPerAu = 7;
-export const READABLE_MOON_DISTANCE_EXPONENT = 0.72;
-export const READABLE_MOON_DISTANCE_MULTIPLIER = 0.92;
+export const READABLE_MOON_DISTANCE_EXPONENT = 0.42;
+export const READABLE_MOON_DISTANCE_MULTIPLIER = 0.4;
 export const READABLE_MOON_MIN_CLEARANCE = 0.18;
 
 export type MoonScaleContext = {
@@ -81,7 +81,8 @@ export const getBodySceneRadius = (body: CelestialBody, mode: ScaleMode) => {
 };
 
 const scaleReadableMoonDistance = (distanceKm: number, context?: MoonScaleContext) => {
-  const fallbackDistance = Math.pow(distanceKm / 100_000, 0.74) * 0.72;
+  const fallbackDistance =
+    Math.pow(distanceKm / 100_000, READABLE_MOON_DISTANCE_EXPONENT) * READABLE_MOON_DISTANCE_MULTIPLIER;
 
   if (!context?.parentBody || !context.moonBody || context.parentBody.physical.radiusKm <= 0) {
     return fallbackDistance;
@@ -89,12 +90,12 @@ const scaleReadableMoonDistance = (distanceKm: number, context?: MoonScaleContex
 
   const parentRadius = getBodySceneRadius(context.parentBody, "readable");
   const moonRadius = getBodySceneRadius(context.moonBody, "readable");
-  const distanceInParentRadii = distanceKm / context.parentBody.physical.radiusKm;
-  const readableDistance =
+  const distanceInParentRadii = Math.max(distanceKm / context.parentBody.physical.radiusKm, 1);
+  const readableSpread =
     parentRadius * Math.pow(distanceInParentRadii, READABLE_MOON_DISTANCE_EXPONENT) * READABLE_MOON_DISTANCE_MULTIPLIER;
   const minimumDistance = parentRadius + moonRadius + READABLE_MOON_MIN_CLEARANCE;
 
-  return Math.max(fallbackDistance, readableDistance, minimumDistance);
+  return Math.max(fallbackDistance, minimumDistance + readableSpread);
 };
 
 export const scaleMoonOffset = (offsetKm: Vec3, mode: ScaleMode, context?: MoonScaleContext): Vec3 => {
