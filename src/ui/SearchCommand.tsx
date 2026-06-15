@@ -13,13 +13,24 @@ import {
   TimerReset,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { selectableBodies } from "../data";
 import { useRocketStore } from "../future/rockets/rocketStore";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatBodyType } from "../simulation/units";
+import { clampCommandActiveIndex } from "./commandIndex";
 import { useFocusTrap } from "./focusTrap";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
@@ -221,33 +232,43 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
     ],
   );
 
-  const visibleItems = useMemo(() => {
-    const cleanQuery = normalize(query.trim());
+  const getVisibleItems = useCallback(
+    (rawQuery: string) => {
+      const cleanQuery = normalize(rawQuery.trim());
 
-    if (!cleanQuery) {
-      return [
-        ...commandItems.filter((item) => item.group === "Actions"),
-        ...commandItems.filter((item) => item.group === "View").slice(0, 6),
-        ...commandItems.filter((item) => item.group === "Objects").slice(0, 10),
-      ];
-    }
+      if (!cleanQuery) {
+        return [
+          ...commandItems.filter((item) => item.group === "Actions"),
+          ...commandItems.filter((item) => item.group === "View").slice(0, 6),
+          ...commandItems.filter((item) => item.group === "Objects").slice(0, 10),
+        ];
+      }
 
-    return commandItems
-      .filter((item) => {
-        const haystack = normalize(`${item.title} ${item.subtitle} ${item.keywords}`);
-        return haystack.includes(cleanQuery);
-      })
-      .slice(0, 18);
-  }, [commandItems, query]);
+      return commandItems
+        .filter((item) => {
+          const haystack = normalize(`${item.title} ${item.subtitle} ${item.keywords}`);
+          return haystack.includes(cleanQuery);
+        })
+        .slice(0, 18);
+    },
+    [commandItems],
+  );
+
+  const visibleItems = useMemo(() => getVisibleItems(query), [getVisibleItems, query]);
 
   useEffect(() => {
-    setActiveIndex((index) => (visibleItems.length === 0 ? 0 : Math.min(index, visibleItems.length - 1)));
+    setActiveIndex((index) => clampCommandActiveIndex(index, visibleItems.length));
   }, [visibleItems.length]);
 
   const executeItem = (item: CommandItem) => {
     item.action();
     onClose();
     setQuery("");
+  };
+
+  const handleQueryChange = (event: ChangeEvent<HTMLInputElement>) => {
+    setQuery(event.target.value);
+    setActiveIndex(0);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -257,19 +278,23 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       return;
     }
 
-    if (visibleItems.length === 0) {
+    const keyboardItems = event.currentTarget.value === query ? visibleItems : getVisibleItems(event.currentTarget.value);
+
+    if (keyboardItems.length === 0) {
       return;
     }
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
-      setActiveIndex((index) => (index + 1) % visibleItems.length);
+      setActiveIndex((index) => (clampCommandActiveIndex(index, keyboardItems.length) + 1) % keyboardItems.length);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
-      setActiveIndex((index) => (index - 1 + visibleItems.length) % visibleItems.length);
+      setActiveIndex(
+        (index) => (clampCommandActiveIndex(index, keyboardItems.length) - 1 + keyboardItems.length) % keyboardItems.length,
+      );
       return;
     }
 
@@ -281,13 +306,16 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
 
     if (event.key === "End") {
       event.preventDefault();
-      setActiveIndex(visibleItems.length - 1);
+      setActiveIndex(keyboardItems.length - 1);
       return;
     }
 
     if (event.key === "Enter") {
       event.preventDefault();
-      executeItem(visibleItems[activeIndex]);
+      const item = keyboardItems[clampCommandActiveIndex(activeIndex, keyboardItems.length)];
+      if (item) {
+        executeItem(item);
+      }
     }
   };
 
@@ -295,6 +323,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
     return null;
   }
 
+  const safeActiveIndex = clampCommandActiveIndex(activeIndex, visibleItems.length);
   let renderedIndex = -1;
   let lastGroup: CommandItem["group"] | null = null;
 
@@ -312,13 +341,13 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         <input
           autoFocus
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={handleQueryChange}
           placeholder="Search or run a command"
           onKeyDown={handleKeyDown}
           role="combobox"
           aria-expanded="true"
           aria-controls="command-results"
-          aria-activedescendant={visibleItems[activeIndex] ? `command-item-${visibleItems[activeIndex].id}` : undefined}
+          aria-activedescendant={visibleItems[safeActiveIndex] ? `command-item-${visibleItems[safeActiveIndex].id}` : undefined}
         />
         <button className="icon-button subtle" type="button" onClick={onClose} data-tooltip="Close search" aria-label="Close search">
           <X size={15} />
@@ -334,7 +363,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         {visibleItems.map((item) => {
           renderedIndex += 1;
           const currentIndex = renderedIndex;
-          const active = renderedIndex === activeIndex;
+          const active = renderedIndex === safeActiveIndex;
           const showGroup = item.group !== lastGroup;
           lastGroup = item.group;
 

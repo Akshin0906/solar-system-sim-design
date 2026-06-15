@@ -7,6 +7,7 @@ import { destinationsById, rocketDestinations } from "../src/future/rockets/dest
 import { rocketsById } from "../src/future/rockets/rocketCatalog";
 import { computeRocketView } from "../src/future/rockets/rocketState";
 import { estimateTransfer } from "../src/future/rockets/transferModel";
+import { clampCommandActiveIndex } from "../src/ui/commandIndex";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -352,11 +353,18 @@ const assertTransferEstimateUsesAppCode = () => {
   assert(marsTransfer.arrivalDeltaVKmS > 2.5 && marsTransfer.arrivalDeltaVKmS < 2.8);
 };
 
+const assertCommandPaletteIndexClamping = () => {
+  assert.equal(clampCommandActiveIndex(0, 0), 0);
+  assert.equal(clampCommandActiveIndex(8, 3), 2);
+  assert.equal(clampCommandActiveIndex(-2, 3), 0);
+};
+
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
 assertDirectRocketArrivalCapsTelemetry();
 assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
+assertCommandPaletteIndexClamping();
 
 console.log("App logic checks passed");
