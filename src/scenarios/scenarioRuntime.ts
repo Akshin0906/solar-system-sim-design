@@ -141,6 +141,11 @@ export const getRuntimeRevision = (): number => current?.state.revision ?? 0;
 // as the red-giant overlay, which tracks the Sun's swelling radius each frame.
 export const getParticipant = (id: string): SimBody | null => current?.state.byId.get(id) ?? null;
 
+// Live bodies currently glowing (a molten giant-impact remnant or an impact afterglow),
+// for the MoltenRemnant overlay to draw. Returns [] when nothing is hot.
+export const getMoltenBodies = (): SimBody[] =>
+  current ? current.state.bodies.filter((sb) => sb.alive && (sb.moltenHeat ?? 0) > 0.01) : [];
+
 export const sceneRadiusForSimBody = (sb: SimBody, mode: ScaleMode) => {
   // Borrow the planet readable-size feel without importing the full body machinery.
   if (mode === "real") {

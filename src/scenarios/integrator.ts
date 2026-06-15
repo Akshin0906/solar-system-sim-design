@@ -60,6 +60,9 @@ const CRATER_SPEED_MIN = 3;
 const EJECTA_MASS_FACTOR = 4;
 const MIN_EJECTA = 4;
 const MAX_EJECTA = 10;
+// Sim-time over which a molten remnant / impact afterglow cools from full heat to zero.
+// ~1.5 years keeps the glow on screen for a watchable span at scenario time scales.
+const MOLTEN_COOL_SECONDS = 1.5 * 365.256 * 86_400;
 
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5)); // ≈2.39996 rad — Fibonacci-sphere step
 const GOLDEN_FRAC = 0.618_033_988_749_895; // 1/φ — low-discrepancy index hashing
@@ -454,6 +457,9 @@ const mergeWithRing = (state: IntegratorState, a: SimBody, b: SimBody, ringFract
   survivor.velKmS = [comVel[0], comVel[1], comVel[2]];
   survivor.muKm3S2 = totalMu - ringMu;
   survivor.radiusKm = Math.cbrt(Math.max(totalVol - ringVol, 1));
+  if (survivor.kind !== "fragment") {
+    survivor.moltenHeat = 1; // a planet-scale remnant glows molten (not a tiny debris shard)
+  }
   const ringFlashScale = Math.cbrt(totalVol);
   pushImpactFx(state, "flash", comPos, ringFlashScale, "#ffe6c4");
   pushImpactFx(state, "shockwave", comPos, ringFlashScale, survivor.color);
@@ -569,6 +575,9 @@ const crater = (state: IntegratorState, a: SimBody, b: SimBody, speedRel: number
   killBody(state, impactor);
   planet.muKm3S2 = survivorMu;
   planet.radiusKm = Math.cbrt(Math.max(totalVol - ejectaVol, 1));
+  if (planet.kind !== "fragment") {
+    planet.moltenHeat = Math.max(planet.moltenHeat ?? 0, 0.6); // glowing impact afterglow
+  }
   // Recoil so total momentum = totalMu·comVel (the ejecta carry pSplash about comVel).
   planet.velKmS = [
     comVel[0] - pSplash[0] / survivorMu,
@@ -750,6 +759,14 @@ export const stepFixed = (state: IntegratorState, dt: number) => {
     sb.velKmS[0] += a1[i][0] * half;
     sb.velKmS[1] += a1[i][1] * half;
     sb.velKmS[2] += a1[i][2] * half;
+  }
+
+  // Cool any molten remnant / afterglow over sim-time (cosmetic; drawn by the overlay).
+  const cool = dt / MOLTEN_COOL_SECONDS;
+  for (const sb of state.bodies) {
+    if (sb.moltenHeat) {
+      sb.moltenHeat = Math.max(0, sb.moltenHeat - cool);
+    }
   }
 
   state.elapsedSimSeconds += dt;

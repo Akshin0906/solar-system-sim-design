@@ -53,6 +53,17 @@ const impactorMu = (radiusKm: number, isComet: boolean) => {
   return GRAV_CONST_KM * massKg;
 };
 
+// --- Planet–planet collision ------------------------------------------------
+// Segmented-control options for the inner worlds (values index into IMPACT_TARGETS).
+const PLANET_OPTIONS = [
+  { value: 0, label: "Mercury" },
+  { value: 1, label: "Venus" },
+  { value: 2, label: "Earth" },
+  { value: 3, label: "Mars" },
+  { value: 4, label: "Jupiter" },
+];
+const planetId = (value: number) => IMPACT_TARGETS[Math.max(0, Math.min(IMPACT_TARGETS.length - 1, Math.round(value)))];
+
 // Built-in scenarios. The framework slice ships two:
 //   1. "freefall" — the correctness oracle. Seeding is right iff the real system
 //      stays ~stable here, because Kepler and N-body agree over short spans.
@@ -330,6 +341,61 @@ export const SCENARIOS: DoomsdayScenario[] = [
       }
       const dir = normalizeVec3(toTarget);
       impactor.velKmS = [
+        target.velKmS[0] + dir[0] * speed,
+        target.velKmS[1] + dir[1] * speed,
+        target.velKmS[2] + dir[2] * speed,
+      ];
+    },
+  },
+  {
+    id: "collision",
+    name: "Planet–planet collision",
+    tagline: "Two worlds are set on a collision course — a clean smash, or a moon-forming giant impact.",
+    science: {
+      realTimescale:
+        "The leading theory for the Moon: ~4.5 billion years ago a Mars-sized world, Theia, struck the young Earth. Collisions like it shaped the early solar system but are vanishingly rare today.",
+      summary:
+        "Puts one world on an intercept course with another. A low closing speed is a giant impact: the two merge into a molten remnant and fling off a debris ring that partly re-accretes — the giant-impact origin of the Moon. A high closing speed shatters both into a debris cloud.",
+      watch:
+        "Keep the closing speed low (~6–12 km/s) to merge into a glowing molten world ringed by debris, then watch shards fall back or settle into a disk. Crank it past ~16 km/s to fracture both worlds outright.",
+    },
+    params: [
+      { key: "mover", label: "Incoming world", default: 3, options: PLANET_OPTIONS },
+      { key: "target", label: "Struck world", default: 2, options: PLANET_OPTIONS },
+      { key: "approachSpeedKmS", label: "Closing speed", min: 2, max: 40, step: 1, default: 9, unit: "km/s", help: "Low → a molten merger with a re-accreting ring; high → both worlds shatter." },
+      { key: "fragmentCap", label: "Debris limit", min: 8, max: 60, step: 2, default: 40, unit: "shards" },
+    ],
+    defaultTimeScaleDaysPerSec: 12,
+    seed: ({ state, params }) => {
+      enableDebris(state, params.fragmentCap ?? DEFAULT_FRAGMENT_CAP);
+    },
+    // Nudge the incoming world onto a converging course with the struck world at the chosen
+    // closing speed, and resolve the collision the step before it would tunnel through. Only
+    // the mover's course is steered; the collision (merge+ring / shatter) is honest physics.
+    drive: ({ state, params }, dtSeconds) => {
+      const moverId = planetId(params.mover ?? 3);
+      const targetId = planetId(params.target ?? 2);
+      if (moverId === targetId) {
+        return;
+      }
+      const mover = state.byId.get(moverId);
+      const target = state.byId.get(targetId);
+      if (!mover || !mover.alive || !target || !target.alive) {
+        return;
+      }
+      const toTarget = subVec3(target.posKm, mover.posKm);
+      const distKm = vectorLength(toTarget);
+      if (distKm <= 0) {
+        return;
+      }
+      const speed = params.approachSpeedKmS ?? 9;
+      const contactKm = mover.radiusKm + target.radiusKm;
+      if (distKm <= contactKm + speed * dtSeconds) {
+        resolveContact(state, target, mover);
+        return;
+      }
+      const dir = normalizeVec3(toTarget);
+      mover.velKmS = [
         target.velKmS[0] + dir[0] * speed,
         target.velKmS[1] + dir[1] * speed,
         target.velKmS[2] + dir[2] * speed,

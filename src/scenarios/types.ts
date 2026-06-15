@@ -27,6 +27,10 @@ export type SimBody = {
   //                (e.g. the black hole's accretion disk tracks it via getParticipant).
   renderHint?: "marker" | "fragment" | "custom";
   label?: string; // scene label text when renderHint is "marker"
+  // Glow heat in [0,1] for a freshly-formed molten remnant (giant impact) or an impact
+  // afterglow, decayed over sim-time by the integrator and drawn by the MoltenRemnant
+  // overlay. Undefined/0 = not glowing.
+  moltenHeat?: number;
 };
 
 export type SimEventType = "collision" | "ejection";

@@ -453,6 +453,56 @@ check("impact scenario steers the impactor to a reliable strike on its target", 
   assert.ok(state.impactFx.length >= 2, "the strike queues impact VFX");
 });
 
+// --- 18. Collision: a low-speed giant impact → molten remnant + debris ring --
+check("collision scenario merges worlds into a molten remnant with a re-accreting ring", () => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  const scenario = scenarioById.get("collision");
+  assert.ok(scenario?.seed && scenario?.drive, "collision needs a seed + drive");
+  const params = { mover: 3, target: 2, approachSpeedKmS: 9, fragmentCap: 40 }; // Mars → Earth, slow
+  scenario!.seed!({ state, params, bodiesById });
+  let collided = false;
+  const steps = Math.round((400 * DAY_SECONDS) / FIXED_STEP_SECONDS);
+  for (let i = 0; i < steps && !collided; i += 1) {
+    scenario!.drive!({ state, params, bodiesById }, FIXED_STEP_SECONDS);
+    stepFixed(state, FIXED_STEP_SECONDS);
+    if (!state.byId.get("mars")!.alive) {
+      collided = true;
+    }
+  }
+  assert.ok(collided, "Mars should reach Earth within 400 days");
+  const earth = state.byId.get("earth")!;
+  assert.equal(earth.alive, true, "Earth survives as the merged remnant");
+  assert.ok((earth.moltenHeat ?? 0) > 0.5, "the remnant is freshly molten");
+  assert.ok(fragCount(state) >= 2, "a giant-impact debris ring is shed");
+  // The remnant cools over sim-time but is still glowing shortly after.
+  const heatAtImpact = earth.moltenHeat ?? 0;
+  for (let i = 0; i < 2000; i += 1) {
+    stepFixed(state, FIXED_STEP_SECONDS);
+  }
+  const heatLater = state.byId.get("earth")!.moltenHeat ?? 0;
+  assert.ok(heatLater < heatAtImpact && heatLater > 0, `remnant should cool (was ${heatAtImpact.toFixed(2)}, now ${heatLater.toFixed(2)})`);
+});
+
+// --- 19. Collision: a high-speed smash shatters both worlds ------------------
+check("collision scenario shatters both worlds at high closing speed", () => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  const scenario = scenarioById.get("collision")!;
+  const params = { mover: 1, target: 2, approachSpeedKmS: 32, fragmentCap: 40 }; // Venus → Earth, fast
+  scenario.seed!({ state, params, bodiesById });
+  let shattered = false;
+  const steps = Math.round((400 * DAY_SECONDS) / FIXED_STEP_SECONDS);
+  for (let i = 0; i < steps && !shattered; i += 1) {
+    scenario.drive!({ state, params, bodiesById }, FIXED_STEP_SECONDS);
+    stepFixed(state, FIXED_STEP_SECONDS);
+    if (!state.byId.get("earth")!.alive) {
+      shattered = true;
+    }
+  }
+  assert.ok(shattered, "a 32 km/s smash should destroy Earth within 400 days");
+  assert.equal(state.byId.get("venus")!.alive, false, "the incoming world is also shattered");
+  assert.ok(fragCount(state) >= 2, "the smash leaves a debris cloud");
+});
+
 console.log("");
 if (problems.length > 0) {
   console.log(`==== SCENARIO PROBLEMS (${problems.length}) ====`);
