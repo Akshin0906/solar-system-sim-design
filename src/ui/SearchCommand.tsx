@@ -57,6 +57,7 @@ const normalize = (value: string) => value.toLowerCase();
 
 export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeItemRef = useRef<HTMLButtonElement | null>(null);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const isMobile = useIsMobile();
@@ -255,10 +256,20 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   );
 
   const visibleItems = useMemo(() => getVisibleItems(query), [getVisibleItems, query]);
+  const safeActiveIndex = clampCommandActiveIndex(activeIndex, visibleItems.length);
+  const activeItemId = visibleItems[safeActiveIndex]?.id;
 
   useEffect(() => {
     setActiveIndex((index) => clampCommandActiveIndex(index, visibleItems.length));
   }, [visibleItems.length]);
+
+  useEffect(() => {
+    if (!open || !activeItemId) {
+      return;
+    }
+
+    activeItemRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeItemId, open]);
 
   const executeItem = (item: CommandItem) => {
     item.action();
@@ -323,7 +334,6 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
     return null;
   }
 
-  const safeActiveIndex = clampCommandActiveIndex(activeIndex, visibleItems.length);
   let renderedIndex = -1;
   let lastGroup: CommandItem["group"] | null = null;
 
@@ -345,6 +355,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
           placeholder="Search or run a command"
           onKeyDown={handleKeyDown}
           role="combobox"
+          aria-label="Search commands and objects"
           aria-expanded="true"
           aria-controls="command-results"
           aria-activedescendant={visibleItems[safeActiveIndex] ? `command-item-${visibleItems[safeActiveIndex].id}` : undefined}
@@ -375,6 +386,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
                 className={`search-result command-result ${active ? "active" : ""} ${item.active ? "selected" : ""}`.trim()}
                 type="button"
                 role="option"
+                ref={active ? activeItemRef : undefined}
                 aria-selected={active}
                 onMouseEnter={() => setActiveIndex(currentIndex)}
                 onClick={() => executeItem(item)}
