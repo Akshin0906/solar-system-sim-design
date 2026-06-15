@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build && node scripts/generate-service-worker.mjs",
     "build:github": "tsc --noEmit && vite build --mode github-pages && node scripts/generate-service-worker.mjs /solar-system-sim-design/",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "npm run verify:app && npm run verify:rockets && npm run verify:scenarios",
+    "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
+    "test": "npm run typecheck:scripts && npm run verify:app && npm run verify:rockets && npm run verify:scenarios",
     "verify:app": "tsx scripts/verify_app_logic.ts",
     "verify:rockets": "tsx scripts/stress_rockets.ts",
     "verify:scenarios": "tsx scripts/verify_scenarios.ts",
@@ -29,6 +33,7 @@
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
     "tsx": "^4.22.4"

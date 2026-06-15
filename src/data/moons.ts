@@ -27,6 +27,11 @@ const moon = (
   },
   orbit: {
     semiMajorAxisKm,
+    // These defaults are placeholders for visual scale, NOT real ephemeris: a moon
+    // without an explicit meanAnomalyAtEpochDeg is placed at periapsis at J2000, so
+    // inter-moon geometry (e.g. the Galilean Laplace resonance) is decorative. The
+    // small nonzero inclination/eccentricity defaults just avoid a perfectly flat,
+    // perfectly circular orbit. See DATA_SOURCES.md.
     eccentricity: extras.eccentricity ?? 0.001,
     inclinationDeg: extras.inclinationDeg ?? 0.15,
     longitudeOfAscendingNodeDeg: extras.longitudeOfAscendingNodeDeg ?? 0,

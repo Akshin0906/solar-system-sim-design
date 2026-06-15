@@ -3,7 +3,8 @@ import { bodies, bodiesById } from "../src/data";
 import { AU_KM, DAY_SECONDS } from "../src/data/constants";
 import { FIXED_STEP_SECONDS, addSimBody, seedIntegrator, stepFixed } from "../src/scenarios/integrator";
 import { scenarioById } from "../src/scenarios/registry";
-import type { IntegratorState, SimBody, Vec3 } from "../src/scenarios/types";
+import type { Vec3 } from "../src/simulation/orbitalElements";
+import type { IntegratorState } from "../src/scenarios/types";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const SUN_MU = 132_712_440_018;

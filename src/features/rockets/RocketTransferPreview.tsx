@@ -1,11 +1,13 @@
 import { bodiesById } from "../../data";
 import type { RocketDestination } from "./destinationCatalog";
+import type { RocketProfile } from "./rocketCatalog";
 import { formatDeltaV, formatMissionTime, formatPhaseAngle } from "./rocketState";
 import { estimateTransfer, type LaunchWindowQuality } from "./transferModel";
 
 type RocketTransferPreviewProps = {
   destination: RocketDestination;
   launchDateMs: number;
+  profile: RocketProfile;
 };
 
 const qualityLabel: Record<LaunchWindowQuality, string> = {
@@ -17,14 +19,14 @@ const qualityLabel: Record<LaunchWindowQuality, string> = {
 
 const formatDate = (dateMs: number) => new Date(dateMs).toISOString().slice(0, 10);
 
-export const RocketTransferPreview = ({ destination, launchDateMs }: RocketTransferPreviewProps) => {
+export const RocketTransferPreview = ({ destination, launchDateMs, profile }: RocketTransferPreviewProps) => {
   const body = destination.bodyId ? bodiesById.get(destination.bodyId) : undefined;
 
   if (!body) {
     return null;
   }
 
-  const estimate = estimateTransfer(body, bodiesById, launchDateMs);
+  const estimate = estimateTransfer(body, bodiesById, launchDateMs, profile);
 
   if (!estimate) {
     return (

@@ -1,4 +1,4 @@
-import { Canvas } from "@react-three/fiber";
+import { Canvas, invalidate } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import { X } from "lucide-react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
@@ -10,14 +10,14 @@ import { ScenarioPanel } from "../ui/ScenarioPanel";
 import { TimeControls } from "../ui/TimeControls";
 import { TopBar } from "../ui/TopBar";
 import { BottomSheet } from "../ui/BottomSheet";
-import { RocketLauncherPanel } from "../future/rockets/RocketLauncherPanel";
-import { useRocketStore } from "../future/rockets/rocketStore";
+import { RocketLauncherPanel } from "../features/rockets/RocketLauncherPanel";
+import { useRocketStore } from "../features/rockets/rocketStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatTimeScale } from "../simulation/units";
 import { readBooleanPreference, writeBooleanPreference } from "../ui/safeStorage";
 import { useUiStore } from "../ui/uiStore";
-import { useIsMobile } from "../ui/useMediaQuery";
+import { useIsMobile, useReducedMotion } from "../ui/useMediaQuery";
 
 const isEditableTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
@@ -200,9 +200,13 @@ const SimulationLiveRegion = () => {
   const isPaused = useTimeStore((state) => state.isPaused);
   const timeScale = useTimeStore((state) => state.timeScale);
   const selected = bodiesById.get(selectedId);
-  const message = `${selected?.name ?? "Object"} selected · ${liveDateFormatter.format(
-    new Date(simulationDateMs),
-  )} · ${isPaused ? "paused" : "playing"} · ${formatTimeScale(timeScale)}`;
+  // While playing, omit the continuously-changing date: a polite live region that
+  // re-announced every simulated day (up to thousands/sec at high time scales) would
+  // overwhelm a screen reader. The date is announced when paused or after a scrub.
+  const dateSegment = isPaused ? ` · ${liveDateFormatter.format(new Date(simulationDateMs))}` : "";
+  const message = `${selected?.name ?? "Object"} selected${dateSegment} · ${
+    isPaused ? "paused" : "playing"
+  } · ${formatTimeScale(timeScale)}`;
 
   return (
     <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -254,6 +258,8 @@ export const App = () => {
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
+  const reducedMotion = useReducedMotion();
+  const didReducedMotionPauseRef = useRef(false);
 
   // On phones the panels become dismissible bottom sheets that manage their own
   // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
@@ -271,6 +277,31 @@ export const App = () => {
       }
     };
   }, []);
+
+  // Respect prefers-reduced-motion: start paused (no autoplaying orbital motion) the
+  // first time the preference is detected. The starfield drift is also gated to 0 in
+  // SolarScene, and the camera rig already snaps instead of damping.
+  useEffect(() => {
+    if (reducedMotion && !didReducedMotionPauseRef.current) {
+      didReducedMotionPauseRef.current = true;
+      useTimeStore.getState().setPaused(true);
+    }
+  }, [reducedMotion]);
+
+  // The scene reads simulationDateMs non-reactively (via getState inside useFrame), so
+  // with frameloop="demand" any clock change — playback tick, timeline scrub, step, or
+  // jump-to-now — must explicitly request a render. Other scene inputs (scale mode,
+  // overlay toggles, selection) are reactive props and already invalidate via R3F's
+  // normal reconciliation.
+  useEffect(
+    () =>
+      useTimeStore.subscribe((state, prev) => {
+        if (state.simulationDateMs !== prev.simulationDateMs) {
+          invalidate();
+        }
+      }),
+    [],
+  );
 
   const createRenderer = useCallback(async (defaultProps: CanvasRendererProps) => {
     try {
@@ -300,9 +331,12 @@ export const App = () => {
       ) : (
         <Canvas
           className="solar-canvas"
-          role="img"
-          aria-label="Interactive 3D solar system simulation"
-          tabIndex={0}
+          // frameloop="demand": with body motion driven imperatively through refs, the
+          // renderer only needs to draw when the clock advances (TimeDriver invalidates)
+          // or the camera/scene changes. The a11y semantics (role/aria-label/tab focus)
+          // live on the inner <canvas> below — the keyboard-interactive element — so the
+          // scene is announced and tab-stopped exactly once, not twice.
+          frameloop="demand"
           camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
           dpr={[1, 1.65]}
           fallback={<p>WebGL unavailable</p>}

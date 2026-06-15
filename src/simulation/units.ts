@@ -121,6 +121,53 @@ export const scaleMoonOffset = (offsetKm: Vec3, mode: ScaleMode, context?: MoonS
   return multiply(normalize(offsetKm), Math.pow(distanceKm / 100_000, 0.52) * 0.32);
 };
 
+const ORIGIN: Vec3 = [0, 0, 0];
+
+// Parent-before-child ordering, computed once per body-list identity. The per-frame
+// position pass can then be a single forward loop instead of re-spreading and
+// shift()-ing a work queue (with its guard counter) on every frame.
+const sceneOrderCache = new WeakMap<CelestialBody[], CelestialBody[]>();
+const getDependencyOrder = (bodies: CelestialBody[]): CelestialBody[] => {
+  const cached = sceneOrderCache.get(bodies);
+  if (cached) {
+    return cached;
+  }
+
+  const placed = new Set<string>();
+  const ordered: CelestialBody[] = [];
+  const pending = [...bodies];
+  let guard = 0;
+
+  while (pending.length > 0 && guard < bodies.length * 3) {
+    guard += 1;
+    const body = pending.shift()!;
+    if (!body.parentId || !body.orbit || placed.has(body.parentId)) {
+      ordered.push(body);
+      placed.add(body.id);
+    } else {
+      pending.push(body);
+    }
+  }
+  // Defensive: surface any unresolved cycle / missing parent rather than dropping bodies.
+  ordered.push(...pending);
+
+  sceneOrderCache.set(bodies, ordered);
+  return ordered;
+};
+
+// Writes x/y/z into target[id], reusing the existing tuple in place so the per-frame
+// pass allocates no new result arrays for positions already present in the ref.
+const writeScenePosition = (target: Record<string, Vec3>, id: string, x: number, y: number, z: number) => {
+  const existing = target[id];
+  if (existing) {
+    existing[0] = x;
+    existing[1] = y;
+    existing[2] = z;
+  } else {
+    target[id] = [x, y, z];
+  }
+};
+
 export const computeScenePositions = (
   bodies: CelestialBody[],
   bodiesById: Map<string, CelestialBody>,
@@ -128,39 +175,35 @@ export const computeScenePositions = (
   mode: ScaleMode,
   target: Record<string, Vec3> = {},
 ): Record<string, Vec3> => {
-  const positions = target;
-  const pending = [...bodies];
-  let guard = 0;
-
-  while (pending.length > 0 && guard < bodies.length * 3) {
-    guard += 1;
-    const body = pending.shift()!;
-
+  for (const body of getDependencyOrder(bodies)) {
     if (!body.parentId || !body.orbit) {
-      positions[body.id] = [0, 0, 0];
-      continue;
-    }
-
-    const parentPosition = positions[body.parentId];
-    if (!parentPosition) {
-      pending.push(body);
+      writeScenePosition(target, body.id, 0, 0, 0);
       continue;
     }
 
     const localPositionKm = getOrbitPositionKm(body.orbit, date);
 
     if (body.type === "moon") {
-      positions[body.id] = addVec3(
-        parentPosition,
-        scaleMoonOffset(localPositionKm, mode, { parentBody: bodiesById.get(body.parentId), moonBody: body }),
+      const parentPosition = target[body.parentId] ?? ORIGIN;
+      const offset = scaleMoonOffset(localPositionKm, mode, {
+        parentBody: bodiesById.get(body.parentId),
+        moonBody: body,
+      });
+      writeScenePosition(
+        target,
+        body.id,
+        parentPosition[0] + offset[0],
+        parentPosition[1] + offset[1],
+        parentPosition[2] + offset[2],
       );
       continue;
     }
 
-    positions[body.id] = scaleVectorFromSun(localPositionKm, mode);
+    const scaled = scaleVectorFromSun(localPositionKm, mode);
+    writeScenePosition(target, body.id, scaled[0], scaled[1], scaled[2]);
   }
 
-  return positions;
+  return target;
 };
 
 export const computeBodyScenePosition = (
@@ -184,20 +227,6 @@ export const computeBodyScenePosition = (
   }
 
   return scaleVectorFromSun(localKm, mode);
-};
-
-export const scaleOrbitPoint = (
-  pointKm: Vec3,
-  mode: ScaleMode,
-  bodyType: CelestialBody["type"],
-  parentScenePosition: Vec3 = [0, 0, 0],
-  context?: MoonScaleContext,
-) => {
-  if (bodyType === "moon") {
-    return addVec3(parentScenePosition, scaleMoonOffset(pointKm, mode, context));
-  }
-
-  return scaleVectorFromSun(pointKm, mode);
 };
 
 export const formatDistance = (km: number) => {

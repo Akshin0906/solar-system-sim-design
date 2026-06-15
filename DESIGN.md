@@ -107,7 +107,8 @@ solar-system-sim/
       moons.ts
       belts.ts
       constants.ts
-      rockets.future.ts
+    features/
+      rockets/          (shipped educational rocket feature; see ROCKETS.md)
     simulation/
       timeStore.ts
       scaleStore.ts

@@ -138,8 +138,6 @@ const shade = (rgb: Rgb, amount: number): Rgb => {
   return mix(rgb, target, Math.abs(amount));
 };
 
-const toCss = ([red, green, blue]: Rgb) => `rgb(${red}, ${green}, ${blue})`;
-
 const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
 
 const smoothstep = (edge0: number, edge1: number, value: number) => {
@@ -259,7 +257,6 @@ const earthLandSignal = (u: number, v: number, seed: number) => {
 
 const terrainHeight = (
   profile: VisualProfile,
-  body: CelestialBody,
   u: number,
   v: number,
   seed: number,
@@ -334,7 +331,7 @@ export const createSurfaceTexture = (body: CelestialBody) => {
       const u = x / width;
       const noise = speckle(x, y, seed);
       const band = Math.sin((lat * Math.PI * 2 + seed) * 7 + Math.sin(x * 0.02) * 0.25);
-      const terrain = terrainHeight(profile, body, u, v, seed, craters);
+      const terrain = terrainHeight(profile, u, v, seed, craters);
       let color = base;
 
       if (profile.textureKind === "sun") {
@@ -437,7 +434,7 @@ export const createBodyBumpTexture = (body: CelestialBody) => {
 
     for (let x = 0; x < width; x += 1) {
       const u = x / width;
-      const heightValue = Math.round(terrainHeight(profile, body, u, v, seed, craters) * 255);
+      const heightValue = Math.round(terrainHeight(profile, u, v, seed, craters) * 255);
       const index = (y * width + x) * 4;
       image.data[index] = heightValue;
       image.data[index + 1] = heightValue;

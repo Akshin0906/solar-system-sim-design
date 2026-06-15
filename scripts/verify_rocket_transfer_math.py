@@ -9,6 +9,7 @@ from collections.abc import Callable
 AU_KM = 149_597_870.7
 DAY_SECONDS = 86_400
 MU_SUN_KM3_S2 = 132_712_440_018
+SUSTAINED_TRANSFER_BURN_SECONDS = DAY_SECONDS * 30
 
 ORBITS_AU = {
     "earth": 1.000_002_61,
@@ -24,6 +25,13 @@ FUSION_PROFILE = {
     "max_speed_km_s": 3_000,
     "acceleration_m_s2": 2.5,
     "burn_duration_s": 6_000_000,
+}
+
+SATURN_V_PROFILE = {
+    "initial_speed_km_s": 2,
+    "max_speed_km_s": 11,
+    "acceleration_m_s2": 22,
+    "burn_duration_s": 420,
 }
 
 
@@ -51,6 +59,36 @@ def mean_transfer_speed_km_s(origin_radius_km: float, destination_radius_km: flo
         transfer_speed_km_s(origin_radius_km, transfer_semimajor_axis_km)
         + transfer_speed_km_s(destination_radius_km, transfer_semimajor_axis_km)
     ) / 2
+
+
+def profile_adjusted_transfer_time_seconds(
+    profile: dict[str, float],
+    baseline_transfer_time_seconds: float,
+    baseline_mean_transfer_speed_km_s: float,
+) -> float:
+    if profile["burn_duration_s"] < SUSTAINED_TRANSFER_BURN_SECONDS:
+        return baseline_transfer_time_seconds
+
+    route_distance_km = baseline_mean_transfer_speed_km_s * baseline_transfer_time_seconds
+
+    def covered_distance(seconds: float) -> float:
+        return baseline_mean_transfer_speed_km_s * seconds + sample_flight(profile, seconds)[1]
+
+    lower = 0.0
+    upper = max(baseline_transfer_time_seconds, 1.0)
+    max_seconds = 31_557_600 * 120
+    while upper < max_seconds and covered_distance(upper) < route_distance_km:
+        lower = upper
+        upper = min(upper * 2, max_seconds)
+
+    assert covered_distance(upper) >= route_distance_km, "profile-adjusted transfer did not bracket"
+    for _ in range(56):
+        mid = (lower + upper) / 2
+        if covered_distance(mid) >= route_distance_km:
+            upper = mid
+        else:
+            lower = mid
+    return upper
 
 
 def delta_v_pair(origin_radius_km: float, destination_radius_km: float) -> tuple[float, float]:
@@ -213,6 +251,36 @@ def main() -> None:
     assert jupiter_arrival > 5
     assert 22 < mars_mean_transfer_speed < 28, mars_mean_transfer_speed
 
+    mars_transfer_seconds = hohmann_transfer_time_seconds(earth, mars)
+    jupiter_transfer_seconds = hohmann_transfer_time_seconds(earth, jupiter)
+    saturn_v_transfer_seconds = profile_adjusted_transfer_time_seconds(
+        SATURN_V_PROFILE,
+        mars_transfer_seconds,
+        mars_mean_transfer_speed,
+    )
+    fusion_transfer_seconds = profile_adjusted_transfer_time_seconds(
+        FUSION_PROFILE,
+        mars_transfer_seconds,
+        mars_mean_transfer_speed,
+    )
+    saturn_v_jupiter_transfer_seconds = profile_adjusted_transfer_time_seconds(
+        SATURN_V_PROFILE,
+        jupiter_transfer_seconds,
+        mean_transfer_speed_km_s(earth, jupiter),
+    )
+    assert saturn_v_transfer_seconds == mars_transfer_seconds, (
+        saturn_v_transfer_seconds,
+        mars_transfer_seconds,
+    )
+    assert saturn_v_jupiter_transfer_seconds == jupiter_transfer_seconds, (
+        saturn_v_jupiter_transfer_seconds,
+        jupiter_transfer_seconds,
+    )
+    assert fusion_transfer_seconds < saturn_v_transfer_seconds, (
+        fusion_transfer_seconds,
+        saturn_v_transfer_seconds,
+    )
+
     earth_launch = circular_orbit_position(earth, 0, 0, 365.256)
     mars_phase = math.radians(65)
     mars_at = lambda t: circular_orbit_position(mars, mars_phase, t, 686.98)
@@ -253,6 +321,12 @@ def main() -> None:
     print(f"Mars delta-v departure/arrival: {mars_departure:.2f}/{mars_arrival:.2f} km/s")
     print(f"Mars vis-viva mean transfer speed: {mars_mean_transfer_speed:.2f} km/s")
     print(f"Jupiter delta-v departure/arrival: {jupiter_departure:.2f}/{jupiter_arrival:.2f} km/s")
+    print(
+        "Profile-adjusted Mars transfer days: "
+        f"Saturn V {saturn_v_transfer_seconds / DAY_SECONDS:.1f} baseline, "
+        f"Fusion {fusion_transfer_seconds / DAY_SECONDS:.1f}"
+    )
+    print(f"Saturn V Jupiter transfer remains Hohmann baseline: {saturn_v_jupiter_transfer_seconds / DAY_SECONDS:.1f} days")
     print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
     print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")
     print(f"Post-arrival stale miss avoided: {stale_post_arrival_miss / AU_KM:.2f} AU")

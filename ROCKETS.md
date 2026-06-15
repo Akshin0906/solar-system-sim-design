@@ -52,9 +52,11 @@ closest-approach readout shows whether the simple intercept lined up.
 Transfer preview adds a separate approximate educational transfer model. For planets and dwarf
 planets it estimates a Hohmann-style heliocentric transfer between Earth's orbit and
 the destination orbit, then samples a phase-aware visual arc to the destination's
-arrival position. For the Moon, it uses a simplified Earth-centered parking-orbit
-transfer estimate. Non-Earth moons are intentionally not rocket destinations until
-local capture can be modeled honestly.
+arrival position. Short-burn, impulse-like profiles keep that orbital transfer time;
+only sustained-propulsion profiles layer their long burn onto the conceptual route
+time. For the Moon, it uses a simplified Earth-centered parking-orbit transfer
+estimate. Non-Earth moons are intentionally not rocket destinations until local
+capture can be modeled honestly.
 
 The transfer model estimates:
 
@@ -107,14 +109,14 @@ imply moon-local capture that the model does not perform.
 
 ## Architecture
 
-Rocket code lives in `src/future/rockets/`.
+Rocket code lives in `src/features/rockets/`.
 
 | File | Responsibility |
 | --- | --- |
 | `rocketCatalog.ts` | Rocket profile data and confidence labels. |
 | `destinationCatalog.ts` | Grouped destination list mapped to existing body IDs. |
 | `missionOptions.ts` | Mission-mode and launch-mode definitions. |
-| `flightModel.ts` | Pure closed-form speed/distance profile for direct/free launches. |
+| `flightModel.ts` | Pure closed-form speed/distance profile for direct/free launches and sustained-profile transfers. |
 | `transferModel.ts` | Pure approximate transfer math and sampled transfer arcs. |
 | `rocketState.ts` | Derived view model combining profile, destination, mission mode, launch mode, ephemeris, and scene scale. |
 | `rocketStore.ts` | Zustand store for selected and active launch identity. |
@@ -152,6 +154,7 @@ npm run build
 `npm run verify:math` includes `scripts/verify_rocket_transfer_math.py`, which checks:
 
 - Earth-to-Mars Hohmann transfer time is in a plausible range.
+- short-burn transfer profiles stay on the orbital baseline while sustained profiles can vary transfer time.
 - Outer-planet transfer times increase with destination distance.
 - phase-angle normalization handles wraparound correctly.
 - departure and arrival delta-v values are positive and plausible.
@@ -162,6 +165,7 @@ npm run build
 - pre-launch rocket telemetry stays attached to Earth,
 - app orbit positions stay close to independent JPL approximate elements,
 - app transfer estimates stay in plausible ranges.
+- sustained transfer profiles can move intercept dates without giving short-burn rockets continuous cruise speed.
 
 Manual QA should confirm:
 

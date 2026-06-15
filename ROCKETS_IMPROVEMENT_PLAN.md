@@ -1,7 +1,13 @@
 # Rocket Module — Improvement Implementation Plan
 
+> **STATUS: COMPLETED (2026-06). All seven tasks below (C1, C2, P1, P2, M3, UX1, UX2)
+> were implemented and verified — `npm run verify:rockets` passes clean. This document
+> is retained for history only; do NOT action it (the fixes are already in the code).
+> Paths below reference the former `src/future/rockets/`, now `src/features/rockets/`.
+> The live backlog is in `NEXT_STEPS.md`.**
+
 Handoff doc for implementing fixes found during a deep review + stress test of the
-rocket feature (`src/future/rockets/`). Each task is self-contained: problem,
+rocket feature (`src/features/rockets/`). Each task is self-contained: problem,
 evidence, root cause with `file:line`, a concrete fix, and acceptance criteria.
 
 You do **not** need the original review conversation — everything needed is here.

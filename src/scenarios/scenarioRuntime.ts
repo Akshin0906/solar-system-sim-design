@@ -1,6 +1,7 @@
 import { DAY_SECONDS } from "../data/constants";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
-import { addVec3, getOrbitPositionKm } from "../simulation/solveOrbit";
+import { getOrbitPositionKm } from "../simulation/solveOrbit";
+import { addVec3 } from "../simulation/vec3";
 import { computeScenePositions, scaleMoonOffset, scaleVectorFromSun, type ScaleMode } from "../simulation/units";
 import { advance, seedIntegrator } from "./integrator";
 import { scenarioById } from "./registry";

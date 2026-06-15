@@ -12,10 +12,13 @@ The MVP is now a working Vite + React + Three.js solar system app. It opens dire
 - Object selection, search, focus/follow modes, and an object inspector.
 - Orbit rings, optional motion trails, labels, Saturn/Uranus rings, and procedural belt clouds.
 - Production build output in `dist/`.
-- Best-effort PWA/offline shell through `public/service-worker.js`.
-- Educational rocket feature in `src/future/rockets/` (launch panel, 8-rocket catalog,
-  simple speed-profile flight model, and destination targeting toward the Moon and outer
-  planets). See `ROCKETS.md`. The original `src/data/rockets.future.ts` type stub remains.
+- Best-effort PWA/offline shell via a build-time generated service worker
+  (`scripts/generate-service-worker.mjs` → `dist/service-worker.js`).
+- Educational rocket feature in `src/features/rockets/`: launch panel, rocket catalog,
+  a speed-profile flight model, direct-aim and approximate Hohmann-style transfer
+  previews, and 13 destinations (Moon, Mercury–Neptune, plus Ceres/Pluto/Eris/Haumea/
+  Makemake — see `src/features/rockets/destinationCatalog.ts` for the source of truth).
+  See `ROCKETS.md`.
 
 ## Verification Notes
 

@@ -30,7 +30,7 @@ type ScenarioState = {
   reportConsumed: (ids: string[]) => void;
 };
 
-export const useScenarioStore = create<ScenarioState>((set, get) => ({
+export const useScenarioStore = create<ScenarioState>((set) => ({
   activeScenarioId: null,
   instanceId: 0,
   status: "idle",

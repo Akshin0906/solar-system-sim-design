@@ -1,5 +1,10 @@
 import { AU_KM, DAY_MS, DAY_SECONDS } from "../data/constants";
 import type { CelestialBody, Orbit, Vec3 } from "./orbitalElements";
+import { addVec3, vectorLength } from "./vec3";
+
+// Re-exported so existing importers keep their `./solveOrbit` source; the canonical
+// definitions now live in ./vec3.
+export { addVec3, vectorLength };
 
 const TWO_PI = Math.PI * 2;
 const JULIAN_DAYS_PER_CENTURY = 36_525;
@@ -30,11 +35,27 @@ const normalizeDegrees = (degrees: number) => {
   return normalized < 0 ? normalized + 360 : normalized;
 };
 
-const getElapsedDays = (orbit: Orbit, date: Date) => (date.getTime() - Date.parse(orbit.epoch)) / DAY_MS;
+// J2000 is the only epoch in the dataset, but getElapsedDays is the innermost hot
+// path — it runs for every body each frame and thousands of times inside the rocket
+// Lambert/bisection loops. Date.parse of the same constant ISO string per call is
+// pure waste, so memoize the parse per epoch string.
+//
+// NOTE: epoch is parsed as UTC. JPL Table-1 elements are defined in Terrestrial Time
+// (J2000.0 = 2000-01-01 11:58:55.816 UTC, TT−UTC = 64.184s) and centuries here ignore
+// leap seconds. The resulting along-track error is at most a few thousand km (well
+// inside JPL's own ~25,000 km accuracy budget for 1800–2050), so this is a deliberate
+// simplification, not a correctness target.
+const epochMsCache = new Map<string, number>();
+const epochToMs = (epoch: string) => {
+  let ms = epochMsCache.get(epoch);
+  if (ms === undefined) {
+    ms = Date.parse(epoch);
+    epochMsCache.set(epoch, ms);
+  }
+  return ms;
+};
 
-export const vectorLength = ([x, y, z]: Vec3) => Math.sqrt(x * x + y * y + z * z);
-
-export const addVec3 = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const getElapsedDays = (orbit: Orbit, date: Date) => (date.getTime() - epochToMs(orbit.epoch)) / DAY_MS;
 
 export const solveEccentricAnomaly = (meanAnomalyRad: number, eccentricity: number) => {
   const meanAnomaly = normalizeRadians(meanAnomalyRad);

@@ -7,12 +7,12 @@
  * NOTE: launch modes were removed from the model (commit bd7fcbd, "Limit rocket
  * launches to Earth departure"), so there is no launch-mode dimension here. */
 import { bodiesById } from "../src/data";
-import { rocketCatalog, rocketsById } from "../src/future/rockets/rocketCatalog";
-import { rocketDestinations } from "../src/future/rockets/destinationCatalog";
-import { rocketMissionModes } from "../src/future/rockets/missionOptions";
-import { computeRocketView } from "../src/future/rockets/rocketState";
-import { estimateTransfer, sampleTransferArcKm } from "../src/future/rockets/transferModel";
-import { sampleFlight } from "../src/future/rockets/flightModel";
+import { rocketCatalog, rocketsById } from "../src/features/rockets/rocketCatalog";
+import { rocketDestinations } from "../src/features/rockets/destinationCatalog";
+import { rocketMissionModes } from "../src/features/rockets/missionOptions";
+import { computeRocketView } from "../src/features/rockets/rocketState";
+import { estimateTransfer, sampleTransferArcKm } from "../src/features/rockets/transferModel";
+import { sampleFlight } from "../src/features/rockets/flightModel";
 import type { ScaleMode } from "../src/simulation/units";
 
 const MODES: ScaleMode[] = ["real", "readable", "compressed", "overview"];

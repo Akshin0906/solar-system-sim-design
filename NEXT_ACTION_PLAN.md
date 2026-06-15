@@ -1,5 +1,11 @@
 # Next Action Plan
 
+> **NOTE (2026-06): This plan is largely historical. The rocket feature has fully
+> shipped (with its own follow-up plan, `ROCKETS_IMPROVEMENT_PLAN.md`, also complete),
+> and the "do not start rockets yet" guidance below is moot. The still-open items are
+> the deferred data additions (Phobos, Deimos, Charon, Halley) and saved camera
+> presets. Treat `NEXT_STEPS.md` as the current backlog.**
+
 This doc is the immediate handoff plan for the next agent. It assumes the current MVP already exists and that `DESIGN.md`, `NEXT_STEPS.md`, and `QA_CHECKLIST.md` have been read.
 
 ## Current State
@@ -13,9 +19,9 @@ The app is a working 3D solar system MVP with:
 - Procedural planet/cloud visuals.
 - Camera framing utilities and verification.
 - Production service-worker generation.
-- Educational rocket feature implemented in `src/future/rockets/`: launch panel, rocket
-  catalog, simple speed-profile flight model, and destination targeting (Moon, Mars,
-  Jupiter, Saturn, Neptune). See `ROCKETS.md`. Patched conics / transfer orbits remain future.
+- Educational rocket feature implemented in `src/features/rockets/`: launch panel, rocket
+  catalog, a speed-profile flight model, direct-aim and approximate Hohmann-style transfer
+  previews, and 13 destinations. See `ROCKETS.md` and `src/features/rockets/destinationCatalog.ts`.
 
 ## Immediate Priority
 

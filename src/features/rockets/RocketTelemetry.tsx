@@ -79,7 +79,12 @@ export const RocketTelemetry = ({
           <dd>{formatSpeed(view.speedKmS)}</dd>
         </div>
         <div>
-          <dt>Distance traveled</dt>
+          {/* In transfer mode the drawn route is an illustrative arc (not the Hohmann
+              ellipse), so its length is a route measure, not a physical odometer that
+              reconciles with the vis-viva "Avg speed" shown above. */}
+          <dt title={view.missionMode === "transfer" ? "Illustrative route length, not a physical odometer" : undefined}>
+            {view.missionMode === "transfer" ? "Route length (approx.)" : "Distance traveled"}
+          </dt>
           <dd>{formatDistance(view.distanceTraveledKm)}</dd>
         </div>
         <div>

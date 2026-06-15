@@ -3,10 +3,10 @@ import { bodiesById } from "../src/data";
 import { AU_KM, DAY_SECONDS } from "../src/data/constants";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import { getBodyPositionKm, vectorLength } from "../src/simulation/solveOrbit";
-import { destinationsById, rocketDestinations } from "../src/future/rockets/destinationCatalog";
-import { rocketsById } from "../src/future/rockets/rocketCatalog";
-import { computeRocketView } from "../src/future/rockets/rocketState";
-import { estimateTransfer } from "../src/future/rockets/transferModel";
+import { destinationsById, rocketDestinations } from "../src/features/rockets/destinationCatalog";
+import { rocketsById } from "../src/features/rockets/rocketCatalog";
+import { computeRocketView } from "../src/features/rockets/rocketState";
+import { estimateTransfer } from "../src/features/rockets/transferModel";
 import { clampCommandActiveIndex } from "../src/ui/commandIndex";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 
@@ -343,8 +343,12 @@ const assertTransferEstimateUsesAppCode = () => {
   const launchDateMs = CHECK_DATE.getTime();
   const marsTransfer = estimateTransfer(mars, bodiesById, launchDateMs);
   const jupiterTransfer = estimateTransfer(jupiter, bodiesById, launchDateMs);
+  const saturnV = rocketsById.get("saturn-v");
+  const fusion = rocketsById.get("fusion-drive");
   assert(marsTransfer);
   assert(jupiterTransfer);
+  assert(saturnV);
+  assert(fusion);
 
   const marsTransferDays = marsTransfer.transferTimeSeconds / DAY_SECONDS;
   assert(marsTransferDays > 250 && marsTransferDays < 270, `unexpected Mars transfer days ${marsTransferDays}`);
@@ -352,6 +356,32 @@ const assertTransferEstimateUsesAppCode = () => {
   assert(marsTransfer.departureDeltaVKmS > 2.8 && marsTransfer.departureDeltaVKmS < 3.1);
   assert(marsTransfer.arrivalDeltaVKmS !== null);
   assert(marsTransfer.arrivalDeltaVKmS > 2.5 && marsTransfer.arrivalDeltaVKmS < 2.8);
+
+  const saturnMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, saturnV);
+  const saturnJupiterTransfer = estimateTransfer(jupiter, bodiesById, launchDateMs, saturnV);
+  const fusionMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, fusion);
+  assert(saturnMarsTransfer);
+  assert(saturnJupiterTransfer);
+  assert(fusionMarsTransfer);
+  assert.equal(
+    saturnMarsTransfer.transferTimeSeconds,
+    marsTransfer.transferTimeSeconds,
+    "short-burn chemical profiles should use the orbital transfer baseline",
+  );
+  assert.equal(
+    saturnJupiterTransfer.transferTimeSeconds,
+    jupiterTransfer.transferTimeSeconds,
+    "Saturn V Jupiter transfers should not get continuous-cruise speed added",
+  );
+  assert(
+    fusionMarsTransfer.transferTimeSeconds < saturnMarsTransfer.transferTimeSeconds,
+    "sustained propulsion profiles should produce shorter transfer times",
+  );
+  assert.notEqual(
+    fusionMarsTransfer.arrivalDateMs,
+    saturnMarsTransfer.arrivalDateMs,
+    "profile-adjusted transfer intercept dates should vary by rocket profile",
+  );
 };
 
 const assertCommandPaletteIndexClamping = () => {

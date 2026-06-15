@@ -2,6 +2,14 @@ import { bodiesById } from "../../data";
 import type { CelestialBody, Vec3 } from "../../simulation/orbitalElements";
 import { getBodyPositionKm, vectorLength } from "../../simulation/solveOrbit";
 import {
+  addVec3 as add,
+  clamp01,
+  lerpVec3 as lerp,
+  mulVec3 as mul,
+  normalizeVec3 as normalize,
+  subVec3 as sub,
+} from "../../simulation/vec3";
+import {
   computeBodyScenePosition,
   getBodySceneRadius,
   scaleDistanceFromSun,
@@ -33,7 +41,6 @@ import {
 const EARTH_ID = "earth";
 
 const DEPART_FROM_EARTH_KM = 1_000_000;
-const DIRECT_DEPART_PROGRESS = 0.06;
 const DIRECT_APPROACH_FRACTION = 0.25;
 const CLOSEST_APPROACH_SAMPLES = 40;
 const TRANSFER_CACHE_LIMIT = 16;
@@ -107,20 +114,6 @@ type DirectAimPlan = {
   aimDistanceKm: number;
 };
 
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const mul = ([x, y, z]: Vec3, scalar: number): Vec3 => [x * scalar, y * scalar, z * scalar];
-const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => [
-  a[0] + (b[0] - a[0]) * t,
-  a[1] + (b[1] - a[1]) * t,
-  a[2] + (b[2] - a[2]) * t,
-];
-const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
-const normalize = (v: Vec3): Vec3 => {
-  const length = vectorLength(v);
-  return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
-};
-
 const setBoundedCacheEntry = <T>(cache: Map<string, T>, key: string, value: T, limit: number) => {
   if (cache.size >= limit && !cache.has(key)) {
     const oldest = cache.keys().next().value;
@@ -176,9 +169,6 @@ const getDirectStatus = (
   }
   if (elapsedSeconds < burnDurationSeconds) {
     return "burn";
-  }
-  if (progress < DIRECT_DEPART_PROGRESS) {
-    return "coast";
   }
   return "coast";
 };
@@ -300,14 +290,29 @@ const transferPlanCache = new Map<string, CachedTransferPlan>();
 const transferSceneArcCache = new Map<string, Vec3[]>();
 const transferClosestApproachCache = new Map<string, number>();
 
-const getTransferPlan = (destBody: CelestialBody, launchDateMs: number): CachedTransferPlan | null => {
-  const key = `${destBody.id}|${launchDateMs}`;
+// These module-level plan/arc/closest-approach caches persist for the JS module's
+// lifetime. Clear them when a mission is reset so retired missions don't linger as
+// hidden global state. Called from rocketStore.clear().
+export const clearRocketCaches = () => {
+  directPlanCache.clear();
+  directClosestApproachCache.clear();
+  transferPlanCache.clear();
+  transferSceneArcCache.clear();
+  transferClosestApproachCache.clear();
+};
+
+const getTransferPlan = (
+  profile: RocketProfile,
+  destBody: CelestialBody,
+  launchDateMs: number,
+): CachedTransferPlan | null => {
+  const key = `${profile.id}|${destBody.id}|${launchDateMs}`;
   const cached = transferPlanCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs);
+  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs, profile);
   if (!estimate) {
     return null;
   }
@@ -327,7 +332,7 @@ const getPlannedTransferClosestApproach = (
   destBody: CelestialBody,
   launchDateMs: number,
 ): number => {
-  const key = `${destBody.id}|${launchDateMs}`;
+  const key = `${destBody.id}|${launchDateMs}|${estimate.arrivalDateMs}`;
   const cached = transferClosestApproachCache.get(key);
   if (cached !== undefined) {
     return cached;
@@ -370,7 +375,7 @@ const getTransferSceneArc = (
   launchDateMs: number,
   mode: ScaleMode,
 ): Vec3[] => {
-  const cacheKey = `${destinationBody.id}|${launchDateMs}|${mode}`;
+  const cacheKey = `${destinationBody.id}|${launchDateMs}|${plan.estimate.arrivalDateMs}|${mode}`;
   const cached = transferSceneArcCache.get(cacheKey);
   if (cached) {
     return cached;
@@ -520,7 +525,7 @@ export const computeRocketView = (
   }
 
   if (missionMode === "transfer") {
-    const plan = getTransferPlan(destBody, launchDateMs);
+    const plan = getTransferPlan(profile, destBody, launchDateMs);
     if (plan) {
       const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
       const transferTimeSeconds = Math.max(plan.estimate.transferTimeSeconds, 1);

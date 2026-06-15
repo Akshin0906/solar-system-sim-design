@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 import math
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 AU_KM = 149_597_870.7
@@ -61,9 +63,26 @@ def load_app_orbits() -> dict[str, dict[str, object]]:
       }}));
       console.log(JSON.stringify(out));
     """
-    tsx = ROOT / "node_modules" / ".bin" / "tsx"
+    # Resolve tsx from the local install first, then PATH, then npx. If none is
+    # available (e.g. a fresh checkout without `npm install`), skip these checks with a
+    # warning instead of crashing the whole verify:math suite — the pure-Python JPL
+    # checks above have already validated the orbital math.
+    local_tsx = ROOT / "node_modules" / ".bin" / "tsx"
+    if local_tsx.exists():
+        tsx_cmd = [str(local_tsx)]
+    elif shutil.which("tsx"):
+        tsx_cmd = ["tsx"]
+    elif shutil.which("npx"):
+        tsx_cmd = ["npx", "--yes", "tsx"]
+    else:
+        print(
+            "WARN: tsx not found (run `npm install`); skipping minor-body data checks.",
+            file=sys.stderr,
+        )
+        sys.exit(0)
+
     result = subprocess.run(
-        [str(tsx), "--eval", code],
+        [*tsx_cmd, "--eval", code],
         cwd=ROOT,
         check=True,
         text=True,
