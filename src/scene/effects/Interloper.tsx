@@ -7,7 +7,7 @@ import {
   DoubleSide,
   type Group,
   type Mesh,
-  type MeshBasicMaterial,
+  MeshBasicMaterial,
   ShaderMaterial,
 } from "three";
 import { getParticipant } from "../../scenarios/scenarioRuntime";
@@ -137,12 +137,67 @@ export const Interloper = ({ mode }: { mode: ScaleMode }) => {
     [],
   );
 
+  // Static-prop overlay materials, memoized once so the always-on scenario frameloop doesn't
+  // recreate them every frame. Only the rogue star's core colour changes (accretion flares,
+  // driven live in useFrame); every other material here is constant.
+  const starCoreMaterial = useMemo(() => new MeshBasicMaterial({ color: "#ffce8a", toneMapped: false }), []);
+  const starInnerCoronaMaterial = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        color: "#ffb35e",
+        transparent: true,
+        opacity: 0.3,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const starOuterCoronaMaterial = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        color: "#ff8a3a",
+        transparent: true,
+        opacity: 0.16,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const horizonMaterial = useMemo(() => new MeshBasicMaterial({ color: "#000000", toneMapped: false }), []);
+  const photonRingMaterial = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        color: "#dfeaff",
+        transparent: true,
+        opacity: 0.95,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+
   useEffect(() => {
     return () => {
       diskMaterial.dispose();
       rimMaterial.dispose();
+      starCoreMaterial.dispose();
+      starInnerCoronaMaterial.dispose();
+      starOuterCoronaMaterial.dispose();
+      horizonMaterial.dispose();
+      photonRingMaterial.dispose();
     };
-  }, [diskMaterial, rimMaterial]);
+  }, [
+    diskMaterial,
+    rimMaterial,
+    starCoreMaterial,
+    starInnerCoronaMaterial,
+    starOuterCoronaMaterial,
+    horizonMaterial,
+    photonRingMaterial,
+  ]);
 
   // A (re)seed resets the accretion baseline so brightness tracks the fresh run, not the
   // mass the hole had swallowed before the slider edit.
@@ -214,15 +269,15 @@ export const Interloper = ({ mode }: { mode: ScaleMode }) => {
       <group ref={groupRef}>
         <mesh ref={starCoreRef} raycast={noopRaycast}>
           <sphereGeometry args={[r, 48, 32]} />
-          <meshBasicMaterial color="#ffce8a" toneMapped={false} />
+          <primitive object={starCoreMaterial} attach="material" />
         </mesh>
         <mesh raycast={noopRaycast}>
           <sphereGeometry args={[r * 1.25, 32, 24]} />
-          <meshBasicMaterial color="#ffb35e" transparent opacity={0.3} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+          <primitive object={starInnerCoronaMaterial} attach="material" />
         </mesh>
         <mesh raycast={noopRaycast}>
           <sphereGeometry args={[r * 1.7, 24, 18]} />
-          <meshBasicMaterial color="#ff8a3a" transparent opacity={0.16} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+          <primitive object={starOuterCoronaMaterial} attach="material" />
         </mesh>
       </group>
     );
@@ -235,7 +290,7 @@ export const Interloper = ({ mode }: { mode: ScaleMode }) => {
       {/* Event horizon: opaque, writes depth so it occludes the disk behind it and stars. */}
       <mesh raycast={noopRaycast} renderOrder={1}>
         <sphereGeometry args={[r, 48, 32]} />
-        <meshBasicMaterial color="#000000" toneMapped={false} />
+        <primitive object={horizonMaterial} attach="material" />
       </mesh>
       {/* Lensing rim shell (fresnel) — cheap stand-in for light bending round the hole. */}
       <mesh raycast={noopRaycast} renderOrder={2} scale={r * 1.45}>
@@ -250,7 +305,7 @@ export const Interloper = ({ mode }: { mode: ScaleMode }) => {
       {/* Photon ring: billboarded thin bright annulus (the lensed photon sphere). */}
       <mesh ref={photonRingRef} raycast={noopRaycast} renderOrder={4}>
         <ringGeometry args={[r * 1.28, r * 1.46, 96, 1]} />
-        <meshBasicMaterial color="#dfeaff" transparent opacity={0.95} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+        <primitive object={photonRingMaterial} attach="material" />
       </mesh>
     </group>
   );

@@ -1,6 +1,6 @@
 import { useFrame } from "@react-three/fiber";
-import { useRef } from "react";
-import { AdditiveBlending, Color, type Group, type Mesh, type MeshBasicMaterial } from "three";
+import { useEffect, useMemo, useRef } from "react";
+import { AdditiveBlending, Color, type Group, type Mesh, MeshBasicMaterial } from "three";
 import { bodiesById } from "../../data";
 import { getParticipant } from "../../scenarios/scenarioRuntime";
 import { getBodySceneRadius, scaleDistanceFromSun, scaleVectorFromSun, type ScaleMode } from "../../simulation/units";
@@ -35,6 +35,41 @@ export const RedGiantStar = ({ mode }: { mode: ScaleMode }) => {
   // Never render smaller than the Sun normally appears, so the handoff at T+0 is seamless.
   const floorRadius = getBodySceneRadius(bodiesById.get("sun")!, mode);
 
+  // Memoize the photosphere + corona materials once (they're mutated in useFrame, never via
+  // props) so the always-on scenario frameloop doesn't recreate them every frame. The color is
+  // driven live in useFrame; only the static blend/opacity flags live here.
+  const coreMaterial = useMemo(() => new MeshBasicMaterial({ toneMapped: false }), []);
+  const innerCoronaMaterial = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.32,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const outerCoronaMaterial = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        transparent: true,
+        opacity: 0.16,
+        blending: AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+
+  useEffect(() => {
+    return () => {
+      coreMaterial.dispose();
+      innerCoronaMaterial.dispose();
+      outerCoronaMaterial.dispose();
+    };
+  }, [coreMaterial, innerCoronaMaterial, outerCoronaMaterial]);
+
   useFrame(() => {
     const sun = getParticipant("sun");
     const group = groupRef.current;
@@ -65,15 +100,15 @@ export const RedGiantStar = ({ mode }: { mode: ScaleMode }) => {
     <group ref={groupRef}>
       <mesh ref={coreRef} raycast={noopRaycast}>
         <sphereGeometry args={[1, 48, 32]} />
-        <meshBasicMaterial toneMapped={false} />
+        <primitive object={coreMaterial} attach="material" />
       </mesh>
       <mesh ref={innerCoronaRef} raycast={noopRaycast}>
         <sphereGeometry args={[1, 32, 24]} />
-        <meshBasicMaterial transparent opacity={0.32} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+        <primitive object={innerCoronaMaterial} attach="material" />
       </mesh>
       <mesh ref={outerCoronaRef} raycast={noopRaycast}>
         <sphereGeometry args={[1, 24, 18]} />
-        <meshBasicMaterial transparent opacity={0.16} blending={AdditiveBlending} depthWrite={false} toneMapped={false} />
+        <primitive object={outerCoronaMaterial} attach="material" />
       </mesh>
     </group>
   );

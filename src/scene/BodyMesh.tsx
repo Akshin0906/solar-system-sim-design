@@ -1,6 +1,6 @@
 import { Html } from "@react-three/drei";
 import { ThreeEvent, useFrame } from "@react-three/fiber";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   AdditiveBlending,
   BackSide,
@@ -264,6 +264,19 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
   useEffect(() => () => ringTexture?.dispose(), [ringTexture]);
   useEffect(() => () => coronaTexture.dispose(), [coronaTexture]);
 
+  // The surface material is now kept mounted across async texture loads (stable key, not the
+  // texture uuid) to avoid recreating + recompiling it every time a texture resolves. A material
+  // only compiles in a map that appears (or disappears) after creation when its program is
+  // rebuilt, so flag needsUpdate whenever the surface/bump textures change. Layout effect (not
+  // passive) so the flag is set before the frame R3F already scheduled for the map change renders
+  // — otherwise in frameloop="demand" the recompile could wait for an unrelated later invalidate.
+  useLayoutEffect(() => {
+    const material = meshRef.current?.material;
+    if (material && !Array.isArray(material)) {
+      material.needsUpdate = true;
+    }
+  }, [surfaceTexture, bumpTexture]);
+
   const attachLabelButton = useCallback(
     (button: HTMLButtonElement | null) => {
       detachLabelButtonRef.current?.();
@@ -363,7 +376,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
           <sphereGeometry args={[renderRadius, body.type === "moon" ? 40 : 64, body.type === "moon" ? 24 : 40]} />
           {body.type === "star" ? (
             <meshBasicMaterial
-              key={surfaceTexture?.uuid ?? "surface-pending"}
+              key="surface-material"
               map={surfaceTexture}
               color={surfaceTexture ? visual.baseColor : "#ffd08a"}
               toneMapped={false}
@@ -372,7 +385,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
             />
           ) : (
             <meshStandardMaterial
-              key={`${surfaceTexture?.uuid ?? "surface-pending"}-${bumpTexture?.uuid ?? "bump-pending"}`}
+              key="surface-material"
               map={surfaceTexture}
               color={surfaceTexture ? "#ffffff" : visual.baseColor}
               roughness={visual.roughness}

@@ -167,22 +167,31 @@ export const BeltCloud = ({ mode, opacityMultiplier = 1 }: BeltCloudProps) => {
 
   useEffect(() => () => clouds.forEach(({ geometry }) => geometry.dispose()), [clouds]);
 
+  // Build the per-belt uniforms once and reuse the same object identities across renders, so the
+  // always-on scenario frameloop doesn't hand R3F a fresh uniforms object every frame (which would
+  // reassign the material's uniforms and churn GC). Recomputed only when an input actually changes.
+  const beltUniforms = useMemo(
+    () =>
+      clouds.map(({ belt, renderSettings }) => ({
+        uFadeNear: { value: renderSettings.fadeNear },
+        uFadeStart: { value: renderSettings.fadeStart },
+        uFadeEnd: { value: renderSettings.fadeEnd },
+        uMaxPointSize: { value: renderSettings.maxPointSize },
+        uOpacity: { value: (mode === "real" ? belt.opacity * 0.55 : belt.opacity) * opacityMultiplier },
+        uPixelRatio: { value: pixelRatio },
+        uSizeMultiplier: { value: renderSettings.sizeMultiplier },
+      })),
+    [clouds, mode, opacityMultiplier, pixelRatio],
+  );
+
   return (
     <>
-      {clouds.map(({ belt, geometry, renderSettings }) => (
+      {clouds.map(({ belt, geometry }, index) => (
         <points key={belt.id} geometry={geometry}>
           <shaderMaterial
             vertexShader={beltVertexShader}
             fragmentShader={beltFragmentShader}
-            uniforms={{
-              uFadeNear: { value: renderSettings.fadeNear },
-              uFadeStart: { value: renderSettings.fadeStart },
-              uFadeEnd: { value: renderSettings.fadeEnd },
-              uMaxPointSize: { value: renderSettings.maxPointSize },
-              uOpacity: { value: (mode === "real" ? belt.opacity * 0.55 : belt.opacity) * opacityMultiplier },
-              uPixelRatio: { value: pixelRatio },
-              uSizeMultiplier: { value: renderSettings.sizeMultiplier },
-            }}
+            uniforms={beltUniforms[index]}
             transparent
             depthWrite={false}
             depthTest
