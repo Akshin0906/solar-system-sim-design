@@ -8,6 +8,7 @@ import { rocketsById } from "../src/future/rockets/rocketCatalog";
 import { computeRocketView } from "../src/future/rockets/rocketState";
 import { estimateTransfer } from "../src/future/rockets/transferModel";
 import { clampCommandActiveIndex } from "../src/ui/commandIndex";
+import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -359,6 +360,51 @@ const assertCommandPaletteIndexClamping = () => {
   assert.equal(clampCommandActiveIndex(-2, 3), 0);
 };
 
+const assertSafeBooleanPreferences = () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const setWindow = (value: unknown) =>
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value,
+    });
+
+  try {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: undefined,
+    });
+    assert.equal(readBooleanPreference("missing-window"), false);
+    assert.doesNotThrow(() => writeBooleanPreference("missing-window", true));
+
+    setWindow({
+      localStorage: {
+        getItem: () => "true",
+        setItem: () => undefined,
+      },
+    });
+    assert.equal(readBooleanPreference("stored-flag"), true);
+
+    setWindow({
+      localStorage: {
+        getItem: () => {
+          throw new Error("storage denied");
+        },
+        setItem: () => {
+          throw new Error("storage denied");
+        },
+      },
+    });
+    assert.equal(readBooleanPreference("blocked-storage"), false);
+    assert.doesNotThrow(() => writeBooleanPreference("blocked-storage", true));
+  } finally {
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", originalWindow);
+    } else {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  }
+};
+
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
 assertDirectRocketArrivalCapsTelemetry();
@@ -366,5 +412,6 @@ assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
 assertCommandPaletteIndexClamping();
+assertSafeBooleanPreferences();
 
 console.log("App logic checks passed");

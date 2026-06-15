@@ -14,6 +14,7 @@ import { useRocketStore } from "../future/rockets/rocketStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatTimeScale } from "../simulation/units";
+import { readBooleanPreference, writeBooleanPreference } from "../ui/safeStorage";
 import { useUiStore } from "../ui/uiStore";
 import { useIsMobile } from "../ui/useMediaQuery";
 
@@ -213,15 +214,12 @@ const DISCOVERY_HINT_KEY = "solar-system-sim.discoveryHintDismissed";
 
 const DiscoverabilityCue = () => {
   const [visible, setVisible] = useState(() => {
-    if (typeof window === "undefined") {
-      return false;
-    }
-    return window.localStorage.getItem(DISCOVERY_HINT_KEY) !== "true";
+    return !readBooleanPreference(DISCOVERY_HINT_KEY);
   });
 
   const dismiss = useCallback(() => {
     setVisible(false);
-    window.localStorage.setItem(DISCOVERY_HINT_KEY, "true");
+    writeBooleanPreference(DISCOVERY_HINT_KEY, true);
   }, []);
 
   useEffect(() => {
