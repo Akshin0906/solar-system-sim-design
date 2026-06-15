@@ -20,6 +20,7 @@ const EARTH_ID = "earth";
 const SUN_ID = "sun";
 const TWO_PI = Math.PI * 2;
 const LEO_ALTITUDE_KM = 400;
+const SUSTAINED_TRANSFER_BURN_SECONDS = DAY_SECONDS * 30;
 const PROFILE_TRANSFER_SEARCH_ITERATIONS = 56;
 const PROFILE_TRANSFER_MAX_SECONDS = 31_557_600 * 120;
 
@@ -111,11 +112,12 @@ const solveProfileAdjustedTransfer = (
   profile: RocketProfile | null | undefined,
   baselineTransferTimeSeconds: number,
   baselineMeanTransferSpeedKmS: number,
-): { transferTimeSeconds: number; meanTransferSpeedKmS: number } => {
-  if (!profile) {
+): { transferTimeSeconds: number; meanTransferSpeedKmS: number; profileAdjusted: boolean } => {
+  if (!profile || profile.burnDurationSeconds < SUSTAINED_TRANSFER_BURN_SECONDS) {
     return {
       transferTimeSeconds: baselineTransferTimeSeconds,
       meanTransferSpeedKmS: baselineMeanTransferSpeedKmS,
+      profileAdjusted: false,
     };
   }
 
@@ -124,6 +126,7 @@ const solveProfileAdjustedTransfer = (
     return {
       transferTimeSeconds: baselineTransferTimeSeconds,
       meanTransferSpeedKmS: baselineMeanTransferSpeedKmS,
+      profileAdjusted: false,
     };
   }
 
@@ -148,6 +151,7 @@ const solveProfileAdjustedTransfer = (
     return {
       transferTimeSeconds: baselineTransferTimeSeconds,
       meanTransferSpeedKmS: baselineMeanTransferSpeedKmS,
+      profileAdjusted: false,
     };
   }
 
@@ -163,6 +167,7 @@ const solveProfileAdjustedTransfer = (
   return {
     transferTimeSeconds: upperSeconds,
     meanTransferSpeedKmS: routeDistanceKm / upperSeconds,
+    profileAdjusted: true,
   };
 };
 
@@ -199,7 +204,7 @@ const estimateLocalMoonTransfer = (
   const departureTransferSpeedKmS = transferSpeed(muEarth, originRadiusKm, transferSemiMajorAxisKm);
   const arrivalTransferSpeedKmS = transferSpeed(muEarth, destinationRadiusKm, transferSemiMajorAxisKm);
   const baselineMeanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
-  const { transferTimeSeconds, meanTransferSpeedKmS } = solveProfileAdjustedTransfer(
+  const { transferTimeSeconds, meanTransferSpeedKmS, profileAdjusted } = solveProfileAdjustedTransfer(
     profile,
     baselineTransferTimeSeconds,
     baselineMeanTransferSpeedKmS,
@@ -232,8 +237,8 @@ const estimateLocalMoonTransfer = (
     approximate: true,
     targetIsMoon: true,
     notes: [
-      profile
-        ? "Profile-adjusted Moon transfer uses a simplified Earth-centered parking-orbit estimate."
+      profileAdjusted
+        ? "Sustained-profile Moon transfer uses a simplified Earth-centered parking-orbit estimate."
         : "Moon transfer uses a simplified Earth-centered parking-orbit estimate.",
     ],
   };
@@ -287,7 +292,7 @@ export const estimateTransfer = (
   const departureTransferSpeedKmS = transferSpeed(muSun, originRadiusKm, transferSemiMajorAxisKm);
   const arrivalTransferSpeedKmS = transferSpeed(muSun, destinationRadiusKm, transferSemiMajorAxisKm);
   const baselineMeanTransferSpeedKmS = (departureTransferSpeedKmS + arrivalTransferSpeedKmS) / 2;
-  const { transferTimeSeconds, meanTransferSpeedKmS } = solveProfileAdjustedTransfer(
+  const { transferTimeSeconds, meanTransferSpeedKmS, profileAdjusted } = solveProfileAdjustedTransfer(
     profile,
     baselineTransferTimeSeconds,
     baselineMeanTransferSpeedKmS,
@@ -307,8 +312,8 @@ export const estimateTransfer = (
   );
 
   const notes = [
-    profile
-      ? "Profile-adjusted Hohmann estimate assumes circular, coplanar heliocentric orbits."
+    profileAdjusted
+      ? "Sustained-profile Hohmann estimate assumes circular, coplanar heliocentric orbits."
       : "Hohmann estimate assumes circular, coplanar heliocentric orbits.",
   ];
 

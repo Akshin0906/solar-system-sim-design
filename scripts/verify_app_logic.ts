@@ -358,16 +358,24 @@ const assertTransferEstimateUsesAppCode = () => {
   assert(marsTransfer.arrivalDeltaVKmS > 2.5 && marsTransfer.arrivalDeltaVKmS < 2.8);
 
   const saturnMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, saturnV);
+  const saturnJupiterTransfer = estimateTransfer(jupiter, bodiesById, launchDateMs, saturnV);
   const fusionMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, fusion);
   assert(saturnMarsTransfer);
+  assert(saturnJupiterTransfer);
   assert(fusionMarsTransfer);
-  assert(
-    saturnMarsTransfer.transferTimeSeconds < marsTransfer.transferTimeSeconds,
-    "profile-adjusted Saturn V transfer should be faster than the orbital-only baseline",
+  assert.equal(
+    saturnMarsTransfer.transferTimeSeconds,
+    marsTransfer.transferTimeSeconds,
+    "short-burn chemical profiles should use the orbital transfer baseline",
+  );
+  assert.equal(
+    saturnJupiterTransfer.transferTimeSeconds,
+    jupiterTransfer.transferTimeSeconds,
+    "Saturn V Jupiter transfers should not get continuous-cruise speed added",
   );
   assert(
     fusionMarsTransfer.transferTimeSeconds < saturnMarsTransfer.transferTimeSeconds,
-    "faster rocket profiles should produce shorter transfer times",
+    "sustained propulsion profiles should produce shorter transfer times",
   );
   assert.notEqual(
     fusionMarsTransfer.arrivalDateMs,

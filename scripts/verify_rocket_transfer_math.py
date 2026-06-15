@@ -9,6 +9,7 @@ from collections.abc import Callable
 AU_KM = 149_597_870.7
 DAY_SECONDS = 86_400
 MU_SUN_KM3_S2 = 132_712_440_018
+SUSTAINED_TRANSFER_BURN_SECONDS = DAY_SECONDS * 30
 
 ORBITS_AU = {
     "earth": 1.000_002_61,
@@ -65,6 +66,9 @@ def profile_adjusted_transfer_time_seconds(
     baseline_transfer_time_seconds: float,
     baseline_mean_transfer_speed_km_s: float,
 ) -> float:
+    if profile["burn_duration_s"] < SUSTAINED_TRANSFER_BURN_SECONDS:
+        return baseline_transfer_time_seconds
+
     route_distance_km = baseline_mean_transfer_speed_km_s * baseline_transfer_time_seconds
 
     def covered_distance(seconds: float) -> float:
@@ -248,6 +252,7 @@ def main() -> None:
     assert 22 < mars_mean_transfer_speed < 28, mars_mean_transfer_speed
 
     mars_transfer_seconds = hohmann_transfer_time_seconds(earth, mars)
+    jupiter_transfer_seconds = hohmann_transfer_time_seconds(earth, jupiter)
     saturn_v_transfer_seconds = profile_adjusted_transfer_time_seconds(
         SATURN_V_PROFILE,
         mars_transfer_seconds,
@@ -258,9 +263,18 @@ def main() -> None:
         mars_transfer_seconds,
         mars_mean_transfer_speed,
     )
-    assert saturn_v_transfer_seconds < mars_transfer_seconds, (
+    saturn_v_jupiter_transfer_seconds = profile_adjusted_transfer_time_seconds(
+        SATURN_V_PROFILE,
+        jupiter_transfer_seconds,
+        mean_transfer_speed_km_s(earth, jupiter),
+    )
+    assert saturn_v_transfer_seconds == mars_transfer_seconds, (
         saturn_v_transfer_seconds,
         mars_transfer_seconds,
+    )
+    assert saturn_v_jupiter_transfer_seconds == jupiter_transfer_seconds, (
+        saturn_v_jupiter_transfer_seconds,
+        jupiter_transfer_seconds,
     )
     assert fusion_transfer_seconds < saturn_v_transfer_seconds, (
         fusion_transfer_seconds,
@@ -309,9 +323,10 @@ def main() -> None:
     print(f"Jupiter delta-v departure/arrival: {jupiter_departure:.2f}/{jupiter_arrival:.2f} km/s")
     print(
         "Profile-adjusted Mars transfer days: "
-        f"Saturn V {saturn_v_transfer_seconds / DAY_SECONDS:.1f}, "
+        f"Saturn V {saturn_v_transfer_seconds / DAY_SECONDS:.1f} baseline, "
         f"Fusion {fusion_transfer_seconds / DAY_SECONDS:.1f}"
     )
+    print(f"Saturn V Jupiter transfer remains Hohmann baseline: {saturn_v_jupiter_transfer_seconds / DAY_SECONDS:.1f} days")
     print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
     print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")
     print(f"Post-arrival stale miss avoided: {stale_post_arrival_miss / AU_KM:.2f} AU")
