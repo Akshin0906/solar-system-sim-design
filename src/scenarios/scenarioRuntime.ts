@@ -149,7 +149,7 @@ export const sceneRadiusForSimBody = (sb: SimBody, mode: ScaleMode) => {
   // Fragments are debris — keep them small and distinct from a full rogue marker, but
   // still above a visibility floor so a swarm reads as a ring rather than vanishing.
   if (sb.kind === "fragment") {
-    return Math.min(Math.max(sb.radiusKm / 90_000, 0.05), 0.34);
+    return Math.min(Math.max(sb.radiusKm / 90_000, 0.1), 0.4);
   }
   return Math.min(Math.max(sb.radiusKm / 90_000, 0.18), 0.9);
 };
@@ -166,6 +166,11 @@ export const drainConsumed = (): string[] => {
 
 export const getElapsedSimSeconds = () => current?.state.elapsedSimSeconds ?? 0;
 export const isThrottled = () => current?.state.throttled ?? false;
+// The fragment cap the run has enforced (0 if debris was never coalesced). Surfaced so the
+// panel can tell the user shards were merged into the largest, never silently dropped.
+export const getFragmentCapHit = () => current?.state.fragmentCapHit ?? 0;
+export const getLiveFragmentCount = () =>
+  current ? current.state.bodies.reduce((n, sb) => n + (sb.alive && sb.kind === "fragment" ? 1 : 0), 0) : 0;
 export const getEventCount = () => current?.state.events.length ?? 0;
 export const getLatestEvent = () => {
   const events = current?.state.events;

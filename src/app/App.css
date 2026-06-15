@@ -2102,6 +2102,72 @@ input[type="range"] {
   color: #e9a48f;
 }
 
+.doomsday-debris {
+  margin: 0;
+  font-size: 11.5px;
+  color: rgba(245, 241, 232, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.doomsday-throttle {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(217, 173, 105, 0.92);
+}
+
+/* Discrete choice (segmented control) — interloper type, impact target, … */
+.doomsday-choice {
+  display: grid;
+  gap: 5px;
+}
+
+.doomsday-choice-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: rgba(245, 241, 232, 0.8);
+}
+
+.doomsday-choice-label em {
+  font-style: normal;
+  color: var(--gold);
+}
+
+.doomsday-segments {
+  display: flex;
+  gap: 4px;
+}
+
+.doomsday-segment {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(245, 241, 232, 0.04);
+  color: rgba(245, 241, 232, 0.74);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.doomsday-segment:hover {
+  border-color: var(--hairline-strong);
+  color: rgba(245, 241, 232, 0.92);
+}
+
+.doomsday-segment.active {
+  border-color: rgba(201, 116, 92, 0.75);
+  background: rgba(201, 116, 92, 0.16);
+  color: #f2cdbf;
+}
+
 .doomsday-science {
   display: grid;
   gap: 5px;

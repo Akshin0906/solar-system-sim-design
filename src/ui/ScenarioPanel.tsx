@@ -56,6 +56,50 @@ const ParamSlider = ({
   );
 };
 
+// A discrete choice (interloper type, impact target, …), rendered as a segmented control.
+// Each option commits immediately — re-seeding from T+0 like any other param edit.
+const ChoiceControl = ({
+  param,
+  value,
+  onCommit,
+}: {
+  param: ScenarioParam;
+  value: number;
+  onCommit: (key: string, value: number) => void;
+}) => {
+  const options = param.options ?? [];
+  const selected = options.find((option) => option.value === value) ?? options[0];
+
+  return (
+    <div className="doomsday-choice">
+      <span className="doomsday-choice-label">
+        {param.label} <em>{selected?.label}</em>
+      </span>
+      <div className="doomsday-segments" role="group" aria-label={param.label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`doomsday-segment${option.value === value ? " active" : ""}`}
+            aria-pressed={option.value === value}
+            title={param.help}
+            onClick={() => onCommit(param.key, option.value)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Route a param to the right control: segmented control for a choice, slider otherwise.
+const ParamControl = (props: {
+  param: ScenarioParam;
+  value: number;
+  onCommit: (key: string, value: number) => void;
+}) => (props.param.options ? <ChoiceControl {...props} /> : <ParamSlider {...props} />);
+
 const formatElapsed = (seconds: number) => {
   const days = seconds / DAY_SECONDS;
   if (days >= 365.256) {
@@ -79,6 +123,9 @@ const ScenarioControls = () => {
   const timeScale = useScenarioStore((state) => state.timeScaleDaysPerSec);
   const elapsed = useScenarioStore((state) => state.elapsedSimSeconds);
   const consumedIds = useScenarioStore((state) => state.consumedIds);
+  const liveFragmentCount = useScenarioStore((state) => state.liveFragmentCount);
+  const fragmentCapHit = useScenarioStore((state) => state.fragmentCapHit);
+  const throttled = useScenarioStore((state) => state.throttled);
   const start = useScenarioStore((state) => state.start);
   const stop = useScenarioStore((state) => state.stop);
   const togglePause = useScenarioStore((state) => state.togglePause);
@@ -151,11 +198,22 @@ const ScenarioControls = () => {
       </label>
 
       {active.params.map((param) => (
-        <ParamSlider key={param.key} param={param} value={params[param.key] ?? param.default} onCommit={setParam} />
+        <ParamControl key={param.key} param={param} value={params[param.key] ?? param.default} onCommit={setParam} />
       ))}
 
       {destroyed.length > 0 && (
         <p className="doomsday-destroyed">Destroyed: {destroyed.join(", ")}</p>
+      )}
+
+      {liveFragmentCount > 0 && (
+        <p className="doomsday-debris">
+          Debris: {liveFragmentCount} shard{liveFragmentCount === 1 ? "" : "s"}
+          {fragmentCapHit > 0 ? ` · capped at ${fragmentCapHit} (excess coalesced)` : ""}
+        </p>
+      )}
+
+      {throttled && (
+        <p className="doomsday-throttle">Sim-time can’t keep up at this speed — lower the speed for accurate timing.</p>
       )}
 
       <div className="doomsday-science">

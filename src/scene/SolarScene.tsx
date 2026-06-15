@@ -20,11 +20,15 @@ import { RocketObject } from "../features/rockets/RocketObject";
 import { ScenarioLayer } from "./ScenarioLayer";
 import { PostFx } from "./effects/PostFx";
 import { RedGiantStar } from "./effects/RedGiantStar";
+import { Interloper } from "./effects/Interloper";
 import type { ScenePositions } from "./scenePositions";
 import { useScenarioStore } from "../scenarios/scenarioStore";
 import {
   drainConsumed,
   getElapsedSimSeconds,
+  getFragmentCapHit,
+  getLiveFragmentCount,
+  isThrottled,
   startRuntime,
   stepRuntime,
   stopRuntime,
@@ -202,7 +206,12 @@ export const SolarScene = () => {
       elapsedReportRef.current += delta;
       if (elapsedReportRef.current >= 0.12) {
         elapsedReportRef.current = 0;
-        useScenarioStore.getState().reportElapsed(getElapsedSimSeconds());
+        useScenarioStore.getState().reportRuntime({
+          elapsedSimSeconds: getElapsedSimSeconds(),
+          fragmentCapHit: getFragmentCapHit(),
+          liveFragmentCount: getLiveFragmentCount(),
+          throttled: isThrottled(),
+        });
       }
       return;
     }
@@ -258,6 +267,7 @@ export const SolarScene = () => {
       ))}
       <ScenarioLayer mode={mode} />
       {isRedGiant && <RedGiantStar mode={mode} />}
+      {activeScenarioId === "rogue-blackhole" && <Interloper mode={mode} />}
       <RocketObject />
       <CameraRig positionsRef={positionsRef} mode={mode} />
       <PostFx />

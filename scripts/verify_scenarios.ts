@@ -12,7 +12,7 @@ import {
   stepFixed,
   tidalDisrupt,
 } from "../src/scenarios/integrator";
-import { scenarioById } from "../src/scenarios/registry";
+import { INTERLOPER_ID, scenarioById } from "../src/scenarios/registry";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import type { IntegratorState, SimBody } from "../src/scenarios/types";
 
@@ -347,6 +347,53 @@ check("debris integrates stably and does not all instantly re-accrete", () => {
     assert.ok(!hasNaN(sb.posKm) && !hasNaN(sb.velKmS), `${sb.id} went NaN`);
   }
   assert.ok(fragCount(state) >= 2, `debris must survive, not instantly re-merge (got ${fragCount(state)})`);
+});
+
+// --- 13. Rogue black hole: tidal disruption inside the Roche limit -----------
+check("rogue black hole tidally disrupts a planet that crosses its Roche limit", () => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  const scenario = scenarioById.get("rogue-blackhole");
+  assert.ok(scenario?.seed && scenario?.drive, "rogue-blackhole needs a seed + drive");
+  const params = { interloperType: 0, massMult: 1, speedKmS: 45, missDistanceAu: 0.5, fragmentCap: 40 };
+  scenario!.seed!({ state, params, bodiesById });
+  const hole = state.byId.get(INTERLOPER_ID);
+  assert.ok(hole, "the interloper must be injected");
+  const earth = state.byId.get("earth")!;
+  // Park Earth just inside its Roche limit of the hole (but outside the capture radius).
+  const roche = earth.radiusKm * Math.cbrt((2 * hole!.muKm3S2) / earth.muKm3S2);
+  assert.ok(roche * 0.5 > hole!.radiusKm, "test placement must sit outside the capture radius");
+  earth.posKm = [hole!.posKm[0] + roche * 0.5, hole!.posKm[1], hole!.posKm[2]];
+  const pBefore = totalMomentum(state);
+  scenario!.drive!({ state, params, bodiesById }, FIXED_STEP_SECONDS);
+  assert.equal(earth.alive, false, "a planet inside the Roche limit must be tidally disrupted");
+  assert.ok(state.newlyConsumed.includes("earth"), "the disrupted planet is reported consumed");
+  assert.ok(fragCount(state) >= 2, `a tidal stream is expected, got ${fragCount(state)}`);
+  const pErr = momentumErr(totalMomentum(state), pBefore);
+  assert.ok(pErr < 1e-9, `tidal disruption momentum error ${pErr.toExponential(2)}`);
+});
+
+// --- 14. Rogue black hole: a full pass is deterministic and stays finite -----
+check("rogue black hole pass is deterministic and never goes NaN", () => {
+  const run = () => {
+    const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+    const scenario = scenarioById.get("rogue-blackhole")!;
+    const params = { interloperType: 0, massMult: 1.5, speedKmS: 90, missDistanceAu: 0.3, fragmentCap: 40 };
+    scenario.seed!({ state, params, bodiesById });
+    const steps = Math.round((4 * 365.256 * DAY_SECONDS) / FIXED_STEP_SECONDS);
+    for (let i = 0; i < steps; i += 1) {
+      scenario.drive!({ state, params, bodiesById }, FIXED_STEP_SECONDS);
+      stepFixed(state, FIXED_STEP_SECONDS);
+    }
+    return state;
+  };
+  const a = run();
+  for (const sb of a.bodies) {
+    assert.ok(!hasNaN(sb.posKm) && !hasNaN(sb.velKmS), `${sb.id} went NaN during the pass`);
+  }
+  const holeA = a.byId.get(INTERLOPER_ID)!;
+  assert.equal(holeA.alive, true, "the black hole survives the pass");
+  const b = run();
+  assert.deepEqual(holeA.posKm, b.byId.get(INTERLOPER_ID)!.posKm, "two identical black-hole runs diverged");
 });
 
 console.log("");

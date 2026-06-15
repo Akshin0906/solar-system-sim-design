@@ -20,13 +20,24 @@ type ScenarioState = {
   elapsedSimSeconds: number;
   // Data-body ids the catastrophe has destroyed; the scene stops drawing them.
   consumedIds: string[];
+  // Live runtime status surfaced in the panel. fragmentCapHit > 0 means debris was
+  // coalesced into the largest shards (never silently dropped); throttled means sim-time
+  // could not keep up with the requested scale this frame.
+  fragmentCapHit: number;
+  liveFragmentCount: number;
+  throttled: boolean;
   start: (scenarioId: string) => void;
   stop: () => void;
   togglePause: () => void;
   setParam: (key: string, value: number) => void;
   setTimeScale: (daysPerSec: number) => void;
   // Frame-loop bridges (not for UI use):
-  reportElapsed: (seconds: number) => void;
+  reportRuntime: (status: {
+    elapsedSimSeconds: number;
+    fragmentCapHit: number;
+    liveFragmentCount: number;
+    throttled: boolean;
+  }) => void;
   reportConsumed: (ids: string[]) => void;
 };
 
@@ -38,6 +49,9 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
   timeScaleDaysPerSec: 30,
   elapsedSimSeconds: 0,
   consumedIds: [],
+  fragmentCapHit: 0,
+  liveFragmentCount: 0,
+  throttled: false,
 
   start: (scenarioId) => {
     const scenario = scenarioById.get(scenarioId);
@@ -54,6 +68,9 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       timeScaleDaysPerSec: scenario.defaultTimeScaleDaysPerSec,
       elapsedSimSeconds: 0,
       consumedIds: [],
+      fragmentCapHit: 0,
+      liveFragmentCount: 0,
+      throttled: false,
     }));
   },
 
@@ -65,6 +82,9 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       status: "idle",
       elapsedSimSeconds: 0,
       consumedIds: [],
+      fragmentCapHit: 0,
+      liveFragmentCount: 0,
+      throttled: false,
     }));
   },
 
@@ -88,6 +108,9 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
         instanceId: state.instanceId + 1,
         elapsedSimSeconds: 0,
         consumedIds: [],
+        fragmentCapHit: 0,
+        liveFragmentCount: 0,
+        throttled: false,
       };
     }),
 
@@ -95,8 +118,14 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
 
   // Bail when unchanged (returning the same state ref skips the zustand notify) so a
   // paused scenario doesn't fire a subscriber notification every throttle tick.
-  reportElapsed: (seconds) =>
-    set((state) => (state.elapsedSimSeconds === seconds ? state : { elapsedSimSeconds: seconds })),
+  reportRuntime: ({ elapsedSimSeconds, fragmentCapHit, liveFragmentCount, throttled }) =>
+    set((state) =>
+      state.elapsedSimSeconds === elapsedSimSeconds &&
+      state.fragmentCapHit === fragmentCapHit &&
+      state.liveFragmentCount === liveFragmentCount &&
+      state.throttled === throttled
+        ? state
+        : { elapsedSimSeconds, fragmentCapHit, liveFragmentCount, throttled }),
 
   reportConsumed: (ids) =>
     set((state) => {

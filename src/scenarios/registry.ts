@@ -1,11 +1,31 @@
 import { AU_KM, DAY_SECONDS } from "../data/constants";
-import { addSimBody } from "./integrator";
-import type { DoomsdayScenario } from "./types";
+import { DEFAULT_FRAGMENT_CAP, addSimBody, enableDebris, tidalDisrupt } from "./integrator";
+import type { DoomsdayScenario, SimBody } from "./types";
 
 // GM of the Sun (km^3/s^2) — used to express a rogue interloper's mass in solar masses.
 const SUN_MU = 132_712_440_018;
 // The Sun's photospheric radius today; the red-giant swell grows from here.
 const SUN_RADIUS_KM = 696_340;
+
+// --- Rogue interloper -------------------------------------------------------
+// The injected interloper's integrator id. The bespoke Interloper overlay tracks it.
+export const INTERLOPER_ID = "interloper";
+
+// Interloper presets. `massSolar` is the characteristic mass for the class (the Mass
+// slider scales it); `captureRadiusKm` is the integrator collision radius where infalling
+// matter is swallowed. `render` picks who draws it: "custom" hands it to the Interloper
+// overlay (event horizon + accretion, or a glowing star); "marker" leaves it to the
+// generic ScenarioLayer. The compact types have a capture radius far inside their Roche
+// limit, so planets tidally shred into a stream before being swallowed; the star's Roche
+// limit sits inside its surface, so it engulfs planets whole instead.
+export const INTERLOPER_TYPES = [
+  { value: 0, label: "Black hole", massSolar: 8, captureRadiusKm: 120_000, color: "#05050a", render: "custom" as const },
+  { value: 1, label: "Rogue star", massSolar: 0.8, captureRadiusKm: 620_000, color: "#ffd49a", render: "custom" as const },
+  { value: 2, label: "Rogue planet", massSolar: 0.02, captureRadiusKm: 75_000, color: "#6f5d92", render: "marker" as const },
+];
+
+export const interloperType = (index: number) =>
+  INTERLOPER_TYPES[Math.max(0, Math.min(INTERLOPER_TYPES.length - 1, Math.round(index)))];
 
 // Built-in scenarios. The framework slice ships two:
 //   1. "freefall" — the correctness oracle. Seeding is right iff the real system
@@ -94,6 +114,80 @@ export const SCENARIOS: DoomsdayScenario[] = [
         color: "#b46bff",
         alive: true,
       });
+    },
+  },
+  {
+    id: "rogue-blackhole",
+    name: "Rogue black hole",
+    tagline: "A wandering compact object falls through the system, shredding and swallowing worlds.",
+    science: {
+      realTimescale:
+        "A stellar-mass interloper crosses the planetary region perhaps once in many billions of years — the Sun has likely never had one this close.",
+      summary:
+        "Injects a compact interloper and lets real gravity act. Planets are slingshotted onto wild orbits; any that crosses the interloper's Roche limit is torn into a tidal debris stream, and matter falling past the capture radius is swallowed — feeding a brightening accretion disk.",
+      watch:
+        "Drop the miss distance below ~0.5 AU to send a world inside the Roche limit and watch it unravel into a stream. A black hole shreds; a rogue star (its Roche limit buried inside its surface) swallows planets whole instead. Some survivors are flung out of the system entirely.",
+    },
+    params: [
+      {
+        key: "interloperType",
+        label: "Interloper",
+        default: 0,
+        options: INTERLOPER_TYPES.map((type) => ({ value: type.value, label: type.label })),
+        help: "Black hole and rogue star are drawn with a bespoke visual; a rogue planet is a dark marker.",
+      },
+      { key: "massMult", label: "Mass", min: 0.25, max: 4, step: 0.05, default: 1, unit: "×", help: "Scales the interloper's characteristic mass for its class." },
+      { key: "speedKmS", label: "Approach speed", min: 5, max: 140, step: 1, default: 45, unit: "km/s" },
+      { key: "missDistanceAu", label: "Miss distance", min: 0, max: 12, step: 0.25, default: 1.5, unit: "AU", help: "Closest approach to the Sun. Lower it to send a planet inside the Roche limit." },
+      { key: "fragmentCap", label: "Debris limit", min: 8, max: 60, step: 2, default: 40, unit: "shards", help: "Max simultaneous debris shards; beyond it the rest coalesce into the largest." },
+    ],
+    defaultTimeScaleDaysPerSec: 50,
+    seed: ({ state, params }) => {
+      const type = interloperType(params.interloperType ?? 0);
+      const massSolar = type.massSolar * (params.massMult ?? 1);
+      const speed = params.speedKmS ?? 45;
+      const miss = (params.missDistanceAu ?? 1.5) * AU_KM;
+      enableDebris(state, params.fragmentCap ?? DEFAULT_FRAGMENT_CAP);
+      // Falls in along -X from just beyond Neptune, offset along +Z by the miss distance,
+      // so its closest approach to the Sun line is exactly that distance. Starting at ~32 AU
+      // keeps the wait before the encounter short while still arriving from outside.
+      const body: SimBody = {
+        id: INTERLOPER_ID,
+        kind: "rogue",
+        posKm: [32 * AU_KM, 0, miss],
+        velKmS: [-speed, 0, 0],
+        muKm3S2: massSolar * SUN_MU,
+        radiusKm: type.captureRadiusKm,
+        color: type.color,
+        alive: true,
+        renderHint: type.render,
+        label: type.label,
+      };
+      addSimBody(state, body);
+    },
+    // Tidal (Roche) disruption: each step, any intact planet that crosses the interloper's
+    // Roche limit is torn into a debris stream pointing at the interloper (the tidal axis).
+    // The Sun is exempt (it is swallowed whole by a direct hit, never shredded here).
+    drive: ({ state }) => {
+      const hole = state.byId.get(INTERLOPER_ID);
+      if (!hole || !hole.alive) {
+        return;
+      }
+      for (const sb of state.bodies) {
+        if (!sb.alive || sb.kind !== "body" || sb.muKm3S2 <= 0 || sb.id === "sun") {
+          continue;
+        }
+        const dx = sb.posKm[0] - hole.posKm[0];
+        const dy = sb.posKm[1] - hole.posKm[1];
+        const dz = sb.posKm[2] - hole.posKm[2];
+        const distKm = Math.hypot(dx, dy, dz);
+        // Rigid-body Roche limit: R_planet * (2 · μ_hole / μ_planet)^(1/3). Outside the
+        // capture radius (else it is simply swallowed on contact this step).
+        const rocheKm = sb.radiusKm * Math.cbrt((2 * hole.muKm3S2) / sb.muKm3S2);
+        if (distKm < rocheKm && distKm > hole.radiusKm) {
+          tidalDisrupt(state, sb, [-dx, -dy, -dz]);
+        }
+      }
     },
   },
 ];

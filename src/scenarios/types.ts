@@ -75,16 +75,25 @@ export type IntegratorState = {
   fragmentSeq: number;
 };
 
-// A sandbox control exposed as a slider in the scenario panel.
+// A discrete option for a "choice" param (rendered as a segmented control, not a slider).
+// The stored value stays numeric so params remain Record<string, number>; a scenario maps
+// the value back to meaning (an interloper type, a target planet index, …).
+export type ScenarioParamOption = { value: number; label: string };
+
+// A sandbox control in the scenario panel. Numeric params render as a commit-on-release
+// slider (min/max/step). A param with `options` renders as a segmented control instead.
 export type ScenarioParam = {
   key: string;
   label: string;
-  min: number;
-  max: number;
-  step: number;
   default: number;
   unit?: string;
   help?: string;
+  // Numeric slider params:
+  min?: number;
+  max?: number;
+  step?: number;
+  // Discrete choice params:
+  options?: ScenarioParamOption[];
 };
 
 export type ScenarioContext = {
