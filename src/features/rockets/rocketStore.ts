@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { defaultRocketId } from "./rocketCatalog";
 import { defaultDestinationId } from "./destinationCatalog";
 import { defaultMissionMode, type RocketMissionMode } from "./missionOptions";
+import { clearRocketCaches } from "./rocketState";
 
 // Rocket state is intentionally separate from celestial body state. It stores only
 // the launch identity, the chosen destination, and the launch instant. The full
@@ -50,7 +51,17 @@ export const useRocketStore = create<RocketState>((set) => ({
       launchDateMs,
       panelOpen: true,
     }),
-  clear: () => set({ activeRocketId: null, activeDestinationId: null, launchDateMs: null }),
+  clear: () => {
+    // Full, predictable reset: also restore the mission mode and drop the derived-plan
+    // caches so a retired mission leaves no stale state behind.
+    clearRocketCaches();
+    set({
+      activeRocketId: null,
+      activeDestinationId: null,
+      activeMissionMode: defaultMissionMode,
+      launchDateMs: null,
+    });
+  },
   setPanelOpen: (panelOpen) => set({ panelOpen }),
   togglePanel: () => set((state) => ({ panelOpen: !state.panelOpen })),
 }));

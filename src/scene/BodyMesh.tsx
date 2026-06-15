@@ -211,6 +211,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
   const detachLabelButtonRef = useRef<(() => void) | null>(null);
   const objectWorldPosition = useMemo(() => new Vector3(), []);
   const cameraWorldPosition = useMemo(() => new Vector3(), []);
+  const lastLabelScaleRef = useRef(-1);
   const selectBody = useSelectionStore((state) => state.selectBody);
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
@@ -328,10 +329,13 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
     groupRef.current.getWorldPosition(objectWorldPosition);
     camera.getWorldPosition(cameraWorldPosition);
     const cameraFovDeg = camera instanceof PerspectiveCamera ? camera.fov : undefined;
-    const labelScale = getBodyLabelScale(mode, objectWorldPosition.distanceTo(cameraWorldPosition), cameraFovDeg).toFixed(4);
+    const labelScale = getBodyLabelScale(mode, objectWorldPosition.distanceTo(cameraWorldPosition), cameraFovDeg);
 
-    if (labelRef.current.style.getPropertyValue("--body-label-scale") !== labelScale) {
-      labelRef.current.style.setProperty("--body-label-scale", labelScale);
+    // Only touch the DOM (and allocate the toFixed string) when the scale actually
+    // moves past the 4-decimal threshold the style var is written at.
+    if (Math.abs(labelScale - lastLabelScaleRef.current) > 1e-4) {
+      lastLabelScaleRef.current = labelScale;
+      labelRef.current.style.setProperty("--body-label-scale", labelScale.toFixed(4));
     }
   });
 
@@ -468,7 +472,11 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
             ref={attachLabelButton}
             className={labelClassName}
             type="button"
-            tabIndex={labelSuppressed && !selected ? -1 : 0}
+            // Labels stay mouse/click-selectable but are kept OUT of the keyboard tab
+            // order: otherwise ~14 tiny, arbitrarily-positioned scene buttons sit ahead
+            // of the toolbar in an order unrelated to visual layout. Keyboard selection
+            // is handled by the command palette instead.
+            tabIndex={-1}
             aria-hidden={labelSuppressed && !selected ? "true" : undefined}
             aria-label={`Select ${body.name}`}
             data-body-id={body.id}

@@ -3,10 +3,10 @@ import { bodiesById } from "../src/data";
 import { AU_KM, DAY_SECONDS } from "../src/data/constants";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import { getBodyPositionKm, vectorLength } from "../src/simulation/solveOrbit";
-import { destinationsById, rocketDestinations } from "../src/future/rockets/destinationCatalog";
-import { rocketsById } from "../src/future/rockets/rocketCatalog";
-import { computeRocketView } from "../src/future/rockets/rocketState";
-import { estimateTransfer } from "../src/future/rockets/transferModel";
+import { destinationsById, rocketDestinations } from "../src/features/rockets/destinationCatalog";
+import { rocketsById } from "../src/features/rockets/rocketCatalog";
+import { computeRocketView } from "../src/features/rockets/rocketState";
+import { estimateTransfer } from "../src/features/rockets/transferModel";
 import { clampCommandActiveIndex } from "../src/ui/commandIndex";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 

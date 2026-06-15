@@ -107,7 +107,7 @@ imply moon-local capture that the model does not perform.
 
 ## Architecture
 
-Rocket code lives in `src/future/rockets/`.
+Rocket code lives in `src/features/rockets/`.
 
 | File | Responsibility |
 | --- | --- |

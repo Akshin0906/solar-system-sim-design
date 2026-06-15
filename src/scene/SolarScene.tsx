@@ -14,8 +14,9 @@ import { Lighting } from "./Lighting";
 import { MotionTrail } from "./MotionTrail";
 import { OrbitRing } from "./OrbitRing";
 import { useSceneLabelLayout } from "./labelLayout";
+import { useReducedMotion } from "../ui/useMediaQuery";
 import type { BodyEmphasis } from "./planetVisuals";
-import { RocketObject } from "../future/rockets/RocketObject";
+import { RocketObject } from "../features/rockets/RocketObject";
 import type { ScenePositions } from "./scenePositions";
 
 export const SolarScene = () => {
@@ -26,6 +27,7 @@ export const SolarScene = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
   const labelDensity = useScaleStore((state) => state.labelDensity);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const reducedMotion = useReducedMotion();
   const positionsRef = useRef<ScenePositions>({});
   const positionsInitializedRef = useRef(false);
   const selectedBody = bodiesById.get(selectedId);
@@ -136,7 +138,7 @@ export const SolarScene = () => {
     <>
       <color attach="background" args={["#050609"]} />
       <fog attach="fog" args={["#050609", 240, 980]} />
-      <Stars radius={500} depth={90} count={2_300} factor={2.35} saturation={0.28} fade speed={0.16} />
+      <Stars radius={500} depth={90} count={2_300} factor={2.35} saturation={0.28} fade speed={reducedMotion ? 0 : 0.16} />
       <Lighting />
       {showGrid && <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />}
       <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.28 : 1} />

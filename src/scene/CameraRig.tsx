@@ -47,7 +47,7 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
   const selectedId = useSelectionStore((state) => state.selectedId);
   const rocketTarget = useSelectionStore((state) => state.rocketTarget);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
   const reducedMotion = useReducedMotion();
 
   const selectedBody = bodiesById.get(selectedId);
@@ -158,6 +158,10 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
       return;
     }
 
+    // With frameloop="demand", a settling framing animation has to keep requesting the
+    // next frame itself — nothing else will. Once the camera reaches its target pose
+    // (or reduced motion snaps it there) we stop, so an idle scene draws nothing.
+    let animating = false;
     if (cameraMode !== "free") {
       const desired = getDesiredCamera();
 
@@ -169,6 +173,9 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
         const positionAlpha = dampingAlpha(isFollowMode ? FOLLOW_POSITION_DAMPING : FOCUS_POSITION_DAMPING, delta);
         controls.target.lerp(desired.target, targetAlpha);
         camera.position.lerp(desired.position, positionAlpha);
+        animating =
+          controls.target.distanceTo(desired.target) > 1e-3 ||
+          camera.position.distanceTo(desired.position) > 1e-3;
       }
       controls.update();
     }
@@ -207,6 +214,10 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
       camera.far = nextFar;
       camera.updateProjectionMatrix();
       cameraRangeRef.current = { near: nextNear, far: nextFar };
+    }
+
+    if (animating) {
+      invalidate();
     }
   });
 

@@ -58,13 +58,16 @@ const records = await Promise.all(
   files.map(async (file) => {
     const metadata = await stat(file);
     const publicPath = toPublicPath(relative(distDir.pathname, file).split(sep).join("/"));
-    return { publicPath, size: metadata.size, modified: metadata.mtimeMs };
+    return { publicPath, size: metadata.size };
   }),
 );
 
 const precacheUrls = [basePath, ...records.map((record) => record.publicPath)].sort();
+// Hash path + size only. Vite already content-hashes asset filenames, so identical
+// content yields an identical cache name across builds; mixing in mtimeMs would make
+// every rebuild of the same commit churn the entire precache for returning users.
 const cacheHash = createHash("sha256")
-  .update(records.map((record) => `${record.publicPath}:${record.size}:${record.modified}`).sort().join("|"))
+  .update(records.map((record) => `${record.publicPath}:${record.size}`).sort().join("|"))
   .digest("hex")
   .slice(0, 12);
 

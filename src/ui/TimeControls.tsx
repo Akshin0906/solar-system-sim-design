@@ -44,11 +44,67 @@ const rangeProgressStyle = (progress: number) =>
     "--range-progress": `${Math.min(Math.max(progress, 0), 100)}%`,
   }) as CSSProperties;
 
+// These three leaves each subscribe to the simulation clock so they re-render ~30x/s
+// (the scrubber thumb and live date must), while the parent TimeControls panel — its
+// transport buttons, preset dropdown, and speed slider — no longer reconciles per tick.
+const TimelineScrubber = () => {
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
+  const setSimulationDateMs = useTimeStore((state) => state.setSimulationDateMs);
+  const scrubDays = Math.max(minScrubDays, Math.min(maxScrubDays, getDaysFromEpoch(simulationDateMs)));
+  const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
+  const timelineProgress = ((scrubDays - minScrubDays) / (maxScrubDays - minScrubDays)) * 100;
+
+  return (
+    <label className="range-shell scrub-range" style={rangeProgressStyle(timelineProgress)}>
+      <CalendarClock size={14} aria-hidden />
+      <input
+        type="range"
+        min={minScrubDays}
+        max={maxScrubDays}
+        step={1}
+        value={scrubDays}
+        onChange={(event) => setSimulationDateMs(getDateMsFromEpochDays(Number(event.target.value)))}
+        aria-label="Timeline"
+        aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}
+      />
+      <span className="range-value" aria-hidden="true">{nowDeltaLabel}</span>
+    </label>
+  );
+};
+
+const SheetDate = () => {
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
+  return <span className="sheet-date-line">{scrubDateFormatter.format(new Date(simulationDateMs))}</span>;
+};
+
+// Mobile transport chip: surfaces the absolute sim date (otherwise unreachable on a
+// phone without opening the sheet) plus the speed and now-delta.
+const SpeedChip = ({ active, speedLabel, onOpen }: { active: boolean; speedLabel: string; onOpen: () => void }) => {
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
+  const absoluteDateLabel = scrubDateFormatter.format(new Date(simulationDateMs));
+  const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
+
+  return (
+    <button
+      className={`speed-chip ${active ? "active" : ""}`}
+      type="button"
+      onClick={onOpen}
+      aria-label={`Time and speed: ${absoluteDateLabel}, ${speedLabel}, ${nowDeltaLabel} from now`}
+      aria-haspopup="dialog"
+    >
+      <Gauge size={15} aria-hidden />
+      <span className="speed-chip-value">{absoluteDateLabel}</span>
+      <span className="speed-chip-delta">
+        {speedLabel} · {nowDeltaLabel}
+      </span>
+    </button>
+  );
+};
+
 export const TimeControls = () => {
   const isPaused = useTimeStore((state) => state.isPaused);
   const direction = useTimeStore((state) => state.direction);
   const preset = useTimeStore((state) => state.preset);
-  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const timeScale = useTimeStore((state) => state.timeScale);
   const togglePaused = useTimeStore((state) => state.togglePaused);
   const stepDays = useTimeStore((state) => state.stepDays);
@@ -60,10 +116,7 @@ export const TimeControls = () => {
   const activeSheet = useUiStore((state) => state.activeSheet);
   const openSheet = useUiStore((state) => state.openSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
-  const scrubDays = Math.max(minScrubDays, Math.min(maxScrubDays, getDaysFromEpoch(simulationDateMs)));
   const speedLabel = formatTimeScale(timeScale);
-  const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
-  const absoluteDateLabel = scrubDateFormatter.format(new Date(simulationDateMs));
 
   const presetOptions = [
     ...(preset === "custom"
@@ -83,7 +136,6 @@ export const TimeControls = () => {
     })),
   ];
   const speedProgress = speedToSlider(timeScale);
-  const timelineProgress = ((scrubDays - minScrubDays) / (maxScrubDays - minScrubDays)) * 100;
 
   const presetSelect = (
     <InstrumentSelect
@@ -117,23 +169,6 @@ export const TimeControls = () => {
     </label>
   );
 
-  const timelineSlider = (
-    <label className="range-shell scrub-range" style={rangeProgressStyle(timelineProgress)}>
-      <CalendarClock size={14} aria-hidden />
-      <input
-        type="range"
-        min={minScrubDays}
-        max={maxScrubDays}
-        step={1}
-        value={scrubDays}
-        onChange={(event) => setSimulationDateMs(getDateMsFromEpochDays(Number(event.target.value)))}
-        aria-label="Timeline"
-        aria-valuetext={scrubDateFormatter.format(new Date(simulationDateMs))}
-      />
-      <span className="range-value" aria-hidden="true">{nowDeltaLabel}</span>
-    </label>
-  );
-
   if (isMobile) {
     return (
       <>
@@ -152,17 +187,7 @@ export const TimeControls = () => {
           <button className="icon-button transport" type="button" onClick={() => stepDays(1)} aria-label="Step forward">
             <SkipForward size={18} />
           </button>
-          <button
-            className={`speed-chip ${activeSheet === "speed" ? "active" : ""}`}
-            type="button"
-            onClick={() => openSheet("speed")}
-            aria-label={`Speed and timeline, currently ${speedLabel}`}
-            aria-haspopup="dialog"
-          >
-            <Gauge size={15} aria-hidden />
-            <span className="speed-chip-value">{speedLabel}</span>
-            <span className="speed-chip-delta">{nowDeltaLabel}</span>
-          </button>
+          <SpeedChip active={activeSheet === "speed"} speedLabel={speedLabel} onOpen={() => openSheet("speed")} />
         </section>
         <BottomSheet
           open={activeSheet === "speed"}
@@ -177,7 +202,7 @@ export const TimeControls = () => {
         >
           <div className="speed-sheet">
             <div className="sheet-field">
-              <span className="sheet-date-line">{absoluteDateLabel}</span>
+              <SheetDate />
               <span className="sheet-field-label">Time direction</span>
               <div className="segmented-control direction-control">
                 <button
@@ -208,7 +233,7 @@ export const TimeControls = () => {
             </div>
             <div className="sheet-field">
               <span className="sheet-field-label">Timeline</span>
-              {timelineSlider}
+              <TimelineScrubber />
             </div>
           </div>
         </BottomSheet>
@@ -239,7 +264,7 @@ export const TimeControls = () => {
       </button>
       {presetSelect}
       {speedSlider}
-      {timelineSlider}
+      <TimelineScrubber />
       <button className="reset-time" type="button" onClick={() => setSimulationDateMs(Date.now())}>
         Now
       </button>

@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { bodiesById } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
-import { useRocketStore } from "../future/rockets/rocketStore";
+import { useRocketStore } from "../features/rockets/rocketStore";
 import { SearchCommand } from "./SearchCommand";
 import { HelpPopover } from "./HelpPopover";
 import { commandKey } from "./shortcuts";

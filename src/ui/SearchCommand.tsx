@@ -25,7 +25,7 @@ import {
   type RefObject,
 } from "react";
 import { selectableBodies } from "../data";
-import { useRocketStore } from "../future/rockets/rocketStore";
+import { useRocketStore } from "../features/rockets/rocketStore";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";

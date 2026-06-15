@@ -6,6 +6,13 @@ import {
   getOrbitPositionKm,
   vectorLength,
 } from "../../simulation/solveOrbit";
+import {
+  addVec3 as add,
+  lerpVec3 as lerp,
+  mulVec3 as mul,
+  normalizeVec3 as normalize,
+  subVec3 as sub,
+} from "../../simulation/vec3";
 
 const EARTH_ID = "earth";
 const SUN_ID = "sun";
@@ -53,20 +60,6 @@ export const normalizeSignedRadians = (radians: number) => {
 export const radiansToDegrees = (radians: number) => (radians * 180) / Math.PI;
 
 const angleFromSun = ([x, _y, z]: Vec3) => Math.atan2(z, x);
-
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const mul = ([x, y, z]: Vec3, scalar: number): Vec3 => [x * scalar, y * scalar, z * scalar];
-const lerp = (a: Vec3, b: Vec3, t: number): Vec3 => [
-  a[0] + (b[0] - a[0]) * t,
-  a[1] + (b[1] - a[1]) * t,
-  a[2] + (b[2] - a[2]) * t,
-];
-
-const normalize = (v: Vec3): Vec3 => {
-  const length = vectorLength(v);
-  return length === 0 ? [0, 0, 0] : [v[0] / length, v[1] / length, v[2] / length];
-};
 
 const quadraticBezier = (a: Vec3, b: Vec3, c: Vec3, t: number): Vec3 => {
   const ab = lerp(a, b, t);
