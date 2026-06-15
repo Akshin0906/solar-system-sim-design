@@ -1,10 +1,20 @@
 import assert from "node:assert/strict";
 import { bodies, bodiesById } from "../src/data";
 import { AU_KM, DAY_SECONDS } from "../src/data/constants";
-import { FIXED_STEP_SECONDS, addSimBody, seedIntegrator, stepFixed } from "../src/scenarios/integrator";
+import {
+  DEFAULT_FRAGMENT_CAP,
+  FIXED_STEP_SECONDS,
+  addSimBody,
+  contactOutcome,
+  enableDebris,
+  resolveContact,
+  seedIntegrator,
+  stepFixed,
+  tidalDisrupt,
+} from "../src/scenarios/integrator";
 import { scenarioById } from "../src/scenarios/registry";
 import type { Vec3 } from "../src/simulation/orbitalElements";
-import type { IntegratorState } from "../src/scenarios/types";
+import type { IntegratorState, SimBody } from "../src/scenarios/types";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const SUN_MU = 132_712_440_018;
@@ -190,6 +200,153 @@ check("red giant swells and engulfs the inner planets in radial order", () => {
   assert.equal(firstConsumedAt.mars, undefined, "Mars must survive a 1.1 AU giant");
   const finalKm = 1.1 * AU_KM;
   assert.ok(Math.abs(state.byId.get("sun")!.radiusKm - finalKm) / finalKm < 0.02, "Sun reached its final radius");
+});
+
+// --- Debris helpers ----------------------------------------------------------
+// An isolated integrator state (no Sun/planets) carrying only the bodies a test injects,
+// so collision conservation can be measured without the rest of the system in the sum.
+const bareDebrisState = (cap = DEFAULT_FRAGMENT_CAP): IntegratorState => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  state.bodies = [];
+  state.byId.clear();
+  state.participantIds.clear();
+  enableDebris(state, cap);
+  return state;
+};
+
+const EARTH_MU = 398_600.435;
+const EARTH_R = 6_371;
+const blob = (id: string, posKm: Vec3, velKmS: Vec3, muKm3S2 = EARTH_MU, radiusKm = EARTH_R): SimBody => ({
+  id,
+  kind: "rogue",
+  posKm,
+  velKmS,
+  muKm3S2,
+  radiusKm,
+  color: "#ffffff",
+  alive: true,
+});
+const fragMass = (state: IntegratorState) =>
+  state.bodies.filter((b) => b.alive && b.kind === "fragment").reduce((s, b) => s + b.muKm3S2, 0);
+const fragCount = (state: IntegratorState) =>
+  state.bodies.filter((b) => b.alive && b.kind === "fragment").length;
+const momentumErr = (after: Vec3, before: Vec3) =>
+  magnitude([after[0] - before[0], after[1] - before[1], after[2] - before[2]]) / magnitude(before);
+
+// --- 7. Shatter: high-speed comparable hit → conserving, capped debris cloud --
+check("high-speed comparable impact shatters, conserving mass/volume/momentum", () => {
+  const a = blob("blob-a", [0, 0, 0], [40, 0, 0]);
+  const b = blob("blob-b", [EARTH_R * 2, 0, 0], [-10, 0, 0]); // rel speed 50 km/s ≫ escape
+  const state = bareDebrisState();
+  addSimBody(state, a);
+  addSimBody(state, b);
+  assert.equal(contactOutcome(a, b), "shatter", "50 km/s closing must classify as shatter");
+  const muSum = a.muKm3S2 + b.muKm3S2;
+  const volSum = a.radiusKm ** 3 + b.radiusKm ** 3;
+  const pBefore = totalMomentum(state);
+  resolveContact(state, a, b);
+  assert.equal(a.alive, false, "both parents consumed");
+  assert.equal(b.alive, false, "both parents consumed");
+  assert.ok(fragCount(state) >= 2, `expected a debris cloud, got ${fragCount(state)}`);
+  assert.ok(Math.abs(fragMass(state) - muSum) / muSum < 1e-9, "fragment mass not conserved");
+  const volFrag = state.bodies.filter((x) => x.alive && x.kind === "fragment").reduce((s, x) => s + x.radiusKm ** 3, 0);
+  assert.ok(Math.abs(volFrag - volSum) / volSum < 1e-9, "fragment volume not conserved");
+  const pErr = momentumErr(totalMomentum(state), pBefore);
+  assert.ok(pErr < 1e-9, `shatter momentum error ${pErr.toExponential(2)}`);
+});
+
+// --- 8. Speed decides outcome: slow merges, fast shatters --------------------
+check("a slow comparable contact merges cleanly while a fast one shatters", () => {
+  const slowA = blob("slow-a", [0, 0, 0], [3, 0, 0]);
+  const slowB = blob("slow-b", [EARTH_R * 2, 0, 0], [-2, 0, 0]); // rel 5 km/s < graze
+  assert.equal(contactOutcome(slowA, slowB), "merge", "5 km/s must be a clean merge");
+  const slow = bareDebrisState();
+  addSimBody(slow, slowA);
+  addSimBody(slow, slowB);
+  resolveContact(slow, slowA, slowB);
+  assert.equal(fragCount(slow), 0, "a gentle merge sheds no debris");
+  assert.equal(slow.bodies.filter((x) => x.alive).length, 1, "two bodies merge into one");
+
+  const fastA = blob("fast-a", [0, 0, 0], [40, 0, 0]);
+  const fastB = blob("fast-b", [EARTH_R * 2, 0, 0], [-10, 0, 0]);
+  const fast = bareDebrisState();
+  addSimBody(fast, fastA);
+  addSimBody(fast, fastB);
+  resolveContact(fast, fastA, fastB);
+  assert.ok(fragCount(fast) >= 2, "a hypervelocity hit shatters into fragments");
+});
+
+// --- 9. Giant-impact regime: intermediate speed sheds a re-accreting ring ----
+check("intermediate-speed impact merges into a remnant plus a conserving ring", () => {
+  const a = blob("ring-a", [0, 0, 0], [8, 0, 0]);
+  const b = blob("ring-b", [EARTH_R * 2, 0, 0], [-4, 0, 0]); // rel 12 km/s ~ escape (11.2)
+  assert.equal(contactOutcome(a, b), "ring", "~12 km/s must be a giant-impact ring");
+  const state = bareDebrisState();
+  addSimBody(state, a);
+  addSimBody(state, b);
+  const muSum = a.muKm3S2 + b.muKm3S2;
+  const pBefore = totalMomentum(state);
+  resolveContact(state, a, b);
+  const remnants = state.bodies.filter((x) => x.alive && x.kind !== "fragment");
+  assert.equal(remnants.length, 1, "the bodies coalesce into a single molten remnant");
+  assert.ok(fragCount(state) >= 2, "the giant impact sheds a debris ring");
+  const muAll = state.bodies.filter((x) => x.alive).reduce((s, x) => s + x.muKm3S2, 0);
+  assert.ok(Math.abs(muAll - muSum) / muSum < 1e-9, "remnant + ring mass not conserved");
+  const pErr = momentumErr(totalMomentum(state), pBefore);
+  assert.ok(pErr < 1e-9, `ring momentum error ${pErr.toExponential(2)}`);
+});
+
+// --- 10. Fragment cap is enforced and surfaced, never silently dropped -------
+check("fragment cap bounds the cloud and is recorded for the panel", () => {
+  const a = blob("cap-a", [0, 0, 0], [40, 0, 0]);
+  const b = blob("cap-b", [EARTH_R * 2, 0, 0], [-10, 0, 0]);
+  const state = bareDebrisState(8); // cap below what this energetic hit wants
+  addSimBody(state, a);
+  addSimBody(state, b);
+  const muSum = a.muKm3S2 + b.muKm3S2;
+  resolveContact(state, a, b);
+  assert.ok(fragCount(state) <= 8, `cap 8 exceeded: ${fragCount(state)} fragments`);
+  assert.equal(state.fragmentCapHit, 8, "the enforced cap must be recorded, never silent");
+  assert.ok(Math.abs(fragMass(state) - muSum) / muSum < 1e-9, "mass conserved despite coalescing to the cap");
+});
+
+// --- 11. Tidal disruption streams a body, conserving mass + momentum ---------
+check("tidal disruption streams a body into conserving, capped debris", () => {
+  const state = bareDebrisState(12);
+  const victim = blob("victim", [1e8, 0, 0], [0, 30, 0]);
+  victim.kind = "body";
+  victim.sourceId = "earth";
+  addSimBody(state, victim);
+  const muBefore = victim.muKm3S2;
+  const pBefore = totalMomentum(state);
+  const disrupted = tidalDisrupt(state, victim, [1, 0, 0]);
+  assert.ok(disrupted, "tidal disruption should fire on a massive body");
+  assert.equal(victim.alive, false, "the body is gone, replaced by a stream");
+  assert.ok(state.newlyConsumed.includes("earth"), "the consumed list must report the disrupted body");
+  assert.ok(fragCount(state) >= 2 && fragCount(state) <= 12, `stream size ${fragCount(state)} out of [2,12]`);
+  assert.ok(Math.abs(fragMass(state) - muBefore) / muBefore < 1e-9, "tidal stream mass not conserved");
+  const pErr = momentumErr(totalMomentum(state), pBefore);
+  assert.ok(pErr < 1e-9, `tidal momentum error ${pErr.toExponential(2)}`);
+});
+
+// --- 12. Debris integrates stably: fragments gravitate without NaN/blowup ----
+check("debris integrates stably and does not all instantly re-accrete", () => {
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  enableDebris(state, DEFAULT_FRAGMENT_CAP);
+  const a = blob("x", [3 * AU_KM, 0, 0], [40, 17, 0]);
+  const b = blob("y", [3 * AU_KM + EARTH_R * 2, 0, 0], [-10, 17, 0]); // rel 50 km/s → shatter
+  addSimBody(state, a);
+  addSimBody(state, b);
+  resolveContact(state, a, b);
+  const born = fragCount(state);
+  assert.ok(born >= 2, `expected a debris cloud, got ${born}`);
+  for (let i = 0; i < 300; i += 1) {
+    stepFixed(state, FIXED_STEP_SECONDS);
+  }
+  for (const sb of state.bodies) {
+    assert.ok(!hasNaN(sb.posKm) && !hasNaN(sb.velKmS), `${sb.id} went NaN`);
+  }
+  assert.ok(fragCount(state) >= 2, `debris must survive, not instantly re-merge (got ${fragCount(state)})`);
 });
 
 console.log("");

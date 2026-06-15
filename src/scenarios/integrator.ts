@@ -1,6 +1,7 @@
 import { AU_KM } from "../data/constants";
 import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { getBodyPositionKm } from "../simulation/solveOrbit";
+import { clamp01, normalizeVec3, subVec3, vectorLength } from "../simulation/vec3";
 import type { IntegratorState, SimBody } from "./types";
 
 // --- Tuning -----------------------------------------------------------------
@@ -22,6 +23,35 @@ const SOFTENING_KM = 30_000;
 const SOFTENING_SQ = SOFTENING_KM * SOFTENING_KM;
 // Two bodies merge when their centres come within this multiple of summed radii.
 const COLLISION_FACTOR = 1.0;
+
+// --- Debris / shatter tuning ------------------------------------------------
+// Default ceiling on simultaneously-live fragments. Scenarios expose this as a slider.
+export const DEFAULT_FRAGMENT_CAP = 40;
+// A contact only disrupts when the bodies are mass-comparable. Below this smaller/larger
+// mass ratio the small body is simply absorbed (a pebble can't shatter a planet; a planet
+// can't shatter the Sun) — it stays a clean merge regardless of speed.
+const SHATTER_MASS_RATIO_MIN = 0.02;
+// Relative speed thresholds, in units of the pair's mutual escape speed at contact:
+//   < GRAZE   → clean merge (gentle accretion, no debris)
+//   GRAZE..SHATTER → giant-impact merge: bodies coalesce but shed a re-accreting ring
+//   > SHATTER → catastrophic disruption: both bodies break into a debris cloud
+const GRAZE_ESCAPE_FACTOR = 0.6;
+const SHATTER_ESCAPE_FACTOR = 1.5;
+// Max fraction of combined mass thrown off as a ring in the giant-impact regime.
+const RING_MASS_FRACTION_MAX = 0.4;
+// Characteristic debris dispersal speed, as a fraction of the impact relative speed.
+const SHATTER_DISPERSAL_FACTOR = 0.35;
+// Fragments emitted per disruptive event, before the global cap clamps it.
+const MIN_EVENT_FRAGMENTS = 6;
+const MAX_EVENT_FRAGMENTS = 24;
+// Fragment collision radii are inflated for the contact test only (not their drawn or
+// gravitating size): real shard radii are so small they'd almost never re-collide, so a
+// debris ring would never re-accrete. This keeps re-accretion observable without faking
+// mass. Applied symmetrically, so it never makes a fragment "reach into" a planet.
+const FRAGMENT_COLLISION_INFLATE = 6;
+
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5)); // ≈2.39996 rad — Fibonacci-sphere step
+const GOLDEN_FRAC = 0.618_033_988_749_895; // 1/φ — low-discrepancy index hashing
 // Distance from the launch origin past which an outbound body is logged as ejected
 // (it keeps coasting; this is just for the narration layer). The origin ≈ the system
 // barycentre to ~0.005 AU, negligible against this 250 AU threshold.
@@ -30,9 +60,6 @@ const EJECTION_DISTANCE_KM = 250 * AU_KM;
 const VELOCITY_SAMPLE_SECONDS = 3_600;
 
 const PARTICIPANT_TYPES = new Set<CelestialBody["type"]>(["star", "planet"]);
-
-// --- Tiny vector helpers (tuples, no allocation churn in hot loops) ----------
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 // Heliocentric velocity of a data body via central difference of the pure Kepler
 // solver. The Sun sits at the origin for all dates, so this returns ~0 for it and
@@ -95,13 +122,26 @@ export const seedIntegrator = (
     events: [],
     ejectedIds: new Set(),
     newlyConsumed: [],
+    revision: 0,
+    shatterEnabled: false,
+    fragmentCap: DEFAULT_FRAGMENT_CAP,
+    fragmentCapHit: 0,
+    fragmentSeq: 0,
   };
+};
+
+// Opt a scenario into the debris/shatter path with a fragment ceiling. Called from a
+// scenario's seed() so non-debris scenarios keep pure-merge physics by default.
+export const enableDebris = (state: IntegratorState, fragmentCap = DEFAULT_FRAGMENT_CAP) => {
+  state.shatterEnabled = true;
+  state.fragmentCap = Math.max(2, Math.round(fragmentCap));
 };
 
 // Register a body injected by a scenario (rogue mass, fragment) into the live state.
 export const addSimBody = (state: IntegratorState, body: SimBody) => {
   state.bodies.push(body);
   state.byId.set(body.id, body);
+  state.revision += 1;
 };
 
 // Newtonian acceleration on every live body from every other massive live body.
@@ -162,6 +202,7 @@ const merge = (state: IntegratorState, a: SimBody, b: SimBody) => {
   survivor.muKm3S2 = totalMu;
   survivor.radiusKm = cubeRoot(survivor.radiusKm ** 3 + victim.radiusKm ** 3);
   victim.alive = false;
+  state.revision += 1;
 
   state.events.push({
     type: "collision",
@@ -175,6 +216,319 @@ const merge = (state: IntegratorState, a: SimBody, b: SimBody) => {
   }
 };
 
+// --- Debris / shatter -------------------------------------------------------
+
+// Mass-weighted average of two vectors (centre-of-mass position or velocity); midpoint
+// when both masses are zero.
+const massWeighted = (va: Vec3, ma: number, vb: Vec3, mb: number): Vec3 => {
+  const total = ma + mb;
+  if (total <= 0) {
+    return [(va[0] + vb[0]) / 2, (va[1] + vb[1]) / 2, (va[2] + vb[2]) / 2];
+  }
+  return [
+    (ma * va[0] + mb * vb[0]) / total,
+    (ma * va[1] + mb * vb[1]) / total,
+    (ma * va[2] + mb * vb[2]) / total,
+  ];
+};
+
+// Mutual escape speed at contact — the natural scale separating gentle accretion from
+// disruptive impact.
+const escapeSpeedKmS = (a: SimBody, b: SimBody) =>
+  Math.sqrt((2 * (a.muKm3S2 + b.muKm3S2)) / Math.max(a.radiusKm + b.radiusKm, 1));
+
+// Deterministic, evenly-spread unit direction i of n (Fibonacci sphere) — no RNG, so
+// every run reproduces exactly.
+const fibSphere = (i: number, n: number): Vec3 => {
+  const y = 1 - ((i + 0.5) / n) * 2;
+  const r = Math.sqrt(Math.max(0, 1 - y * y));
+  const theta = i * GOLDEN_ANGLE;
+  return [Math.cos(theta) * r, y, Math.sin(theta) * r];
+};
+
+// Deterministic pseudo-random in [0,1) from an index (golden-ratio low-discrepancy).
+const goldenFrac = (i: number) => {
+  const v = (i + 1) * GOLDEN_FRAC;
+  return v - Math.floor(v);
+};
+
+// Mark a body destroyed: flip alive, bump the live-set revision, and record a consumed
+// data-body so the scene stops drawing the original planet/sun.
+const killBody = (state: IntegratorState, sb: SimBody) => {
+  if (!sb.alive) {
+    return;
+  }
+  sb.alive = false;
+  state.revision += 1;
+  if (sb.sourceId) {
+    state.newlyConsumed.push(sb.sourceId);
+  }
+};
+
+// Clamp a desired fragment count to the global cap (counting fragments already live).
+// Records the cap on fragmentCapHit when it bites so the panel can surface the coalesce.
+const fragmentBudget = (state: IntegratorState, desired: number): number => {
+  let liveFrag = 0;
+  for (const sb of state.bodies) {
+    if (sb.alive && sb.kind === "fragment") {
+      liveFrag += 1;
+    }
+  }
+  const count = Math.max(0, Math.min(desired, state.fragmentCap - liveFrag));
+  if (count < desired) {
+    state.fragmentCapHit = state.fragmentCap;
+  }
+  return count;
+};
+
+// Core debris emitter. Spawns `count` fragments sharing `totalMu` mass and
+// `totalVolumeKm3` volume, centred on (comPos, comVel) and dispersing at ~dispersalSpeed.
+// The mass-weighted mean dispersal is removed so the burst conserves linear momentum
+// EXACTLY about comVel. `bias` elongates the cloud along an axis (impact cone, tidal tail).
+const emitFragments = (
+  state: IntegratorState,
+  count: number,
+  totalMu: number,
+  totalVolumeKm3: number,
+  comPos: Vec3,
+  comVel: Vec3,
+  dispersalSpeed: number,
+  color: string,
+  bias?: { dir: Vec3; strength: number },
+): SimBody[] => {
+  // Gentle power-law mass split: a few big shards + many small ones. Normalised so the
+  // weights sum to 1 ⇒ Σ fragment mass = totalMu and Σ radius³ = totalVolumeKm3 exactly.
+  const weights: number[] = [];
+  let wSum = 0;
+  for (let i = 0; i < count; i += 1) {
+    const w = 1 / Math.pow(i + 1, 0.8);
+    weights.push(w);
+    wSum += w;
+  }
+  for (let i = 0; i < count; i += 1) {
+    weights[i] /= wSum;
+  }
+
+  const biasDir = bias ? normalizeVec3(bias.dir) : null;
+  const biasK = bias ? clamp01(bias.strength) : 0;
+  const parentRadius = Math.cbrt(Math.max(totalVolumeKm3, 1));
+
+  const dirs: Vec3[] = [];
+  const disp: Vec3[] = [];
+  const vbar: Vec3 = [0, 0, 0];
+  for (let i = 0; i < count; i += 1) {
+    let d = fibSphere(i, count);
+    if (biasDir) {
+      // Pull each direction toward the ±bias axis so the cloud stretches along it.
+      const sign = d[0] * biasDir[0] + d[1] * biasDir[1] + d[2] * biasDir[2] >= 0 ? 1 : -1;
+      d = normalizeVec3([
+        d[0] + biasDir[0] * sign * biasK * 1.6,
+        d[1] + biasDir[1] * sign * biasK * 1.6,
+        d[2] + biasDir[2] * sign * biasK * 1.6,
+      ]);
+    }
+    dirs.push(d);
+    const speed = dispersalSpeed * (0.4 + 0.9 * goldenFrac(i));
+    const dv: Vec3 = [d[0] * speed, d[1] * speed, d[2] * speed];
+    disp.push(dv);
+    vbar[0] += weights[i] * dv[0];
+    vbar[1] += weights[i] * dv[1];
+    vbar[2] += weights[i] * dv[2];
+  }
+
+  const fragments: SimBody[] = [];
+  for (let i = 0; i < count; i += 1) {
+    const radiusKm = Math.cbrt(Math.max(totalVolumeKm3 * weights[i], 1));
+    const shell = parentRadius * (0.8 + 1.4 * goldenFrac(i + 7)) + radiusKm;
+    const frag: SimBody = {
+      id: `frag-${state.fragmentSeq}`,
+      kind: "fragment",
+      posKm: [
+        comPos[0] + dirs[i][0] * shell,
+        comPos[1] + dirs[i][1] * shell,
+        comPos[2] + dirs[i][2] * shell,
+      ],
+      velKmS: [
+        comVel[0] + disp[i][0] - vbar[0],
+        comVel[1] + disp[i][1] - vbar[1],
+        comVel[2] + disp[i][2] - vbar[2],
+      ],
+      muKm3S2: totalMu * weights[i],
+      radiusKm,
+      color,
+      alive: true,
+    };
+    state.fragmentSeq += 1;
+    addSimBody(state, frag); // bumps state.revision so the scene grows its mesh list
+    fragments.push(frag);
+  }
+  return fragments;
+};
+
+// Catastrophic disruption: both bodies break into a debris cloud elongated along the
+// impact axis. Conserves mass and momentum. Falls back to a clean merge if the cap leaves
+// no room for a meaningful cloud (coalescing the mass into the survivor).
+const shatter = (state: IntegratorState, a: SimBody, b: SimBody, speedRel: number) => {
+  const escSpeed = escapeSpeedKmS(a, b);
+  const energyRatio = clamp01((speedRel / Math.max(escSpeed, 1e-6) - SHATTER_ESCAPE_FACTOR) / 6);
+  const desired = Math.round(MIN_EVENT_FRAGMENTS + (MAX_EVENT_FRAGMENTS - MIN_EVENT_FRAGMENTS) * energyRatio);
+  const count = fragmentBudget(state, Math.max(MIN_EVENT_FRAGMENTS, desired));
+  if (count < 2) {
+    merge(state, a, b);
+    return;
+  }
+  const totalMu = a.muKm3S2 + b.muKm3S2;
+  const comPos = massWeighted(a.posKm, a.muKm3S2, b.posKm, b.muKm3S2);
+  const comVel = massWeighted(a.velKmS, a.muKm3S2, b.velKmS, b.muKm3S2);
+  const totalVol = a.radiusKm ** 3 + b.radiusKm ** 3;
+  const color = a.muKm3S2 >= b.muKm3S2 ? a.color : b.color;
+  const impactAxis = subVec3(a.velKmS, b.velKmS);
+  killBody(state, a);
+  killBody(state, b);
+  emitFragments(state, count, totalMu, totalVol, comPos, comVel, SHATTER_DISPERSAL_FACTOR * speedRel, color, {
+    dir: impactAxis,
+    strength: 0.45,
+  });
+  state.events.push({
+    type: "collision",
+    simSeconds: state.elapsedSimSeconds,
+    aId: a.id,
+    bId: b.id,
+    detail: `${a.sourceId ?? a.id} + ${b.sourceId ?? b.id} shattered → ${count} fragments`,
+  });
+};
+
+// Giant-impact merge: the bodies coalesce into a molten remnant (the more massive
+// survivor, moved to the centre of mass) while shedding `ringFraction` of the combined
+// mass as a debris ring dispersed near escape speed — marginally bound, so it forms a
+// disk and partially re-accretes. Conserves mass, volume, and momentum.
+const mergeWithRing = (state: IntegratorState, a: SimBody, b: SimBody, ringFraction: number) => {
+  const desired = Math.round(
+    MIN_EVENT_FRAGMENTS + (MAX_EVENT_FRAGMENTS - MIN_EVENT_FRAGMENTS) * clamp01(ringFraction / RING_MASS_FRACTION_MAX),
+  );
+  const count = fragmentBudget(state, Math.max(MIN_EVENT_FRAGMENTS, desired));
+  if (count < 2 || ringFraction <= 0) {
+    merge(state, a, b);
+    return;
+  }
+  const totalMu = a.muKm3S2 + b.muKm3S2;
+  const totalVol = a.radiusKm ** 3 + b.radiusKm ** 3;
+  const comPos = massWeighted(a.posKm, a.muKm3S2, b.posKm, b.muKm3S2);
+  const comVel = massWeighted(a.velKmS, a.muKm3S2, b.velKmS, b.muKm3S2);
+  const escSpeed = escapeSpeedKmS(a, b);
+
+  const ringMu = totalMu * ringFraction;
+  const ringVol = totalVol * ringFraction;
+
+  const survivor = a.muKm3S2 >= b.muKm3S2 ? a : b;
+  const victim = survivor === a ? b : a;
+  // Remnant keeps (1-ringFraction) of mass/volume at the centre of mass, moving at the
+  // bulk velocity; the ring below carries exactly the rest ⇒ momentum conserved.
+  survivor.posKm = [comPos[0], comPos[1], comPos[2]];
+  survivor.velKmS = [comVel[0], comVel[1], comVel[2]];
+  survivor.muKm3S2 = totalMu - ringMu;
+  survivor.radiusKm = Math.cbrt(Math.max(totalVol - ringVol, 1));
+  killBody(state, victim);
+
+  emitFragments(state, count, ringMu, ringVol, comPos, comVel, escSpeed * 0.95, survivor.color);
+  state.events.push({
+    type: "collision",
+    simSeconds: state.elapsedSimSeconds,
+    aId: survivor.id,
+    bId: victim.id,
+    detail: `${victim.sourceId ?? victim.id} → ${survivor.sourceId ?? survivor.id} + ring (${count})`,
+  });
+};
+
+// Tidal (Roche) disruption of a single body: when tidal stress from a nearby massive body
+// exceeds self-gravity, the body unravels into a stream. Keeps its bulk velocity; `streamDir`
+// (body→disruptor) elongates the debris into the characteristic leading/trailing tail.
+// Returns true if it disrupted. Exposed for a scenario's drive() to call on a Roche pass.
+export const tidalDisrupt = (state: IntegratorState, body: SimBody, streamDir: Vec3): boolean => {
+  if (!body.alive || body.muKm3S2 <= 0) {
+    return false;
+  }
+  const count = fragmentBudget(state, Math.max(MIN_EVENT_FRAGMENTS, Math.round(MAX_EVENT_FRAGMENTS * 0.85)));
+  if (count < 2) {
+    return false;
+  }
+  const selfEsc = Math.sqrt((2 * body.muKm3S2) / Math.max(body.radiusKm, 1));
+  killBody(state, body);
+  emitFragments(
+    state,
+    count,
+    body.muKm3S2,
+    body.radiusKm ** 3,
+    [body.posKm[0], body.posKm[1], body.posKm[2]],
+    [body.velKmS[0], body.velKmS[1], body.velKmS[2]],
+    selfEsc * 1.4,
+    body.color,
+    { dir: streamDir, strength: 0.85 },
+  );
+  state.events.push({
+    type: "collision",
+    simSeconds: state.elapsedSimSeconds,
+    aId: body.id,
+    detail: `${body.sourceId ?? body.id} tidally disrupted → ${count} fragments`,
+  });
+  return true;
+};
+
+export type ContactOutcome = "merge" | "ring" | "shatter";
+
+// Decide how a contact resolves when debris is enabled. Mass-disparate pairs (a small body
+// into a much larger one, or anything with a massless test particle) always merge; otherwise
+// relative speed vs. mutual escape speed picks clean merge / giant-impact ring / shatter.
+export const contactOutcome = (a: SimBody, b: SimBody): ContactOutcome => {
+  if (a.muKm3S2 <= 0 || b.muKm3S2 <= 0) {
+    return "merge";
+  }
+  const small = Math.min(a.muKm3S2, b.muKm3S2);
+  const large = Math.max(a.muKm3S2, b.muKm3S2);
+  if (small / large < SHATTER_MASS_RATIO_MIN) {
+    return "merge";
+  }
+  const speedRel = vectorLength(subVec3(a.velKmS, b.velKmS));
+  const escSpeed = escapeSpeedKmS(a, b);
+  if (speedRel > SHATTER_ESCAPE_FACTOR * escSpeed) {
+    return "shatter";
+  }
+  if (speedRel > GRAZE_ESCAPE_FACTOR * escSpeed) {
+    return "ring";
+  }
+  return "merge";
+};
+
+// Resolve a single contact under the active debris policy (merge / ring / shatter).
+// Exposed so tests can exercise the physics directly without collision-timing games.
+export const resolveContact = (state: IntegratorState, a: SimBody, b: SimBody) => {
+  if (!state.shatterEnabled) {
+    merge(state, a, b);
+    return;
+  }
+  const outcome = contactOutcome(a, b);
+  if (outcome === "merge") {
+    merge(state, a, b);
+    return;
+  }
+  const speedRel = vectorLength(subVec3(a.velKmS, b.velKmS));
+  if (outcome === "shatter") {
+    shatter(state, a, b, speedRel);
+    return;
+  }
+  const escSpeed = escapeSpeedKmS(a, b);
+  const ringFraction =
+    clamp01((speedRel / Math.max(escSpeed, 1e-6) - GRAZE_ESCAPE_FACTOR) / (SHATTER_ESCAPE_FACTOR - GRAZE_ESCAPE_FACTOR)) *
+    RING_MASS_FRACTION_MAX;
+  mergeWithRing(state, a, b, ringFraction);
+};
+
+// Contact-test radius. Fragment shards are so small they'd almost never re-collide, so a
+// debris ring would never re-accrete. A modest inflation (contact test ONLY — not their
+// drawn or gravitating size) keeps re-accretion observable without faking any mass.
+const collisionRadius = (sb: SimBody) =>
+  sb.kind === "fragment" ? sb.radiusKm * FRAGMENT_COLLISION_INFLATE : sb.radiusKm;
+
 const handleCollisions = (state: IntegratorState) => {
   const live = state.bodies.filter((sb) => sb.alive);
   for (let i = 0; i < live.length; i += 1) {
@@ -184,11 +538,11 @@ const handleCollisions = (state: IntegratorState) => {
       if (!a.alive || !b.alive) {
         continue;
       }
-      const d = sub(b.posKm, a.posKm);
+      const d = subVec3(b.posKm, a.posKm);
       const distSq = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
-      const touch = (a.radiusKm + b.radiusKm) * COLLISION_FACTOR;
+      const touch = (collisionRadius(a) + collisionRadius(b)) * COLLISION_FACTOR;
       if (distSq <= touch * touch) {
-        merge(state, a, b);
+        resolveContact(state, a, b);
       }
     }
   }

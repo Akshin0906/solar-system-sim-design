@@ -132,6 +132,11 @@ export const writeScenePositions = (
 export const getExtraSimBodies = (): SimBody[] =>
   current ? current.state.bodies.filter((sb) => sb.alive && sb.kind !== "body") : [];
 
+// Monotonic-ish token that changes whenever the live body set changes (a fragment
+// spawns, a body dies/merges). The scene layer watches this to re-derive its rendered
+// descriptor list so debris created mid-step gets a mesh without waiting for a re-seed.
+export const getRuntimeRevision = (): number => current?.state.revision ?? 0;
+
 // Live state of a participant (e.g. the Sun) for bespoke per-scenario visuals such
 // as the red-giant overlay, which tracks the Sun's swelling radius each frame.
 export const getParticipant = (id: string): SimBody | null => current?.state.byId.get(id) ?? null;
@@ -140,6 +145,11 @@ export const sceneRadiusForSimBody = (sb: SimBody, mode: ScaleMode) => {
   // Borrow the planet readable-size feel without importing the full body machinery.
   if (mode === "real") {
     return (sb.radiusKm / 149_597_870.7) * 7;
+  }
+  // Fragments are debris — keep them small and distinct from a full rogue marker, but
+  // still above a visibility floor so a swarm reads as a ring rather than vanishing.
+  if (sb.kind === "fragment") {
+    return Math.min(Math.max(sb.radiusKm / 90_000, 0.05), 0.34);
   }
   return Math.min(Math.max(sb.radiusKm / 90_000, 0.18), 0.9);
 };

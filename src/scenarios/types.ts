@@ -19,6 +19,14 @@ export type SimBody = {
   radiusKm: number;
   color: string;
   alive: boolean;
+  // Optional presentation hints read by the scene's ScenarioLayer. They never touch the
+  // physics — only how (and whether) the generic layer draws this body.
+  //   "marker"   — glowing sphere + name label (default for rogues/interlopers).
+  //   "fragment" — small debris speck, no label (default for kind:"fragment").
+  //   "custom"   — skip the generic layer entirely; a bespoke overlay owns this visual
+  //                (e.g. the black hole's accretion disk tracks it via getParticipant).
+  renderHint?: "marker" | "fragment" | "custom";
+  label?: string; // scene label text when renderHint is "marker"
 };
 
 export type SimEventType = "collision" | "ejection";
@@ -50,6 +58,21 @@ export type IntegratorState = {
   // Data-body ids consumed (merged away) since the last drain. The scene reads and
   // clears this to stop rendering destroyed planets.
   newlyConsumed: string[];
+  // Bumped whenever the live body set changes — a body is added (rogue, fragment) or
+  // dies (merged, shattered, consumed). The scene watches this to re-derive its
+  // rendered descriptor list so mid-run debris gets meshes without a re-seed.
+  revision: number;
+  // Debris controls. shatterEnabled gates the whole break-up path off for scenarios that
+  // only want clean merges (red giant engulfment, the freefall oracle) so their physics —
+  // and the tests that pin it — are untouched. fragmentCap bounds simultaneously-live
+  // fragments; when an event would exceed it the excess mass coalesces into the largest
+  // fragments and fragmentCapHit records the cap so the panel can say so (0 = never hit).
+  shatterEnabled: boolean;
+  fragmentCap: number;
+  fragmentCapHit: number;
+  // Monotonic counter for unique fragment ids. Lives on state (not a module global) so
+  // every run starts at 0 and stays deterministic / resumable.
+  fragmentSeq: number;
 };
 
 // A sandbox control exposed as a slider in the scenario panel.
