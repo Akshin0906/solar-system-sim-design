@@ -11,12 +11,12 @@ import { TimeControls } from "../ui/TimeControls";
 import { TopBar } from "../ui/TopBar";
 import { BottomSheet } from "../ui/BottomSheet";
 import { RocketLauncherPanel } from "../features/rockets/RocketLauncherPanel";
-import { useRocketStore } from "../features/rockets/rocketStore";
 import { useScenarioStore } from "../scenarios/scenarioStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatTimeScale } from "../simulation/units";
 import { readBooleanPreference, writeBooleanPreference } from "../ui/safeStorage";
+import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useUiStore } from "../ui/uiStore";
 import { useIsMobile, useReducedMotion } from "../ui/useMediaQuery";
 
@@ -104,9 +104,14 @@ const TimeDriver = () => {
       if (lastTimeRef.current !== null) {
         accumulatedTimeRef.current += Math.min((time - lastTimeRef.current) / 1_000, 0.12);
 
-        if (accumulatedTimeRef.current >= targetTickSeconds) {
-          tick(accumulatedTimeRef.current);
-          accumulatedTimeRef.current = 0;
+        // Drain the accumulator in fixed 1/30s steps, carrying the remainder rather than
+        // discarding it. tick() clamps each call to the same 1/30s cap, so passing the raw
+        // accumulated value and then zeroing it silently dropped any time above one step on
+        // slow/janky frames — making the sim clock run slow on non-60Hz displays. The
+        // upstream Math.min(…, 0.12) bounds the backlog to ~4 steps, so this can't spiral.
+        while (accumulatedTimeRef.current >= targetTickSeconds) {
+          tick(targetTickSeconds);
+          accumulatedTimeRef.current -= targetTickSeconds;
         }
       }
 
@@ -164,9 +169,18 @@ const KeyboardShortcuts = () => {
         return;
       }
 
+      // While a doomsday scenario owns the view the J2000 transport is frozen and locked,
+      // so route Space to the scenario's own pause and swallow the date-stepping arrows
+      // instead of firing a no-op against the locked clock.
+      const scenarioActive = useScenarioStore.getState().activeScenarioId !== null;
+
       if (event.code === "Space") {
         event.preventDefault();
-        togglePaused();
+        if (scenarioActive) {
+          useScenarioStore.getState().togglePause();
+        } else {
+          togglePaused();
+        }
         return;
       }
 
@@ -175,7 +189,9 @@ const KeyboardShortcuts = () => {
           return;
         }
         event.preventDefault();
-        stepDays(-1);
+        if (!scenarioActive) {
+          stepDays(-1);
+        }
         return;
       }
 
@@ -184,7 +200,9 @@ const KeyboardShortcuts = () => {
           return;
         }
         event.preventDefault();
-        stepDays(1);
+        if (!scenarioActive) {
+          stepDays(1);
+        }
       }
     };
 
@@ -243,7 +261,7 @@ const DiscoverabilityCue = () => {
 
   return (
     <div className="discoverability-cue">
-      <span>Click a planet · press / to search</span>
+      <span>Click a planet · press / to search · try rockets and doomsday</span>
       <button type="button" onClick={dismiss} aria-label="Dismiss hint">
         <X size={12} />
       </button>
@@ -255,23 +273,19 @@ export const App = () => {
   const [webglUnavailable, setWebglUnavailable] = useState(() => !canCreateWebGlContext());
   const [webglRestoring, setWebglRestoring] = useState(false);
   const restoreTimerRef = useRef<number | null>(null);
-  const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
   const reducedMotion = useReducedMotion();
-  const didReducedMotionPauseRef = useRef(false);
+  // Captured at first render (useMediaQuery reads matchMedia synchronously) so the
+  // mount-only auto-pause below reflects the initial OS preference, not later toggles.
+  const initialReducedMotionRef = useRef(reducedMotion);
   // A running scenario animates on its own T+ clock with the J2000 clock frozen, so the
   // demand-mode render pump (the clock subscription below) goes silent. Switch the canvas
   // to a continuous loop while a scenario runs so the integrator + VFX keep stepping.
   const scenarioAnimating = useScenarioStore(
     (state) => state.activeScenarioId !== null && state.status === "running",
   );
-
-  // On phones the panels become dismissible bottom sheets that manage their own
-  // exclusivity, so the desktop-only "hide the inspector while the rocket panel is
-  // open" overlap hack must not apply.
-  const layerClass = `ui-layer${rocketPanelOpen && !isMobile ? " rocket-open" : ""}`;
 
   useEffect(() => {
     document.getElementById("prehydrate-splash")?.remove();
@@ -285,15 +299,15 @@ export const App = () => {
     };
   }, []);
 
-  // Respect prefers-reduced-motion: start paused (no autoplaying orbital motion) the
-  // first time the preference is detected. The starfield drift is also gated to 0 in
-  // SolarScene, and the camera rig already snaps instead of damping.
+  // Respect prefers-reduced-motion: if it is set when the app first mounts, start paused
+  // (no autoplaying orbital motion). Deliberately gated to mount only — a runtime OS toggle
+  // must not re-pause and clobber a Play the user deliberately started. The starfield drift
+  // is also gated to 0 in SolarScene, and the camera rig already snaps instead of damping.
   useEffect(() => {
-    if (reducedMotion && !didReducedMotionPauseRef.current) {
-      didReducedMotionPauseRef.current = true;
+    if (initialReducedMotionRef.current) {
       useTimeStore.getState().setPaused(true);
     }
-  }, [reducedMotion]);
+  }, []);
 
   // The scene reads simulationDateMs non-reactively (via getState inside useFrame), so
   // with frameloop="demand" any clock change — playback tick, timeline scrub, step, or
@@ -339,6 +353,25 @@ export const App = () => {
   }, []);
 
   return (
+    <ErrorBoundary
+      fallback={(reset) => (
+        <main className="app-shell">
+          <section className="webgl-fallback" role="alert">
+            <span className="webgl-fallback-kicker">Something went wrong</span>
+            <h1>The simulator hit an error</h1>
+            <p>An unexpected error interrupted the view. Try again, or reload the page if it persists.</p>
+            <div className="webgl-fallback-actions">
+              <button className="reset-time webgl-retry" type="button" onClick={reset}>
+                Try again
+              </button>
+              <button className="reset-time" type="button" onClick={() => window.location.reload()}>
+                Reload
+              </button>
+            </div>
+          </section>
+        </main>
+      )}
+    >
     <main className="app-shell">
       <a className="skip-link" href="#main-controls">
         Skip to controls
@@ -397,13 +430,18 @@ export const App = () => {
             }
           }}
         >
-          <Suspense fallback={null}>
-            <SolarScene />
-          </Suspense>
+          {/* A render-time throw inside the scene is contained here (null fallback keeps the
+              canvas + DOM UI alive) rather than bubbling to the app-level boundary and taking
+              the whole simulator down. */}
+          <ErrorBoundary fallback={() => null}>
+            <Suspense fallback={null}>
+              <SolarScene />
+            </Suspense>
+          </ErrorBoundary>
         </Canvas>
       )}
       {!webglUnavailable && (
-        <div id="main-controls" className={layerClass} tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
+        <div id="main-controls" className="ui-layer" tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
           <TopBar />
           <DiscoverabilityCue />
           <ScaleControls />
@@ -427,5 +465,6 @@ export const App = () => {
       )}
       {webglRestoring && <WebGlFallback restoring onRetry={() => undefined} />}
     </main>
+    </ErrorBoundary>
   );
 };

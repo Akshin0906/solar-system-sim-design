@@ -96,7 +96,10 @@ export const rocketCatalog: RocketProfile[] = [
     blurb: "Solar-electric ion thruster. Tiny thrust, but it builds speed over months.",
     accentColor: "#8fc7cc",
     initialSpeedKmS: 0.5,
-    maxSpeedKmS: 40,
+    // ~0.5 + 0.0006 m/s² × 30e6 s ≈ 18.5 km/s at burnout. The old 40 km/s cap was
+    // unreachable under this profile (dead data); set it to the actual burnout speed so
+    // the ceiling is honest and consistent with the flight model.
+    maxSpeedKmS: 18.5,
     accelerationMS2: 0.0006,
     burnDurationSeconds: 30_000_000, // ~0.95 years of continuous thrust
   },

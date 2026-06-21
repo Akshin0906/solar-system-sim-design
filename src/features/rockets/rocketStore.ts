@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useSelectionStore } from "../../simulation/selectionStore";
 import { defaultRocketId } from "./rocketCatalog";
 import { defaultDestinationId } from "./destinationCatalog";
 import { defaultMissionMode, type RocketMissionMode } from "./missionOptions";
@@ -53,8 +54,11 @@ export const useRocketStore = create<RocketState>((set) => ({
     }),
   clear: () => {
     // Full, predictable reset: also restore the mission mode and drop the derived-plan
-    // caches so a retired mission leaves no stale state behind.
+    // caches so a retired mission leaves no stale state behind. Release the rocket-follow
+    // camera here (not only in the panel's handler) so every reset path — including a
+    // future scenario/global reset — exits follow instead of tracking a removed rocket.
     clearRocketCaches();
+    useSelectionStore.getState().clearRocketTarget();
     set({
       activeRocketId: null,
       activeDestinationId: null,

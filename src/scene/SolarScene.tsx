@@ -300,7 +300,11 @@ export const SolarScene = () => {
       {activeScenarioId === "impact" && <CometTail mode={mode} />}
       {activeScenarioId && <MoltenRemnant mode={mode} />}
       {activeScenarioId && <ImpactFx mode={mode} />}
-      <RocketObject />
+      {/* The rocket view is derived from the J2000 clock, which a scenario freezes — so a
+          rocket would hang mid-flight against the frozen base layer (and is nonsensical if
+          its origin world was just destroyed). Hide it while a scenario owns the scene; it
+          resumes from the same mission time when the scenario exits and the clock unfreezes. */}
+      {!activeScenarioId && <RocketObject />}
       <CameraRig positionsRef={positionsRef} mode={mode} />
       <PostFx />
     </>

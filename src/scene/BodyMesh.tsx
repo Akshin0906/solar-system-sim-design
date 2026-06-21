@@ -216,7 +216,9 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
   const visual = useMemo(() => getVisualProfile(body), [body]);
-  const coronaTexture = useMemo(() => createCoronaTexture(), []);
+  // Only stars render a corona sprite, so only build (and rasterize) the texture for them
+  // — previously every body allocated a 192² CanvasTexture that nothing but the Sun used.
+  const coronaTexture = useMemo(() => (body.type === "star" ? createCoronaTexture() : null), [body.type]);
   const proceduralSurfaceTexture = useIdleTexture(() => createSurfaceTexture(body), [body]);
   const imageSurfaceTexture = useBodyImageTexture(body.physical.texture);
   const surfaceTexture = imageSurfaceTexture ?? proceduralSurfaceTexture;
@@ -262,7 +264,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
   useEffect(() => () => bumpTexture?.dispose(), [bumpTexture]);
   useEffect(() => () => cloudTexture?.dispose(), [cloudTexture]);
   useEffect(() => () => ringTexture?.dispose(), [ringTexture]);
-  useEffect(() => () => coronaTexture.dispose(), [coronaTexture]);
+  useEffect(() => () => coronaTexture?.dispose(), [coronaTexture]);
 
   // The surface material is now kept mounted across async texture loads (stable key, not the
   // texture uuid) to avoid recreating + recompiling it every time a texture resolves. A material

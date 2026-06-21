@@ -7,6 +7,11 @@ type TimeState = {
   timeScale: number;
   direction: 1 | -1;
   preset: TimePresetId | "custom";
+  // While a doomsday scenario owns the view it freezes the J2000 clock and locks the
+  // user transport so the date can't be scrubbed/stepped/un-paused out from under the
+  // frozen base layer (which would desync the readout and snap to a different date on
+  // exit). The scenario itself drives the clock via setPaused, which stays unlocked.
+  transportLocked: boolean;
   setPaused: (isPaused: boolean) => void;
   togglePaused: () => void;
   tick: (elapsedRealSeconds: number) => void;
@@ -15,6 +20,7 @@ type TimeState = {
   setPreset: (preset: TimePresetId) => void;
   setTimeScale: (timeScale: number) => void;
   setSimulationDateMs: (simulationDateMs: number) => void;
+  setTransportLocked: (transportLocked: boolean) => void;
 };
 
 const defaultPreset = TIME_PRESETS[2];
@@ -40,8 +46,9 @@ export const useTimeStore = create<TimeState>((set, get) => ({
   timeScale: defaultPreset.secondsPerSecond,
   direction: 1,
   preset: defaultPreset.id,
+  transportLocked: false,
   setPaused: (isPaused) => set({ isPaused }),
-  togglePaused: () => set((state) => ({ isPaused: !state.isPaused })),
+  togglePaused: () => set((state) => (state.transportLocked ? state : { isPaused: !state.isPaused })),
   tick: (elapsedRealSeconds) => {
     const { isPaused, direction, timeScale } = get();
     if (isPaused) {
@@ -58,17 +65,26 @@ export const useTimeStore = create<TimeState>((set, get) => ({
   stepDays: (days) => {
     // Respect the arrow-of-time direction so stepping stays consistent with playback
     // (tick() applies the same factor): in reverse mode the step controls also reverse.
-    const { direction } = get();
+    const { direction, transportLocked } = get();
+    if (transportLocked) {
+      return;
+    }
     set((state) => ({
       simulationDateMs: clampSimulationDateMs(state.simulationDateMs + days * direction * DAY_MS),
     }));
   },
-  setDirection: (direction) => set({ direction }),
+  setDirection: (direction) => set((state) => (state.transportLocked ? state : { direction })),
   setPreset: (preset) => {
+    if (get().transportLocked) {
+      return;
+    }
     const match = TIME_PRESETS.find((item) => item.id === preset) ?? defaultPreset;
     set({ preset: match.id, timeScale: match.secondsPerSecond });
   },
   setTimeScale: (timeScale) => {
+    if (get().transportLocked) {
+      return;
+    }
     const boundedTimeScale = clampTimeScale(timeScale);
     // Only show a preset label when the scale is genuinely at that preset (within
     // 1%); otherwise report "custom" so the dropdown never misrepresents the speed.
@@ -80,7 +96,13 @@ export const useTimeStore = create<TimeState>((set, get) => ({
           );
     set({ timeScale: boundedTimeScale, preset: nearestPreset ? nearestPreset.id : "custom" });
   },
-  setSimulationDateMs: (simulationDateMs) => set({ simulationDateMs: clampSimulationDateMs(simulationDateMs) }),
+  setSimulationDateMs: (simulationDateMs) => {
+    if (get().transportLocked) {
+      return;
+    }
+    set({ simulationDateMs: clampSimulationDateMs(simulationDateMs) });
+  },
+  setTransportLocked: (transportLocked) => set({ transportLocked }),
 }));
 
 export const getDaysFromEpoch = (dateMs: number) => (dateMs - j2000Ms) / DAY_MS;

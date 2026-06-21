@@ -13,6 +13,10 @@ type UiState = {
   // `inspectorPresented` tracks whether the inspector should appear at all (peek or
   // full); `activeSheet === "inspector"` means it is expanded.
   inspectorPresented: boolean;
+  // Desktop-only open state for the Doomsday panel. Lifted out of the component so the
+  // command palette can open it and so it can be made mutually exclusive with the rocket
+  // panel. (On phones the Doomsday surface is a bottom sheet via activeSheet === "scenario".)
+  doomsdayPanelOpen: boolean;
   openSheet: (sheet: SheetId) => void;
   closeSheet: () => void;
   toggleSheet: (sheet: SheetId) => void;
@@ -21,12 +25,16 @@ type UiState = {
   toggleSearch: () => void;
   presentInspector: () => void;
   dismissInspector: () => void;
+  openDoomsdayPanel: () => void;
+  closeDoomsdayPanel: () => void;
+  toggleDoomsdayPanel: () => void;
 };
 
 export const useUiStore = create<UiState>((set) => ({
   activeSheet: "none",
   searchOpen: false,
   inspectorPresented: false,
+  doomsdayPanelOpen: false,
   openSheet: (activeSheet) =>
     set({
       activeSheet,
@@ -55,4 +63,7 @@ export const useUiStore = create<UiState>((set) => ({
       inspectorPresented: false,
       activeSheet: state.activeSheet === "inspector" ? "none" : state.activeSheet,
     })),
+  openDoomsdayPanel: () => set({ doomsdayPanelOpen: true }),
+  closeDoomsdayPanel: () => set({ doomsdayPanelOpen: false }),
+  toggleDoomsdayPanel: () => set((state) => ({ doomsdayPanelOpen: !state.doomsdayPanelOpen })),
 }));

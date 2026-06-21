@@ -10,6 +10,7 @@ import {
   Rocket,
   Route,
   Search,
+  Skull,
   TimerReset,
   X,
 } from "lucide-react";
@@ -76,6 +77,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const setShowTrails = useScaleStore((state) => state.setShowTrails);
   const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
   const openSheet = useUiStore((state) => state.openSheet);
+  const openDoomsdayPanel = useUiStore((state) => state.openDoomsdayPanel);
 
   useFocusTrap(containerRef, open, onClose, restoreFocusRef);
 
@@ -119,6 +121,23 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
             openSheet("rocket");
           } else {
             setRocketPanelOpen(true);
+          }
+        },
+      },
+      {
+        id: "doomsday",
+        group: "Actions",
+        title: "Doomsday scenarios",
+        subtitle: "Run a live catastrophe simulation",
+        keywords: "doomsday scenario catastrophe red giant black hole rogue impact collision destroy apocalypse",
+        icon: <Skull size={16} />,
+        action: () => {
+          if (isMobile) {
+            openSheet("scenario");
+          } else {
+            // Mirror the panel's mutual exclusivity: opening Doomsday closes the rocket panel.
+            setRocketPanelOpen(false);
+            openDoomsdayPanel();
           }
         },
       },
@@ -217,6 +236,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       cameraMode,
       isMobile,
       isPaused,
+      openDoomsdayPanel,
       openSheet,
       selectBody,
       selectedId,
@@ -258,6 +278,19 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const visibleItems = useMemo(() => getVisibleItems(query), [getVisibleItems, query]);
   const safeActiveIndex = clampCommandActiveIndex(activeIndex, visibleItems.length);
   const activeItemId = visibleItems[safeActiveIndex]?.id;
+
+  // How many results a query actually matched, so the list can signal when it has been
+  // capped (otherwise a broad term silently hides matches and reads as "no such object").
+  const totalFilteredCount = useMemo(() => {
+    const cleanQuery = normalize(query.trim());
+    if (!cleanQuery) {
+      return visibleItems.length;
+    }
+    return commandItems.filter((item) =>
+      normalize(`${item.title} ${item.subtitle} ${item.keywords}`).includes(cleanQuery),
+    ).length;
+  }, [commandItems, query, visibleItems.length]);
+  const resultsTruncated = totalFilteredCount > visibleItems.length;
 
   useEffect(() => {
     setActiveIndex((index) => clampCommandActiveIndex(index, visibleItems.length));
@@ -405,6 +438,11 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
             </div>
           );
         })}
+        {resultsTruncated && (
+          <p className="command-overflow" role="note">
+            Showing {visibleItems.length} of {totalFilteredCount} — refine your search to narrow results.
+          </p>
+        )}
       </div>
     </div>
   );

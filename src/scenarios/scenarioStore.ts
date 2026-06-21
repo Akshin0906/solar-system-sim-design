@@ -1,13 +1,20 @@
 import { create } from "zustand";
+import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { defaultParamsFor, scenarioById } from "./registry";
 
 export type ScenarioStatus = "idle" | "running" | "paused";
 
-// The J2000 clock's paused state from before a scenario took over, so we can restore
-// exactly how the user left it on exit (a scenario freezes the real clock so the date
-// readout doesn't drift while its own T+ clock runs). Kept outside reactive state.
+// Scenario time-scale bounds (days/sec). Exported so the panel slider and the store
+// agree, and so a programmatic setTimeScale can't push the integrator off-scale.
+export const SCENARIO_MIN_TIME_SCALE = 1;
+export const SCENARIO_MAX_TIME_SCALE = 300;
+
+// The J2000 clock's paused state and date from before a scenario took over, so we can
+// restore exactly how the user left it on exit (a scenario freezes the real clock so the
+// date readout doesn't drift while its own T+ clock runs). Kept outside reactive state.
 let priorClockPaused = false;
+let frozenSimulationDateMs = 0;
 
 type ScenarioState = {
   activeScenarioId: string | null;
@@ -59,7 +66,15 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       return;
     }
     priorClockPaused = useTimeStore.getState().isPaused;
+    frozenSimulationDateMs = useTimeStore.getState().simulationDateMs;
     useTimeStore.getState().setPaused(true);
+    // Lock the J2000 transport so the user can't scrub/step/un-pause the frozen clock out
+    // from under the scenario's frozen base layer (which would desync the date readout and
+    // snap to a different date on exit).
+    useTimeStore.getState().setTransportLocked(true);
+    // The rocket marker is hidden while a scenario runs; release a rocket-follow camera so
+    // it doesn't get stuck tracking a now-hidden rocket.
+    useSelectionStore.getState().clearRocketTarget();
     set((state) => ({
       activeScenarioId: scenarioId,
       instanceId: state.instanceId + 1,
@@ -75,6 +90,11 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
   },
 
   stop: () => {
+    // Unlock first — setSimulationDateMs is itself gated by the lock — then restore the
+    // exact date the scenario froze at (a backstop in case anything slipped the freeze)
+    // and the prior paused state, so exit is always consistent.
+    useTimeStore.getState().setTransportLocked(false);
+    useTimeStore.getState().setSimulationDateMs(frozenSimulationDateMs);
     useTimeStore.getState().setPaused(priorClockPaused);
     set((state) => ({
       activeScenarioId: null,
@@ -114,7 +134,10 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       };
     }),
 
-  setTimeScale: (daysPerSec) => set({ timeScaleDaysPerSec: daysPerSec }),
+  setTimeScale: (daysPerSec) =>
+    set({
+      timeScaleDaysPerSec: Math.min(Math.max(daysPerSec, SCENARIO_MIN_TIME_SCALE), SCENARIO_MAX_TIME_SCALE),
+    }),
 
   // Bail when unchanged (returning the same state ref skips the zustand notify) so a
   // paused scenario doesn't fire a subscriber notification every throttle tick.

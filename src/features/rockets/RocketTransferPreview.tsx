@@ -45,9 +45,13 @@ export const RocketTransferPreview = ({ destination, launchDateMs, profile }: Ro
     <div className="rocket-telemetry rocket-transfer-preview">
       <div className="rocket-preview-head">
         <span>Concept transfer</span>
-        <span className={`rocket-window ${estimate.launchWindowQuality}`}>
-          {qualityLabel[estimate.launchWindowQuality]}
-        </span>
+        {/* Launch-window quality is only meaningful for heliocentric planet transfers; the
+            Moon's simplified Earth-centered estimate has no real lead-angle, so omit it. */}
+        {!estimate.targetIsMoon && (
+          <span className={`rocket-window ${estimate.launchWindowQuality}`}>
+            {qualityLabel[estimate.launchWindowQuality]}
+          </span>
+        )}
       </div>
       <dl className="rocket-readout">
         <div>
@@ -58,14 +62,18 @@ export const RocketTransferPreview = ({ destination, launchDateMs, profile }: Ro
           <dt>Intercept date</dt>
           <dd>{formatDate(estimate.arrivalDateMs)}</dd>
         </div>
-        <div>
-          <dt>Planet alignment</dt>
-          <dd>{formatPhaseAngle(estimate.phaseOffsetDeg)}</dd>
-        </div>
-        <div>
-          <dt>Ideal phase</dt>
-          <dd>{formatPhaseAngle(estimate.idealPhaseAngleDeg)}</dd>
-        </div>
+        {!estimate.targetIsMoon && (
+          <>
+            <div>
+              <dt>Planet alignment</dt>
+              <dd>{formatPhaseAngle(estimate.phaseOffsetDeg)}</dd>
+            </div>
+            <div>
+              <dt>Ideal phase</dt>
+              <dd>{formatPhaseAngle(estimate.idealPhaseAngleDeg)}</dd>
+            </div>
+          </>
+        )}
         <div>
           <dt>Delta-v total</dt>
           <dd>{formatDeltaV(totalDeltaVKmS)}</dd>

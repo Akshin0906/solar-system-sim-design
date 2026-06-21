@@ -39,7 +39,6 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   const setPanelOpen = useRocketStore((state) => state.setPanelOpen);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const followRocket = useSelectionStore((state) => state.followRocket);
-  const clearRocketTarget = useSelectionStore((state) => state.clearRocketTarget);
 
   if (!panelOpen && !forceOpen) {
     return null;
@@ -101,8 +100,8 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   };
 
   const handleReset = () => {
+    // clear() now also releases the rocket-follow camera, so this stays a single call.
     clear();
-    clearRocketTarget();
   };
 
   const handleClose = () => {

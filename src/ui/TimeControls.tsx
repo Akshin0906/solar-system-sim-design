@@ -1,6 +1,7 @@
 import { CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
 import type { CSSProperties } from "react";
 import { DAY_MS, TIME_PRESETS, type TimePresetId } from "../data/constants";
+import { useScenarioStore } from "../scenarios/scenarioStore";
 import {
   MAX_TIME_SCALE,
   MIN_TIME_SCALE,
@@ -119,7 +120,19 @@ export const TimeControls = () => {
   const activeSheet = useUiStore((state) => state.activeSheet);
   const openSheet = useUiStore((state) => state.openSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
+  // A running scenario freezes and locks the J2000 clock (it has its own transport in the
+  // Doomsday panel), so disable this bar while one owns the view rather than leaving dead
+  // controls that silently no-op against the locked clock.
+  const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
   const speedLabel = formatTimeScale(timeScale);
+
+  // "Now" should genuinely return to the present: reset to forward + real-time so the clock
+  // rests at today instead of immediately marching away in a previously-set reverse/fast mode.
+  const handleNow = () => {
+    setDirection(1);
+    setPreset("real-time");
+    setSimulationDateMs(Date.now());
+  };
 
   const presetOptions = [
     ...(preset === "custom"
@@ -175,7 +188,7 @@ export const TimeControls = () => {
   if (isMobile) {
     return (
       <>
-        <section className="transport-bar" aria-label="Time controls">
+        <section className="transport-bar" aria-label="Time controls" inert={scenarioActive || undefined}>
           <button className="icon-button transport" type="button" onClick={() => stepDays(-1)} aria-label="Step backward">
             <SkipBack size={18} />
           </button>
@@ -198,7 +211,7 @@ export const TimeControls = () => {
           label="Speed and time"
           title="Speed & time"
           footer={
-            <button className="reset-time sheet-now" type="button" onClick={() => setSimulationDateMs(Date.now())}>
+            <button className="reset-time sheet-now" type="button" onClick={handleNow}>
               Jump to now
             </button>
           }
@@ -245,7 +258,7 @@ export const TimeControls = () => {
   }
 
   return (
-    <section className="time-controls" aria-label="Time controls">
+    <section className="time-controls" aria-label="Time controls" inert={scenarioActive || undefined}>
       <button className="icon-button transport" type="button" onClick={() => stepDays(-1)} title="Step backward" aria-label="Step backward">
         <SkipBack size={17} />
       </button>
@@ -268,7 +281,7 @@ export const TimeControls = () => {
       {presetSelect}
       {speedSlider}
       <TimelineScrubber />
-      <button className="reset-time" type="button" onClick={() => setSimulationDateMs(Date.now())}>
+      <button className="reset-time" type="button" onClick={handleNow}>
         Now
       </button>
     </section>

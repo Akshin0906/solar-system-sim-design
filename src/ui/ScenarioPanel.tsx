@@ -2,8 +2,13 @@ import { Pause, Play, Skull, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { DAY_SECONDS } from "../data/constants";
 import { bodiesById } from "../data";
+import { useRocketStore } from "../features/rockets/rocketStore";
 import { SCENARIOS, scenarioById } from "../scenarios/registry";
-import { useScenarioStore } from "../scenarios/scenarioStore";
+import {
+  SCENARIO_MAX_TIME_SCALE,
+  SCENARIO_MIN_TIME_SCALE,
+  useScenarioStore,
+} from "../scenarios/scenarioStore";
 import type { ScenarioParam } from "../scenarios/types";
 import { BottomSheet } from "./BottomSheet";
 import { useUiStore } from "./uiStore";
@@ -111,9 +116,6 @@ const formatElapsed = (seconds: number) => {
   return `${(seconds / 3_600).toFixed(1)} h`;
 };
 
-const MIN_SCALE = 1;
-const MAX_SCALE = 300;
-
 // The Doomsday control surface — the "watch and play" half of the scenario system.
 // Reused verbatim in the desktop dock and the mobile bottom sheet.
 const ScenarioControls = () => {
@@ -188,8 +190,8 @@ const ScenarioControls = () => {
         </span>
         <input
           type="range"
-          min={MIN_SCALE}
-          max={MAX_SCALE}
+          min={SCENARIO_MIN_TIME_SCALE}
+          max={SCENARIO_MAX_TIME_SCALE}
           step={1}
           value={timeScale}
           aria-valuetext={`${timeScale} days per second`}
@@ -226,12 +228,27 @@ const ScenarioControls = () => {
 };
 
 export const ScenarioPanel = () => {
-  const [open, setOpen] = useState(false);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const toggleSheet = useUiStore((state) => state.toggleSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
+  const inspectorPresented = useUiStore((state) => state.inspectorPresented);
+  const doomsdayPanelOpen = useUiStore((state) => state.doomsdayPanelOpen);
+  const toggleDoomsdayPanel = useUiStore((state) => state.toggleDoomsdayPanel);
+  const closeDoomsdayPanel = useUiStore((state) => state.closeDoomsdayPanel);
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
+  const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
+
+  // Desktop: keep the two left-column panels mutually exclusive (mirrors how mobile's
+  // single activeSheet does it). Opening the rocket panel closes Doomsday; the Doomsday
+  // open paths close the rocket panel directly, so this stays a one-directional rule and
+  // can't ping-pong. No-op on mobile, which uses bottom sheets.
+  useEffect(() => {
+    if (!isMobile && rocketPanelOpen && doomsdayPanelOpen) {
+      closeDoomsdayPanel();
+    }
+  }, [closeDoomsdayPanel, doomsdayPanelOpen, isMobile, rocketPanelOpen]);
 
   const launchLabel = (
     <>
@@ -243,7 +260,9 @@ export const ScenarioPanel = () => {
   if (isMobile) {
     return (
       <>
-        <div className="doomsday-dock">
+        {/* Raise the dock above the inspector peek bar when a body is selected so the
+            Doomsday chip and the peek bar don't overlap in the bottom-left corner. */}
+        <div className={`doomsday-dock${inspectorPresented ? " raised" : ""}`}>
           <button
             type="button"
             className={`doomsday-launch${activeScenarioId ? " live" : ""}`}
@@ -266,9 +285,17 @@ export const ScenarioPanel = () => {
     );
   }
 
+  const handleToggle = () => {
+    // Opening Doomsday closes the rocket panel so the two left-edge panels never overlap.
+    if (!doomsdayPanelOpen) {
+      setRocketPanelOpen(false);
+    }
+    toggleDoomsdayPanel();
+  };
+
   return (
     <div className="doomsday-dock">
-      {open && (
+      {doomsdayPanelOpen && (
         <section id="doomsday-panel-region" className="doomsday-panel" aria-label="Doomsday scenarios">
           <ScenarioControls />
         </section>
@@ -276,8 +303,8 @@ export const ScenarioPanel = () => {
       <button
         type="button"
         className={`doomsday-launch${activeScenarioId ? " live" : ""}`}
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
+        onClick={handleToggle}
+        aria-expanded={doomsdayPanelOpen}
         aria-controls="doomsday-panel-region"
       >
         {launchLabel}
