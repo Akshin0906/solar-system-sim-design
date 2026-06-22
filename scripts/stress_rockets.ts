@@ -1,8 +1,7 @@
 /* Ad-hoc stress harness for the rocket model. Run: npx tsx scripts/stress_rockets.ts
  *
  * Sweeps every profile x destination x mission-mode x scale-mode x mission-time and
- * asserts no NaN/Infinity/throws, then runs targeted behavioural probes. Used to
- * find the issues in ROCKETS_IMPROVEMENT_PLAN.md and serves as the regression check.
+ * asserts no NaN/Infinity/throws, then runs targeted behavioural probes.
  *
  * NOTE: launch modes were removed from the model (commit bd7fcbd, "Limit rocket
  * launches to Earth departure"), so there is no launch-mode dimension here. */

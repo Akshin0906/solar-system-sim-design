@@ -31,7 +31,6 @@ import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatBodyType } from "../simulation/units";
-import { clampCommandActiveIndex } from "./commandIndex";
 import { useFocusTrap } from "./focusTrap";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
@@ -55,6 +54,8 @@ type CommandItem = {
 };
 
 const normalize = (value: string) => value.toLowerCase();
+const clampCommandActiveIndex = (index: number, itemCount: number) =>
+  itemCount <= 0 ? 0 : Math.min(Math.max(index, 0), itemCount - 1);
 
 export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandProps) => {
   const containerRef = useRef<HTMLDivElement>(null);

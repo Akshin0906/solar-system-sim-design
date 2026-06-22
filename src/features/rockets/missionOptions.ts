@@ -25,17 +25,3 @@ export const missionModeLabel: Record<RocketMissionMode, string> = rocketMission
   (acc, mode) => ({ ...acc, [mode.id]: mode.label }),
   {} as Record<RocketMissionMode, string>,
 );
-
-export type RocketLaunchModeOption = {
-  id: "earth-departure";
-  label: string;
-  shortLabel: string;
-  note: string;
-};
-
-export const earthDepartureLaunchMode: RocketLaunchModeOption = {
-  id: "earth-departure",
-  label: "Earth departure",
-  shortLabel: "Earth departure",
-  note: "Concept baseline: the tracked cruise begins after Earth departure.",
-};

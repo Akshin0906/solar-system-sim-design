@@ -2,11 +2,7 @@ import { useScenarioStore } from "../../scenarios/scenarioStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import { formatDistance } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
-import {
-  earthDepartureLaunchMode,
-  missionModeLabel,
-  type RocketMissionMode,
-} from "./missionOptions";
+import { missionModeLabel, type RocketMissionMode } from "./missionOptions";
 import { confidenceLabel, type RocketProfile } from "./rocketCatalog";
 import {
   formatDeltaV,
@@ -92,7 +88,7 @@ export const RocketTelemetry = ({
         </div>
         <div>
           <dt>Launch</dt>
-          <dd>{earthDepartureLaunchMode.shortLabel}</dd>
+          <dd>Earth departure</dd>
         </div>
         <div>
           <dt>Mission time</dt>
@@ -170,7 +166,7 @@ export const RocketTelemetry = ({
         )}
       </dl>
 
-      <p className="rocket-note">{earthDepartureLaunchMode.note}</p>
+      <p className="rocket-note">Concept baseline: the tracked cruise begins after Earth departure.</p>
     </div>
   );
 };

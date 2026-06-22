@@ -8,7 +8,6 @@ import { rocketsById } from "../src/features/rockets/rocketCatalog";
 import { computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
 import { getSceneLabelledIds } from "../src/scene/sceneLabels";
-import { clampCommandActiveIndex } from "../src/ui/commandIndex";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
@@ -385,12 +384,6 @@ const assertTransferEstimateUsesAppCode = () => {
   );
 };
 
-const assertCommandPaletteIndexClamping = () => {
-  assert.equal(clampCommandActiveIndex(0, 0), 0);
-  assert.equal(clampCommandActiveIndex(8, 3), 2);
-  assert.equal(clampCommandActiveIndex(-2, 3), 0);
-};
-
 const assertRealModeHidesBodyLabels = () => {
   const selectedBody = bodiesById.get("earth");
   assert(selectedBody);
@@ -470,7 +463,6 @@ assertDirectRocketArrivalCapsTelemetry();
 assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
-assertCommandPaletteIndexClamping();
 assertRealModeHidesBodyLabels();
 assertSafeBooleanPreferences();
 
