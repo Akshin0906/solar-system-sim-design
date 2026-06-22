@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { bodiesById } from "../src/data";
+import { bodies, bodiesById, childBodiesByParentId } from "../src/data";
 import { AU_KM, DAY_SECONDS } from "../src/data/constants";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import { getBodyPositionKm, vectorLength } from "../src/simulation/solveOrbit";
@@ -7,6 +7,7 @@ import { destinationsById, rocketDestinations } from "../src/features/rockets/de
 import { rocketsById } from "../src/features/rockets/rocketCatalog";
 import { computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
+import { getSceneLabelledIds } from "../src/scene/sceneLabels";
 import { clampCommandActiveIndex } from "../src/ui/commandIndex";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 
@@ -390,6 +391,34 @@ const assertCommandPaletteIndexClamping = () => {
   assert.equal(clampCommandActiveIndex(-2, 3), 0);
 };
 
+const assertRealModeHidesBodyLabels = () => {
+  const selectedBody = bodiesById.get("earth");
+  assert(selectedBody);
+
+  const realLabels = getSceneLabelledIds({
+    bodies,
+    childBodiesByParentId,
+    isMoonContext: false,
+    labelDensity: "full",
+    mode: "real",
+    selectedBody,
+    selectedId: selectedBody.id,
+  });
+  assert.equal(realLabels.size, 0, "Real mode should hide every body label, including selected and full-density labels");
+
+  const readableLabels = getSceneLabelledIds({
+    bodies,
+    childBodiesByParentId,
+    isMoonContext: false,
+    labelDensity: "standard",
+    mode: "readable",
+    selectedBody,
+    selectedId: selectedBody.id,
+  });
+  assert(readableLabels.has("earth"), "Non-real modes should still label the selected body");
+  assert(readableLabels.has("sun"), "Non-real modes should still include default body labels");
+};
+
 const assertSafeBooleanPreferences = () => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const setWindow = (value: unknown) =>
@@ -442,6 +471,7 @@ assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
 assertCommandPaletteIndexClamping();
+assertRealModeHidesBodyLabels();
 assertSafeBooleanPreferences();
 
 console.log("App logic checks passed");

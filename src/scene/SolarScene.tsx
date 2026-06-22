@@ -26,6 +26,7 @@ import { CometTail } from "./effects/CometTail";
 import { MoltenRemnant } from "./effects/MoltenRemnant";
 import type { ScenePositions } from "./scenePositions";
 import { useScenarioStore } from "../scenarios/scenarioStore";
+import { getSceneLabelledIds } from "./sceneLabels";
 import {
   drainConsumed,
   getElapsedSimSeconds,
@@ -113,47 +114,17 @@ export const SolarScene = () => {
   }, [isMoonContext, moonFocusParentId, selectedId]);
 
   const labelledIds = useMemo(() => {
-    const ids = new Set<string>();
-
-    bodies.forEach((body) => {
-      const isDefaultLabel =
-        body.render.showLabelDefault && (body.type !== "dwarfPlanet" || body.id === "pluto" || labelDensity === "full");
-
-      if (body.id === selectedId || isDefaultLabel) {
-        ids.add(body.id);
-      }
-
-      if (labelDensity === "standard" && selectedBody) {
-        if (body.parentId === selectedBody.id || (selectedBody.type === "moon" && body.parentId === selectedBody.parentId)) {
-          ids.add(body.id);
-        }
-      }
-
-      if (labelDensity === "full") {
-        ids.add(body.id);
-      }
+    return getSceneLabelledIds({
+      bodies,
+      childBodiesByParentId,
+      isMoonContext,
+      labelDensity,
+      mode,
+      moonFocusParentId,
+      selectedBody,
+      selectedId,
     });
-
-    if (isMoonContext && moonFocusParentId) {
-      ids.clear();
-      ids.add(moonFocusParentId);
-      childBodiesByParentId[moonFocusParentId]
-        ?.filter((body) => body.type === "moon")
-        .forEach((body) => ids.add(body.id));
-      ids.add(selectedId);
-    }
-
-    if (labelDensity === "minimal") {
-      bodies.forEach((body) => {
-        if (body.type === "moon" || body.type === "dwarfPlanet" || body.id === "sun") {
-          ids.delete(body.id);
-        }
-      });
-      ids.add(selectedId);
-    }
-
-    return ids;
-  }, [isMoonContext, labelDensity, moonFocusParentId, selectedBody, selectedId]);
+  }, [isMoonContext, labelDensity, mode, moonFocusParentId, selectedBody, selectedId]);
   const suppressedLabelIds = useSceneLabelLayout({ bodies, labelledIds, selectedId });
 
   const trailBodies = useMemo(() => {
