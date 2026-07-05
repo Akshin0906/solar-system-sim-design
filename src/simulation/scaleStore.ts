@@ -23,7 +23,7 @@ const STORAGE_KEY = "solar-system-sim.view";
 type PersistedView = Pick<ScaleState, "mode" | "labelDensity" | "showGrid" | "showOrbits" | "showTrails">;
 
 const SCALE_MODES: ScaleMode[] = ["real", "readable", "compressed", "overview"];
-const LABEL_DENSITIES: LabelDensity[] = ["minimal", "standard", "full"];
+const LABEL_DENSITIES: LabelDensity[] = ["off", "minimal", "standard", "full"];
 
 const getInitialDefaults = (): PersistedView => {
   const mobile =

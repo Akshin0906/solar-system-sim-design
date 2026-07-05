@@ -3,7 +3,7 @@ import type { CelestialBody, Vec3 } from "./orbitalElements";
 import { addVec3, getOrbitPositionKm, vectorLength } from "./solveOrbit";
 
 export type ScaleMode = "real" | "readable" | "compressed" | "overview";
-export type LabelDensity = "minimal" | "standard" | "full";
+export type LabelDensity = "off" | "minimal" | "standard" | "full";
 
 export const SCALE_MODES: Array<{ id: ScaleMode; label: string; note: string }> = [
   { id: "real", label: "Real", note: "True distance and true radius" },

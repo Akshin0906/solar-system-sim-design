@@ -447,7 +447,32 @@ const assertTransferEstimateUsesAppCode = () => {
 
 const assertRealModeHidesBodyLabels = () => {
   const selectedBody = bodiesById.get("earth");
+  const jupiter = bodiesById.get("jupiter");
   assert(selectedBody);
+  assert(jupiter);
+
+  const offLabels = getSceneLabelledIds({
+    bodies,
+    childBodiesByParentId,
+    isMoonContext: false,
+    labelDensity: "off",
+    mode: "readable",
+    selectedBody,
+    selectedId: selectedBody.id,
+  });
+  assert.equal(offLabels.size, 0, "Off label density should hide every body label, including the selected body");
+
+  const offMoonContextLabels = getSceneLabelledIds({
+    bodies,
+    childBodiesByParentId,
+    isMoonContext: true,
+    labelDensity: "off",
+    mode: "readable",
+    moonFocusParentId: jupiter.id,
+    selectedBody: jupiter,
+    selectedId: jupiter.id,
+  });
+  assert.equal(offMoonContextLabels.size, 0, "Off label density should also hide moon-system context labels");
 
   const realLabels = getSceneLabelledIds({
     bodies,

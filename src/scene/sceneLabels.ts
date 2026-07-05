@@ -24,7 +24,7 @@ export const getSceneLabelledIds = ({
 }: SceneLabelOptions) => {
   const ids = new Set<string>();
 
-  if (mode === "real") {
+  if (mode === "real" || labelDensity === "off") {
     return ids;
   }
 

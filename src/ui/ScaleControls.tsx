@@ -8,6 +8,7 @@ import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 
 const labelOptions: Array<{ id: LabelDensity; label: string }> = [
+  { id: "off", label: "Off" },
   { id: "minimal", label: "Minimal" },
   { id: "standard", label: "Standard" },
   { id: "full", label: "Full" },
@@ -166,7 +167,13 @@ export const ScaleControls = () => {
           value: item.id,
           label: item.label,
           description:
-            item.id === "minimal" ? "Focused names only" : item.id === "standard" ? "Major bodies and context" : "All available labels",
+            item.id === "off"
+              ? "Hide every label"
+              : item.id === "minimal"
+                ? "Focused names only"
+                : item.id === "standard"
+                  ? "Major bodies and context"
+                  : "All available labels",
         }))}
       />
       <div className="toggle-row">
