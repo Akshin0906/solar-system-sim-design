@@ -42,6 +42,20 @@ const labelPriority = (body: CelestialBody, selectedId: string) => {
 const overlaps = (a: ScreenRect, b: ScreenRect) =>
   a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
 
+const rectFromElement = (element: Element, padding = 0): ScreenRect | null => {
+  const bounds = element.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) {
+    return null;
+  }
+
+  return {
+    left: bounds.left - padding,
+    right: bounds.right + padding,
+    top: bounds.top - padding,
+    bottom: bounds.bottom + padding,
+  };
+};
+
 const sameSet = (a: Set<string>, b: Set<string>) => {
   if (a.size !== b.size) {
     return false;
@@ -70,12 +84,26 @@ export const useSceneLabelLayout = ({ bodies, labelledIds, selectedId }: LabelLa
     const placed: ScreenRect[] = [];
     const nextSuppressedIds = new Set<string>();
     const edgePadding = 10;
-    const desktopPanelGuard = size.width > 900 ? 310 : 0;
     const buttonsById = new Map(
       [...document.querySelectorAll<HTMLButtonElement>(".body-label[data-body-id]")].map((button) => [
         button.dataset.bodyId,
         button,
       ]),
+    );
+    const panelRects = [
+      ".top-bar",
+      ".scale-controls",
+      ".object-inspector",
+      ".time-controls",
+      ".rocket-panel",
+      ".doomsday-panel",
+      ".doomsday-dock",
+      ".help-popover",
+      ".search-popover",
+    ].flatMap((selector) =>
+      [...document.querySelectorAll(selector)]
+        .map((element) => rectFromElement(element, 8))
+        .filter((rect): rect is ScreenRect => rect !== null),
     );
 
     const visibleLabels = bodies
@@ -103,10 +131,10 @@ export const useSceneLabelLayout = ({ bodies, labelledIds, selectedId }: LabelLa
         rect.right > size.width - edgePadding ||
         rect.top < edgePadding ||
         rect.bottom > size.height - edgePadding;
-      const clipsInspector = desktopPanelGuard > 0 && rect.right > size.width - desktopPanelGuard && rect.top < 470;
+      const overlapsUiPanel = panelRects.some((panelRect) => overlaps(rect, panelRect));
       const collides = placed.some((placedRect) => overlaps(rect, placedRect));
 
-      if (!selected && (clipsEdge || clipsInspector || collides)) {
+      if (clipsEdge || overlapsUiPanel || (!selected && collides)) {
         nextSuppressedIds.add(body.id);
         return;
       }

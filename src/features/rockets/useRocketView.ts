@@ -6,7 +6,7 @@ import { destinationsById, type RocketDestination } from "./destinationCatalog";
 import { rocketsById, type RocketProfile } from "./rocketCatalog";
 import { computeRocketView, type RocketView } from "./rocketState";
 import { useRocketStore } from "./rocketStore";
-import type { RocketMissionMode } from "./missionOptions";
+import type { RocketLaunchMode, RocketMissionMode } from "./missionOptions";
 
 type RocketViewCacheEntry = {
   key: string;
@@ -22,6 +22,7 @@ const rocketViewCacheKey = (
   mode: ScaleMode,
   destination: RocketDestination | null,
   missionMode: RocketMissionMode,
+  launchMode: RocketLaunchMode,
 ) =>
   [
     profile.id,
@@ -30,6 +31,7 @@ const rocketViewCacheKey = (
     mode,
     destination?.id ?? "free-flight",
     missionMode,
+    launchMode,
   ].join("|");
 
 export const getCachedRocketView = (
@@ -39,14 +41,15 @@ export const getCachedRocketView = (
   mode: ScaleMode,
   destination: RocketDestination | null,
   missionMode: RocketMissionMode,
+  launchMode: RocketLaunchMode,
 ) => {
-  const key = rocketViewCacheKey(profile, launchDateMs, simulationDateMs, mode, destination, missionMode);
+  const key = rocketViewCacheKey(profile, launchDateMs, simulationDateMs, mode, destination, missionMode, launchMode);
 
   if (lastRocketView?.key === key) {
     return lastRocketView.view;
   }
 
-  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode);
+  const view = computeRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode, launchMode);
   lastRocketView = { key, view };
   return view;
 };
@@ -55,14 +58,15 @@ export const useRocketView = (
   profile: RocketProfile,
   destination: RocketDestination | null,
   missionMode: RocketMissionMode,
+  launchMode: RocketLaunchMode,
   launchDateMs: number,
 ) => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
 
   return useMemo(
-    () => getCachedRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode),
-    [destination, launchDateMs, missionMode, mode, profile, simulationDateMs],
+    () => getCachedRocketView(profile, launchDateMs, simulationDateMs, mode, destination, missionMode, launchMode),
+    [destination, launchDateMs, launchMode, missionMode, mode, profile, simulationDateMs],
   );
 };
 
@@ -70,6 +74,7 @@ export const useActiveRocketView = () => {
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
   const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
   const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
+  const activeLaunchMode = useRocketStore((state) => state.activeLaunchMode);
   const launchDateMs = useRocketStore((state) => state.launchDateMs);
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const mode = useScaleStore((state) => state.mode);
@@ -89,10 +94,12 @@ export const useActiveRocketView = () => {
       mode,
       destination,
       activeMissionMode,
+      activeLaunchMode,
     );
-  }, [activeMissionMode, destination, launchDateMs, mode, profile, simulationDateMs]);
+  }, [activeLaunchMode, activeMissionMode, destination, launchDateMs, mode, profile, simulationDateMs]);
 
   return {
+    activeLaunchMode,
     activeMissionMode,
     destination,
     launchDateMs,

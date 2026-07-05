@@ -1,7 +1,7 @@
 import { Eye, Orbit, Route, Tags } from "lucide-react";
 import { SCALE_MODES, type LabelDensity, type ScaleMode } from "../simulation/units";
 import { useScaleStore } from "../simulation/scaleStore";
-import { useSelectionStore } from "../simulation/selectionStore";
+import { type CameraMode, useSelectionStore } from "../simulation/selectionStore";
 import { BottomSheet } from "./BottomSheet";
 import { InstrumentSelect } from "./InstrumentSelect";
 import { useUiStore } from "./uiStore";
@@ -12,6 +12,35 @@ const labelOptions: Array<{ id: LabelDensity; label: string }> = [
   { id: "standard", label: "Standard" },
   { id: "full", label: "Full" },
 ];
+
+type CameraPresetId =
+  | "overview"
+  | "inner"
+  | "outer"
+  | "earth-moon"
+  | "jupiter-system"
+  | "saturn-system"
+  | "kuiper-belt";
+
+const cameraPresetOptions: Array<{ id: CameraPresetId; label: string; description: string }> = [
+  { id: "overview", label: "Solar system", description: "Frame the full system" },
+  { id: "inner", label: "Inner planets", description: "Mercury through Mars" },
+  { id: "outer", label: "Outer planets", description: "Jupiter through Neptune" },
+  { id: "earth-moon", label: "Earth/Moon", description: "Frame Earth and the Moon" },
+  { id: "jupiter-system", label: "Jupiter system", description: "Jupiter and major moons" },
+  { id: "saturn-system", label: "Saturn system", description: "Saturn and major moons" },
+  { id: "kuiper-belt", label: "Kuiper belt", description: "Frame the distant belt" },
+];
+
+const cameraPresetIds = new Set<CameraMode>(cameraPresetOptions.map((option) => option.id));
+
+const cameraModeFallbackLabel: Partial<Record<CameraMode, string>> = {
+  free: "Free look",
+  focus: "Focused body",
+  follow: "Following body",
+  moons: "Moon system",
+  "rocket-follow": "Following rocket",
+};
 
 export const ScaleControls = () => {
   const mode = useScaleStore((state) => state.mode);
@@ -26,9 +55,42 @@ export const ScaleControls = () => {
   const setShowTrails = useScaleStore((state) => state.setShowTrails);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
+  const selectBody = useSelectionStore((state) => state.selectBody);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
+  const cameraPresetValue = cameraPresetIds.has(cameraMode) ? (cameraMode as CameraPresetId) : "custom";
+  const cameraOptions = [
+    ...(cameraPresetValue === "custom"
+      ? [
+          {
+            value: "custom",
+            label: cameraModeFallbackLabel[cameraMode] ?? "Custom view",
+            description: "Current camera mode",
+            disabled: true,
+          },
+        ]
+      : []),
+    ...cameraPresetOptions.map((option) => ({
+      value: option.id,
+      label: option.label,
+      description: option.description,
+    })),
+  ];
+
+  const selectCameraPreset = (value: string) => {
+    if (value === "earth-moon") {
+      selectBody("earth");
+    } else if (value === "jupiter-system") {
+      selectBody("jupiter");
+    } else if (value === "saturn-system") {
+      selectBody("saturn");
+    }
+
+    if (value !== "custom") {
+      setCameraMode(value as CameraPresetId);
+    }
+  };
 
   const controls = (
     <>
@@ -84,6 +146,15 @@ export const ScaleControls = () => {
           </span>
         )}
       </div>
+      <InstrumentSelect
+        className="compact-select camera-preset-select"
+        value={cameraPresetValue}
+        onChange={selectCameraPreset}
+        ariaLabel="Camera preset"
+        label="Camera"
+        icon={<Eye size={14} aria-hidden />}
+        options={cameraOptions}
+      />
       <InstrumentSelect
         className="compact-select"
         value={labelDensity}

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useSelectionStore } from "../../simulation/selectionStore";
 import { defaultRocketId } from "./rocketCatalog";
 import { defaultDestinationId } from "./destinationCatalog";
-import { defaultMissionMode, type RocketMissionMode } from "./missionOptions";
+import { defaultLaunchMode, defaultMissionMode, type RocketLaunchMode, type RocketMissionMode } from "./missionOptions";
 import { clearRocketCaches } from "./rocketState";
 
 // Rocket state is intentionally separate from celestial body state. It stores only
@@ -15,15 +15,24 @@ type RocketState = {
   selectedRocketId: string; // the profile chosen in the launcher (not yet launched)
   selectedDestinationId: string; // the destination chosen in the launcher
   selectedMissionMode: RocketMissionMode; // direct aim or transfer preview
+  selectedLaunchMode: RocketLaunchMode; // Earth departure, LEO, or surface label
   activeRocketId: string | null; // the profile currently in flight, if any
   activeDestinationId: string | null; // the destination locked in at launch
   activeMissionMode: RocketMissionMode;
+  activeLaunchMode: RocketLaunchMode;
   launchDateMs: number | null; // simulation time at launch
   panelOpen: boolean;
   selectRocket: (rocketId: string) => void;
   selectDestination: (destinationId: string) => void;
   selectMissionMode: (missionMode: RocketMissionMode) => void;
-  launch: (rocketId: string, destinationId: string, missionMode: RocketMissionMode, launchDateMs: number) => void;
+  selectLaunchMode: (launchMode: RocketLaunchMode) => void;
+  launch: (
+    rocketId: string,
+    destinationId: string,
+    missionMode: RocketMissionMode,
+    launchMode: RocketLaunchMode,
+    launchDateMs: number,
+  ) => void;
   clear: () => void;
   setPanelOpen: (panelOpen: boolean) => void;
   togglePanel: () => void;
@@ -33,22 +42,27 @@ export const useRocketStore = create<RocketState>((set) => ({
   selectedRocketId: defaultRocketId,
   selectedDestinationId: defaultDestinationId,
   selectedMissionMode: defaultMissionMode,
+  selectedLaunchMode: defaultLaunchMode,
   activeRocketId: null,
   activeDestinationId: null,
   activeMissionMode: defaultMissionMode,
+  activeLaunchMode: defaultLaunchMode,
   launchDateMs: null,
   panelOpen: false,
   selectRocket: (selectedRocketId) => set({ selectedRocketId }),
   selectDestination: (selectedDestinationId) => set({ selectedDestinationId }),
   selectMissionMode: (selectedMissionMode) => set({ selectedMissionMode }),
-  launch: (rocketId, destinationId, missionMode, launchDateMs) =>
+  selectLaunchMode: (selectedLaunchMode) => set({ selectedLaunchMode }),
+  launch: (rocketId, destinationId, missionMode, launchMode, launchDateMs) =>
     set({
       selectedRocketId: rocketId,
       selectedDestinationId: destinationId,
       selectedMissionMode: missionMode,
+      selectedLaunchMode: launchMode,
       activeRocketId: rocketId,
       activeDestinationId: destinationId,
       activeMissionMode: missionMode,
+      activeLaunchMode: launchMode,
       launchDateMs,
       panelOpen: true,
     }),
@@ -63,6 +77,7 @@ export const useRocketStore = create<RocketState>((set) => ({
       activeRocketId: null,
       activeDestinationId: null,
       activeMissionMode: defaultMissionMode,
+      activeLaunchMode: defaultLaunchMode,
       launchDateMs: null,
     });
   },

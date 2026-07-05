@@ -2,7 +2,7 @@ import { useScenarioStore } from "../../scenarios/scenarioStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import { formatDistance } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
-import { missionModeLabel, type RocketMissionMode } from "./missionOptions";
+import { launchModeLabel, missionModeLabel, type RocketLaunchMode, type RocketMissionMode } from "./missionOptions";
 import { confidenceLabel, type RocketProfile } from "./rocketCatalog";
 import {
   formatDeltaV,
@@ -17,6 +17,7 @@ type RocketTelemetryProps = {
   profile: RocketProfile;
   destination: RocketDestination | null;
   missionMode: RocketMissionMode;
+  launchMode: RocketLaunchMode;
   launchDateMs: number;
 };
 
@@ -35,9 +36,10 @@ export const RocketTelemetry = ({
   profile,
   destination,
   missionMode,
+  launchMode,
   launchDateMs,
 }: RocketTelemetryProps) => {
-  const view = useRocketView(profile, destination, missionMode, launchDateMs);
+  const view = useRocketView(profile, destination, missionMode, launchMode, launchDateMs);
   const preLaunch = view.status === "pre-launch";
   const target = view.destination;
   const transfer = view.transfer;
@@ -86,10 +88,10 @@ export const RocketTelemetry = ({
           <dt>Mission mode</dt>
           <dd>{missionModeLabel[view.missionMode]}</dd>
         </div>
-        <div>
-          <dt>Launch</dt>
-          <dd>Earth departure</dd>
-        </div>
+            <div>
+              <dt>Launch</dt>
+              <dd>{launchModeLabel[view.launchMode]}</dd>
+            </div>
         <div>
           <dt>Mission time</dt>
           <dd>{formatMissionTime(view.elapsedSeconds)}</dd>
@@ -166,7 +168,13 @@ export const RocketTelemetry = ({
         )}
       </dl>
 
-      <p className="rocket-note">Concept baseline: the tracked cruise begins after Earth departure.</p>
+      <p className="rocket-note">
+        {launchMode === "low-earth-orbit"
+          ? "Concept baseline: direct and free-flight previews include a simplified parking-orbit speed offset."
+          : launchMode === "surface"
+            ? "Concept baseline: surface launch uses the Earth marker; atmosphere and gravity losses are not modeled."
+            : "Concept baseline: the tracked cruise begins after Earth departure."}
+      </p>
     </div>
   );
 };

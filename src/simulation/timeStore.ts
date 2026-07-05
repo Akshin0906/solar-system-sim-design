@@ -20,6 +20,7 @@ type TimeState = {
   setPreset: (preset: TimePresetId) => void;
   setTimeScale: (timeScale: number) => void;
   setSimulationDateMs: (simulationDateMs: number) => void;
+  jumpToNow: () => void;
   setTransportLocked: (transportLocked: boolean) => void;
 };
 
@@ -101,6 +102,18 @@ export const useTimeStore = create<TimeState>((set, get) => ({
       return;
     }
     set({ simulationDateMs: clampSimulationDateMs(simulationDateMs) });
+  },
+  jumpToNow: () => {
+    if (get().transportLocked) {
+      return;
+    }
+    const realTimePreset = TIME_PRESETS[0];
+    set({
+      direction: 1,
+      preset: realTimePreset.id,
+      timeScale: realTimePreset.secondsPerSecond,
+      simulationDateMs: clampSimulationDateMs(Date.now()),
+    });
   },
   setTransportLocked: (transportLocked) => set({ transportLocked }),
 }));

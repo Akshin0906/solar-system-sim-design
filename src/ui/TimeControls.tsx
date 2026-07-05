@@ -115,7 +115,7 @@ export const TimeControls = () => {
   const setDirection = useTimeStore((state) => state.setDirection);
   const setPreset = useTimeStore((state) => state.setPreset);
   const setTimeScale = useTimeStore((state) => state.setTimeScale);
-  const setSimulationDateMs = useTimeStore((state) => state.setSimulationDateMs);
+  const jumpToNow = useTimeStore((state) => state.jumpToNow);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const openSheet = useUiStore((state) => state.openSheet);
@@ -125,14 +125,6 @@ export const TimeControls = () => {
   // controls that silently no-op against the locked clock.
   const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
   const speedLabel = formatTimeScale(timeScale);
-
-  // "Now" should genuinely return to the present: reset to forward + real-time so the clock
-  // rests at today instead of immediately marching away in a previously-set reverse/fast mode.
-  const handleNow = () => {
-    setDirection(1);
-    setPreset("real-time");
-    setSimulationDateMs(Date.now());
-  };
 
   const presetOptions = [
     ...(preset === "custom"
@@ -211,7 +203,7 @@ export const TimeControls = () => {
           label="Speed and time"
           title="Speed & time"
           footer={
-            <button className="reset-time sheet-now" type="button" onClick={handleNow}>
+            <button className="reset-time sheet-now" type="button" onClick={jumpToNow}>
               Jump to now
             </button>
           }
@@ -281,7 +273,7 @@ export const TimeControls = () => {
       {presetSelect}
       {speedSlider}
       <TimelineScrubber />
-      <button className="reset-time" type="button" onClick={handleNow}>
+      <button className="reset-time" type="button" onClick={jumpToNow}>
         Now
       </button>
     </section>

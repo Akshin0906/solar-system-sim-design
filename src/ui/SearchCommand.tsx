@@ -69,7 +69,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
   const isPaused = useTimeStore((state) => state.isPaused);
   const togglePaused = useTimeStore((state) => state.togglePaused);
-  const setSimulationDateMs = useTimeStore((state) => state.setSimulationDateMs);
+  const jumpToNow = useTimeStore((state) => state.jumpToNow);
   const showGrid = useScaleStore((state) => state.showGrid);
   const showOrbits = useScaleStore((state) => state.showOrbits);
   const showTrails = useScaleStore((state) => state.showTrails);
@@ -108,7 +108,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         subtitle: "Reset the simulation clock",
         keywords: "now today reset date clock",
         icon: <TimerReset size={16} />,
-        action: () => setSimulationDateMs(Date.now()),
+        action: jumpToNow,
       },
       {
         id: "rocket-preview",
@@ -286,6 +286,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       cameraMode,
       isMobile,
       isPaused,
+      jumpToNow,
       openDoomsdayPanel,
       openSheet,
       selectBody,
@@ -295,7 +296,6 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       setShowGrid,
       setShowOrbits,
       setShowTrails,
-      setSimulationDateMs,
       showGrid,
       showOrbits,
       showTrails,

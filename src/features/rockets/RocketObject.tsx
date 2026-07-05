@@ -86,7 +86,7 @@ const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
 };
 
 export const RocketObject = () => {
-  const { activeMissionMode, destination, launchDateMs, mode, profile, view } = useActiveRocketView();
+  const { activeLaunchMode, activeMissionMode, destination, launchDateMs, mode, profile, view } = useActiveRocketView();
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const updateRocketTarget = useSelectionStore((state) => state.updateRocketTarget);
   const rocketScenePosition = view?.scenePosition ?? null;
@@ -114,13 +114,14 @@ export const RocketObject = () => {
       mode,
       destination,
       activeMissionMode,
+      activeLaunchMode,
     );
     const dir = new Vector3(...launchView.sceneDirection);
     if (dir.lengthSq() === 0) {
       return [0, 0, 0, 1] as const;
     }
     return new Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
-  }, [profile, launchDateMs, mode, destination, activeMissionMode]);
+  }, [profile, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode]);
 
   const completedTransferPoints = useMemo(() => {
     if (!transferArcScenePoints || !rocketScenePosition) {

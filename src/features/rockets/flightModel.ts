@@ -24,11 +24,20 @@ export type RocketFlightSample = {
   distanceTraveledKm: number;
 };
 
-export const sampleFlight = (profile: RocketProfile, elapsedSeconds: number): RocketFlightSample => {
+type RocketFlightOptions = {
+  speedOffsetKmS?: number;
+};
+
+export const sampleFlight = (
+  profile: RocketProfile,
+  elapsedSeconds: number,
+  options: RocketFlightOptions = {},
+): RocketFlightSample => {
   const t = Math.max(0, elapsedSeconds);
   const accelKmS2 = (profile.accelerationMS2 ?? 0) / 1_000; // m/s^2 -> km/s^2
-  const v0 = profile.initialSpeedKmS;
-  const vMax = profile.maxSpeedKmS;
+  const speedOffsetKmS = Math.max(0, options.speedOffsetKmS ?? 0);
+  const v0 = profile.initialSpeedKmS + speedOffsetKmS;
+  const vMax = profile.maxSpeedKmS + speedOffsetKmS;
   const burn = Math.max(0, profile.burnDurationSeconds);
 
   // Time spent accelerating before reaching the speed cap (or never, if accel is 0).

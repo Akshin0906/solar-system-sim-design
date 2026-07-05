@@ -7,6 +7,7 @@ import { destinationsById, rocketDestinations } from "../src/features/rockets/de
 import { rocketsById } from "../src/features/rockets/rocketCatalog";
 import { computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
+import { rocketLaunchModes } from "../src/features/rockets/missionOptions";
 import { getSceneLabelledIds } from "../src/scene/sceneLabels";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 
@@ -309,6 +310,39 @@ const assertPreLaunchRocketDistance = () => {
   }
 };
 
+const assertRocketLaunchModes = () => {
+  const profile = rocketsById.get("saturn-v");
+  const freeDestination = destinationsById.get("free") ?? null;
+  const marsDestination = destinationsById.get("mars") ?? null;
+  const launchDateMs = Date.parse("2026-06-14T00:00:00.000Z");
+  const afterLaunchMs = launchDateMs + DAY_SECONDS * 1_000;
+
+  assert(profile);
+  assert(freeDestination);
+  assert(marsDestination);
+  assert.deepEqual(
+    rocketLaunchModes.map((mode) => mode.id),
+    ["earth-departure", "low-earth-orbit", "surface"],
+    "rocket launch mode selector should expose the documented assumptions",
+  );
+
+  const freeEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", freeDestination, "direct", "earth-departure");
+  const freeLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", freeDestination, "direct", "low-earth-orbit");
+  const directEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "direct", "earth-departure");
+  const directLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "direct", "low-earth-orbit");
+  const transferEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "transfer", "earth-departure");
+  const transferLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "transfer", "low-earth-orbit");
+
+  assert.equal(freeLeo.launchMode, "low-earth-orbit");
+  assert(freeLeo.speedKmS > freeEarth.speedKmS + 7.7, "LEO should raise free-flight speed readout");
+  assert(directLeo.speedKmS > directEarth.speedKmS + 7.7, "LEO should raise direct-aim speed readout");
+  assert.equal(
+    transferLeo.speedKmS,
+    transferEarth.speedKmS,
+    "launch assumptions should not change Hohmann-style transfer average speed",
+  );
+};
+
 const assertDirectRocketArrivalCapsTelemetry = () => {
   const fusion = rocketsById.get("fusion-drive");
   const neptune = destinationsById.get("neptune");
@@ -487,6 +521,7 @@ const assertSafeBooleanPreferences = () => {
 assertBodyDataInvariants();
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
+assertRocketLaunchModes();
 assertDirectRocketArrivalCapsTelemetry();
 assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();

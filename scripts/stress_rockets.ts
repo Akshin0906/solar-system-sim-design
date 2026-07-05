@@ -1,14 +1,16 @@
 /* Ad-hoc stress harness for the rocket model. Run: npx tsx scripts/stress_rockets.ts
  *
- * Sweeps every profile x destination x mission-mode x scale-mode x mission-time and
+ * Sweeps every profile x destination x mission-mode x launch-mode x scale-mode x mission-time and
  * asserts no NaN/Infinity/throws, then runs targeted behavioural probes.
- *
- * NOTE: launch modes were removed from the model (commit bd7fcbd, "Limit rocket
- * launches to Earth departure"), so there is no launch-mode dimension here. */
+ */
 import { bodiesById } from "../src/data";
 import { rocketCatalog, rocketsById } from "../src/features/rockets/rocketCatalog";
 import { rocketDestinations } from "../src/features/rockets/destinationCatalog";
-import { rocketMissionModes } from "../src/features/rockets/missionOptions";
+import {
+  directSpeedOffsetForLaunchMode,
+  rocketLaunchModes,
+  rocketMissionModes,
+} from "../src/features/rockets/missionOptions";
 import { computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer, sampleTransferArcKm } from "../src/features/rockets/transferModel";
 import { sampleFlight } from "../src/features/rockets/flightModel";
@@ -37,6 +39,16 @@ for (const p of rocketCatalog) {
     if (s.distanceTraveledKm < 0) note(`flight ${p.id} t=${t}: negative distance ${s.distanceTraveledKm}`);
     if (s.speedKmS < 0) note(`flight ${p.id} t=${t}: negative speed ${s.speedKmS}`);
     if (s.speedKmS > p.maxSpeedKmS + 1e-6) note(`flight ${p.id} t=${t}: speed ${s.speedKmS} exceeds max ${p.maxSpeedKmS}`);
+    for (const launchMode of rocketLaunchModes) {
+      const offset = directSpeedOffsetForLaunchMode(launchMode.id);
+      const offsetSample = sampleFlight(p, t, { speedOffsetKmS: offset });
+      if (offsetSample.speedKmS > p.maxSpeedKmS + offset + 1e-6) {
+        note(`flight ${p.id}/${launchMode.id} t=${t}: speed ${offsetSample.speedKmS} exceeds offset max`);
+      }
+      if (offsetSample.distanceTraveledKm < s.distanceTraveledKm - 1e-6) {
+        note(`flight ${p.id}/${launchMode.id} t=${t}: offset distance regressed`);
+      }
+    }
   }
   let prev = -1;
   for (let t = 0; t <= p.burnDurationSeconds * 2 + 1; t += Math.max(1, p.burnDurationSeconds / 50)) {
@@ -74,33 +86,36 @@ const sampleTimes = [-30 * DAY, 0, DAY, 30 * DAY, 200 * DAY, 2 * YEAR, 50 * YEAR
 for (const profile of rocketCatalog) {
   for (const dest of rocketDestinations) {
     for (const mm of rocketMissionModes) {
-      for (const mode of MODES) {
-        for (const dt of sampleTimes) {
-          views++;
-          let v;
-          try {
-            v = computeRocketView(profile, NOW, NOW + dt, mode, dest, mm.id);
-          } catch (e) {
-            note(`view threw: ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}: ${(e as Error).message}`);
-            continue;
+      for (const launchMode of rocketLaunchModes) {
+        for (const mode of MODES) {
+          for (const dt of sampleTimes) {
+            views++;
+            let v;
+            try {
+              v = computeRocketView(profile, NOW, NOW + dt, mode, dest, mm.id, launchMode.id);
+            } catch (e) {
+              note(`view threw: ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}: ${(e as Error).message}`);
+              continue;
+            }
+            checkVec(`scenePos ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`, v.scenePosition);
+            checkVec(`sceneDir ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`, v.sceneDirection);
+            for (const key of ["elapsedSeconds","speedKmS","distanceTraveledKm","distanceFromEarthKm"] as const) {
+              if (!finite(v[key])) note(`view ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}: ${key}=${v[key]}`);
+            }
+            if (v.distanceTraveledKm < -1e-6) note(`view ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}: negative dist ${v.distanceTraveledKm}`);
+            if (v.launchMode !== launchMode.id) note(`view ${profile.id}/${dest.id}: launch mode not preserved`);
+            if (v.destination) {
+              if (!finite(v.destination.distanceToTargetKm)) note(`dest dist NaN ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`);
+              if (!finite(v.destination.closestApproachKm)) note(`closest NaN ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`);
+              if (v.destination.closestApproachKm < -1e-6) note(`closest<0 ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`);
+              v.destination.destScenePosition && checkVec("destScene", v.destination.destScenePosition);
+            }
+            if (v.transfer) {
+              v.transfer.arcScenePoints.forEach((pt, i) => checkVec(`tArc ${dest.id}[${i}]`, pt));
+              if (!finite(v.transfer.progress)) note(`transfer progress NaN ${profile.id}/${dest.id}/${mode}/dt=${dt}`);
+            }
+            if (v.directScenePoints) v.directScenePoints.forEach((pt, i) => checkVec(`dScene ${dest.id}[${i}]`, pt));
           }
-          checkVec(`scenePos ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}`, v.scenePosition);
-          checkVec(`sceneDir ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}`, v.sceneDirection);
-          for (const key of ["elapsedSeconds","speedKmS","distanceTraveledKm","distanceFromEarthKm"] as const) {
-            if (!finite(v[key])) note(`view ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}: ${key}=${v[key]}`);
-          }
-          if (v.distanceTraveledKm < -1e-6) note(`view ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}: negative dist ${v.distanceTraveledKm}`);
-          if (v.destination) {
-            if (!finite(v.destination.distanceToTargetKm)) note(`dest dist NaN ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}`);
-            if (!finite(v.destination.closestApproachKm)) note(`closest NaN ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}`);
-            if (v.destination.closestApproachKm < -1e-6) note(`closest<0 ${profile.id}/${dest.id}/${mm.id}/${mode}/dt=${dt}`);
-            v.destination.destScenePosition && checkVec("destScene", v.destination.destScenePosition);
-          }
-          if (v.transfer) {
-            v.transfer.arcScenePoints.forEach((pt, i) => checkVec(`tArc ${dest.id}[${i}]`, pt));
-            if (!finite(v.transfer.progress)) note(`transfer progress NaN ${profile.id}/${dest.id}/${mode}/dt=${dt}`);
-          }
-          if (v.directScenePoints) v.directScenePoints.forEach((pt, i) => checkVec(`dScene ${dest.id}[${i}]`, pt));
         }
       }
     }
@@ -122,7 +137,24 @@ console.log("== behavioural probes ==");
     note(`DIRECT: distanceTraveled grows after arrival (${(arr.distanceTraveledKm/AU).toFixed(1)} -> ${(later.distanceTraveledKm/AU).toFixed(1)} AU) while parked at target`);
 }
 
-// 4b. M3: transfer "Speed" is the constant arc-average (not instantaneous).
+// 4b. Launch modes: LEO affects direct/free-flight speed, but transfer baseline stays orbital.
+{
+  const sv = rocketsById.get("saturn-v")!;
+  const mars = rocketDestinations.find((d) => d.id === "mars")!;
+  const free = rocketDestinations.find((d) => d.id === "free")!;
+  const directEarth = computeRocketView(sv, NOW, NOW + DAY, "compressed", mars, "direct", "earth-departure");
+  const directLeo = computeRocketView(sv, NOW, NOW + DAY, "compressed", mars, "direct", "low-earth-orbit");
+  const freeEarth = computeRocketView(sv, NOW, NOW + DAY, "compressed", free, "direct", "earth-departure");
+  const freeLeo = computeRocketView(sv, NOW, NOW + DAY, "compressed", free, "direct", "low-earth-orbit");
+  const transferEarth = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "transfer", "earth-departure");
+  const transferLeo = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "transfer", "low-earth-orbit");
+  console.log(`  LEO direct/free speed delta=${(directLeo.speedKmS - directEarth.speedKmS).toFixed(1)}/${(freeLeo.speedKmS - freeEarth.speedKmS).toFixed(1)} km/s`);
+  if (directLeo.speedKmS <= directEarth.speedKmS + 7.7) note("LEO direct speed did not include expected offset");
+  if (freeLeo.speedKmS <= freeEarth.speedKmS + 7.7) note("LEO free-flight speed did not include expected offset");
+  if (Math.abs(transferLeo.speedKmS - transferEarth.speedKmS) > 1e-6) note("LEO should not alter transfer average speed baseline");
+}
+
+// 4c. M3: transfer "Speed" is the constant arc-average (not instantaneous).
 {
   const sv = rocketsById.get("saturn-v")!;
   const mars = rocketDestinations.find((d) => d.id === "mars")!;
@@ -131,7 +163,7 @@ console.log("== behavioural probes ==");
   console.log(`  transfer speed @10d=${v1.speedKmS.toFixed(2)} @200d=${v2.speedKmS.toFixed(2)} (constant=${Math.abs(v1.speedKmS-v2.speedKmS) < 1e-6})`);
 }
 
-// 4c. Transfer to Moon: sanity of Earth-centered estimate.
+// 4d. Transfer to Moon: sanity of Earth-centered estimate.
 {
   const body = bodiesById.get("moon")!;
   const est = estimateTransfer(body, bodiesById, NOW)!;
@@ -139,7 +171,7 @@ console.log("== behavioural probes ==");
   if (est.transferTimeSeconds/86400 > 30) note(`moon transfer time implausibly long: ${(est.transferTimeSeconds/86400).toFixed(1)} d`);
 }
 
-// 4d. Determinism: same inputs -> same scene position.
+// 4e. Determinism: same inputs -> same scene position.
 {
   const sv = rocketsById.get("saturn-v")!;
   const mars = rocketDestinations.find((d) => d.id === "mars")!;

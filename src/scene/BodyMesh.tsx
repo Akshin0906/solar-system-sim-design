@@ -255,7 +255,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
     selected ? "selected" : "",
     emphasis === "muted" ? "quiet-label" : "",
     emphasis === "related" ? "related-label" : "",
-    labelSuppressed && !selected ? "suppressed-label" : "",
+    labelSuppressed ? "suppressed-label" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -492,7 +492,7 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
             // of the toolbar in an order unrelated to visual layout. Keyboard selection
             // is handled by the command palette instead.
             tabIndex={-1}
-            aria-hidden={labelSuppressed && !selected ? "true" : undefined}
+            aria-hidden={labelSuppressed ? "true" : undefined}
             aria-label={`Select ${body.name}`}
             data-body-id={body.id}
           >

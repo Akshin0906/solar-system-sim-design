@@ -19,7 +19,12 @@ import {
 } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
 import { sampleFlight } from "./flightModel";
-import type { RocketMissionMode } from "./missionOptions";
+import {
+  defaultLaunchMode,
+  directSpeedOffsetForLaunchMode,
+  type RocketLaunchMode,
+  type RocketMissionMode,
+} from "./missionOptions";
 import type { RocketProfile } from "./rocketCatalog";
 import {
   estimateTransfer,
@@ -94,6 +99,7 @@ export type RocketView = {
   distanceFromEarthKm: number;
   status: MissionStatus;
   missionMode: RocketMissionMode;
+  launchMode: RocketLaunchMode;
   scenePosition: Vec3;
   launchScenePosition: Vec3;
   sceneDirection: Vec3;
@@ -124,6 +130,15 @@ const setBoundedCacheEntry = <T>(cache: Map<string, T>, key: string, value: T, l
 
   cache.set(key, value);
 };
+
+const sampleDirectFlight = (
+  profile: RocketProfile,
+  elapsedSeconds: number,
+  launchMode: RocketLaunchMode,
+) =>
+  sampleFlight(profile, elapsedSeconds, {
+    speedOffsetKmS: directSpeedOffsetForLaunchMode(launchMode),
+  });
 
 const interpolatePoints = (points: Vec3[], progress: number): Vec3 => {
   if (points.length === 0) {
@@ -181,8 +196,9 @@ const distanceToDestAt = (
   destBody: CelestialBody,
   launchDateMs: number,
   tau: number,
+  launchMode: RocketLaunchMode,
 ): number => {
-  const traveled = sampleFlight(profile, tau).distanceTraveledKm;
+  const traveled = sampleDirectFlight(profile, tau, launchMode).distanceTraveledKm;
   const rocketKm = add(launchOriginKm, mul(physicalDir, traveled));
   const destKm = getBodyPositionKm(destBody, bodiesById, new Date(launchDateMs + tau * 1_000));
   return vectorLength(sub(rocketKm, destKm));
@@ -212,8 +228,9 @@ const getDirectAimPlan = (
   launchOriginKm: Vec3,
   destBody: CelestialBody,
   launchDateMs: number,
+  launchMode: RocketLaunchMode,
 ): DirectAimPlan => {
-  const key = `${profile.id}|${destBody.id}|${launchDateMs}`;
+  const key = `${profile.id}|${destBody.id}|${launchDateMs}|${launchMode}`;
   const cached = directPlanCache.get(key);
   if (cached) {
     return cached;
@@ -223,7 +240,7 @@ const getDirectAimPlan = (
   let upperSeconds = 3_600;
   const distanceGapAt = (tau: number) => {
     const targetKm = getBodyPositionKm(destBody, bodiesById, new Date(launchDateMs + tau * 1_000));
-    return sampleFlight(profile, tau).distanceTraveledKm - vectorLength(sub(targetKm, launchOriginKm));
+    return sampleDirectFlight(profile, tau, launchMode).distanceTraveledKm - vectorLength(sub(targetKm, launchOriginKm));
   };
 
   while (upperSeconds < DIRECT_INTERCEPT_MAX_SECONDS && distanceGapAt(upperSeconds) < 0) {
@@ -265,8 +282,9 @@ const getPlannedDirectClosestApproach = (
   destBody: CelestialBody,
   launchDateMs: number,
   directPlan: DirectAimPlan,
+  launchMode: RocketLaunchMode,
 ): number => {
-  const key = `${profile.id}|${destBody.id}|${launchDateMs}`;
+  const key = `${profile.id}|${destBody.id}|${launchDateMs}|${launchMode}`;
   const cached = directClosestApproachCache.get(key);
   if (cached !== undefined) {
     return cached;
@@ -276,7 +294,7 @@ const getPlannedDirectClosestApproach = (
   let closestKm = Number.POSITIVE_INFINITY;
   for (let index = 0; index <= CLOSEST_APPROACH_SAMPLES; index += 1) {
     const tau = (endSeconds * index) / CLOSEST_APPROACH_SAMPLES;
-    const distance = distanceToDestAt(profile, launchOriginKm, physicalDir, destBody, launchDateMs, tau);
+    const distance = distanceToDestAt(profile, launchOriginKm, physicalDir, destBody, launchDateMs, tau, launchMode);
     if (distance < closestKm) {
       closestKm = distance;
     }
@@ -464,12 +482,13 @@ const buildFreeFlightView = (
   launchDateMs: number,
   simulationDateMs: number,
   mode: ScaleMode,
+  launchMode: RocketLaunchMode,
   earthLaunchKm: Vec3,
   earthNowKm: Vec3,
   earthLaunchScene: Vec3,
 ): RocketView => {
   const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
-  const flight = sampleFlight(profile, elapsedSeconds);
+  const flight = sampleDirectFlight(profile, elapsedSeconds, launchMode);
   const physicalDir = normalize(earthLaunchKm);
   const launchRadiusKm = vectorLength(earthLaunchKm);
   const rocketRadiusKm = launchRadiusKm + flight.distanceTraveledKm;
@@ -485,6 +504,7 @@ const buildFreeFlightView = (
     distanceFromEarthKm,
     status: preLaunch ? "pre-launch" : distanceFromEarthKm < DEPART_FROM_EARTH_KM ? "burn" : "coast",
     missionMode: "direct",
+    launchMode,
     scenePosition,
     launchScenePosition: earthLaunchScene,
     sceneDirection: normalize(earthLaunchScene),
@@ -501,6 +521,7 @@ export const computeRocketView = (
   mode: ScaleMode,
   destination: RocketDestination | null,
   missionMode: RocketMissionMode = "direct",
+  launchMode: RocketLaunchMode = defaultLaunchMode,
 ): RocketView => {
   const launchDate = new Date(launchDateMs);
   const simDate = new Date(simulationDateMs);
@@ -518,6 +539,7 @@ export const computeRocketView = (
       launchDateMs,
       simulationDateMs,
       mode,
+      launchMode,
       earthLaunchKm,
       earthNowKm,
       earthLaunchScene,
@@ -583,6 +605,7 @@ export const computeRocketView = (
         distanceFromEarthKm: preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm)),
         status,
         missionMode,
+        launchMode,
         scenePosition,
         launchScenePosition: earthLaunchScene,
         sceneDirection,
@@ -609,8 +632,8 @@ export const computeRocketView = (
   }
 
   const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
-  const flight = sampleFlight(profile, elapsedSeconds);
-  const directPlan = getDirectAimPlan(profile, earthLaunchKm, destBody, launchDateMs);
+  const flight = sampleDirectFlight(profile, elapsedSeconds, launchMode);
+  const directPlan = getDirectAimPlan(profile, earthLaunchKm, destBody, launchDateMs, launchMode);
   const { aimDistanceKm, physicalDir } = directPlan;
   const interceptDate = new Date(launchDateMs + directPlan.interceptSeconds * 1_000);
   const destInterceptScene = computeBodyScenePosition(destBody, bodiesById, interceptDate, mode);
@@ -646,6 +669,7 @@ export const computeRocketView = (
     destBody,
     launchDateMs,
     directPlan,
+    launchMode,
   );
   const closestApproachKm = arrived ? 0 : Math.min(plannedClosestApproachKm, distanceToTargetKm);
   const previousDistanceKm = distanceToDestAt(
@@ -655,6 +679,7 @@ export const computeRocketView = (
     destBody,
     launchDateMs,
     elapsedSeconds * 0.985,
+    launchMode,
   );
   const closing = distanceToTargetKm < previousDistanceKm;
   const preLaunch = simulationDateMs < launchDateMs;
@@ -678,6 +703,7 @@ export const computeRocketView = (
     distanceFromEarthKm: preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm)),
     status,
     missionMode: "direct",
+    launchMode,
     scenePosition,
     launchScenePosition: earthLaunchScene,
     sceneDirection: normalize(sub(destInterceptScene, earthLaunchScene)),
