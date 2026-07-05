@@ -25,17 +25,25 @@ type PersistedView = Pick<ScaleState, "mode" | "labelDensity" | "showGrid" | "sh
 const SCALE_MODES: ScaleMode[] = ["real", "readable", "compressed", "overview"];
 const LABEL_DENSITIES: LabelDensity[] = ["minimal", "standard", "full"];
 
-const defaults: PersistedView = {
-  mode: "compressed",
-  labelDensity: "standard",
-  showGrid: false,
-  showOrbits: true,
-  showTrails: false,
+const getInitialDefaults = (): PersistedView => {
+  const mobile =
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(max-width: 900px), (pointer: coarse)").matches;
+
+  return {
+    mode: "compressed",
+    labelDensity: mobile ? "minimal" : "standard",
+    showGrid: false,
+    showOrbits: true,
+    showTrails: false,
+  };
 };
 
 // Validate every field so a malformed/old payload can never feed an invalid enum into
 // the renderer; any unrecognized value silently falls back to its default.
 const loadPersistedView = (): PersistedView => {
+  const defaults = getInitialDefaults();
   const stored = readJsonPreference<Partial<PersistedView>>(STORAGE_KEY);
   if (!stored) {
     return defaults;

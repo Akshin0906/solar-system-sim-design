@@ -8,6 +8,10 @@ export type CameraMode =
   | "overview"
   | "inner"
   | "outer"
+  | "earth-moon"
+  | "jupiter-system"
+  | "saturn-system"
+  | "kuiper-belt"
   | "moons"
   | "rocket-follow";
 

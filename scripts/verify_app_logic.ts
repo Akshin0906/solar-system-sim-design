@@ -236,6 +236,33 @@ const jplPositionKm = (bodyId: keyof typeof jplApprox, date: Date): Vec3 => {
 
 const distanceKm = (a: Vec3, b: Vec3) => vectorLength([a[0] - b[0], a[1] - b[1], a[2] - b[2]]);
 
+const assertBodyDataInvariants = () => {
+  const ids = new Set<string>();
+
+  for (const body of bodies) {
+    assert(!ids.has(body.id), `duplicate body id ${body.id}`);
+    ids.add(body.id);
+    assert(Number.isFinite(body.physical.radiusKm) && body.physical.radiusKm > 0, `${body.id} radius must be positive`);
+
+    if (body.parentId) {
+      assert(bodiesById.has(body.parentId), `${body.id} parent ${body.parentId} is missing`);
+    }
+
+    if (body.orbit) {
+      assert(
+        Number.isFinite(body.orbit.semiMajorAxisKm) && body.orbit.semiMajorAxisKm > 0,
+        `${body.id} semiMajorAxisKm must be positive`,
+      );
+      assert(
+        Number.isFinite(body.orbit.orbitalPeriodDays) && body.orbit.orbitalPeriodDays > 0,
+        `${body.id} orbitalPeriodDays must be positive`,
+      );
+    }
+  }
+
+  assert.equal(ids.size, bodies.length);
+};
+
 const assertRocketDestinationCatalog = () => {
   const nonEarthMoonDestinations = rocketDestinations.filter((destination) => {
     if (!destination.bodyId) {
@@ -457,6 +484,7 @@ const assertSafeBooleanPreferences = () => {
   }
 };
 
+assertBodyDataInvariants();
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
 assertDirectRocketArrivalCapsTelemetry();

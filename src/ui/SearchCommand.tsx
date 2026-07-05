@@ -222,6 +222,55 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         active: showTrails,
         action: () => setShowTrails(!showTrails),
       },
+      {
+        id: "camera-earth-moon",
+        group: "View",
+        title: "Earth/Moon",
+        subtitle: "Frame Earth and the Moon",
+        keywords: "camera preset earth moon system lunar",
+        icon: <Orbit size={16} />,
+        active: cameraMode === "earth-moon",
+        action: () => {
+          selectBody("earth");
+          setCameraMode("earth-moon");
+        },
+      },
+      {
+        id: "camera-jupiter-system",
+        group: "View",
+        title: "Jupiter system",
+        subtitle: "Frame Jupiter and its major moons",
+        keywords: "camera preset jupiter system io europa ganymede callisto galilean moons",
+        icon: <Orbit size={16} />,
+        active: cameraMode === "jupiter-system",
+        action: () => {
+          selectBody("jupiter");
+          setCameraMode("jupiter-system");
+        },
+      },
+      {
+        id: "camera-saturn-system",
+        group: "View",
+        title: "Saturn system",
+        subtitle: "Frame Saturn and its major moons",
+        keywords: "camera preset saturn system titan enceladus rhea iapetus moons",
+        icon: <Orbit size={16} />,
+        active: cameraMode === "saturn-system",
+        action: () => {
+          selectBody("saturn");
+          setCameraMode("saturn-system");
+        },
+      },
+      {
+        id: "camera-kuiper-belt",
+        group: "View",
+        title: "Kuiper belt",
+        subtitle: "Frame the distant belt",
+        keywords: "camera preset kuiper belt pluto eris haumea makemake outer objects",
+        icon: <Route size={16} />,
+        active: cameraMode === "kuiper-belt",
+        action: () => setCameraMode("kuiper-belt"),
+      },
       ...selectableBodies.map((body) => ({
         id: `body-${body.id}`,
         group: "Objects" as const,

@@ -15,8 +15,10 @@ export type Bounds = {
   radius: number;
 };
 
-export const fitDistanceForRadius = (radius: number, fovDeg = CAMERA_FOV_DEG, safety = 1.55) => {
-  const halfFovRad = MathUtils.degToRad(fovDeg / 2);
+export const fitDistanceForRadius = (radius: number, fovDeg = CAMERA_FOV_DEG, safety = 1.55, aspect = 1) => {
+  const halfVerticalFovRad = MathUtils.degToRad(fovDeg / 2);
+  const halfHorizontalFovRad = Math.atan(Math.tan(halfVerticalFovRad) * Math.max(aspect, MIN_FIT_RADIUS));
+  const halfFovRad = Math.min(halfVerticalFovRad, halfHorizontalFovRad);
   return Math.max(MIN_FIT_RADIUS, (Math.max(radius, MIN_FIT_RADIUS) / Math.tan(halfFovRad)) * safety);
 };
 

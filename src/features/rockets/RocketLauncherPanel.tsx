@@ -3,9 +3,9 @@ import { useScaleStore } from "../../simulation/scaleStore";
 import { useSelectionStore } from "../../simulation/selectionStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import { InstrumentSelect } from "../../ui/InstrumentSelect";
-import { destinationGroupOrder, destinationsById, rocketDestinations } from "./destinationCatalog";
+import { destinationGroupOrder, destinationsById, rocketDestinations, type RocketDestination } from "./destinationCatalog";
 import { rocketMissionModes } from "./missionOptions";
-import { categoryLabel, confidenceLabel, rocketCatalog, rocketsById } from "./rocketCatalog";
+import { categoryLabel, confidenceLabel, rocketCatalog, rocketsById, type RocketProfile } from "./rocketCatalog";
 import { RocketTelemetry } from "./RocketTelemetry";
 import { RocketTransferPreview } from "./RocketTransferPreview";
 import { useRocketStore } from "./rocketStore";
@@ -17,6 +17,12 @@ type RocketLauncherPanelProps = {
   onClose?: () => void;
 };
 
+const PendingTransferPreview = ({ destination, profile }: { destination: RocketDestination; profile: RocketProfile }) => {
+  const launchDateMs = useTimeStore((state) => state.simulationDateMs);
+
+  return <RocketTransferPreview destination={destination} launchDateMs={launchDateMs} profile={profile} />;
+};
+
 // Compact launch panel. Hidden by default (toggled from the top bar) so the
 // default solar-system view stays uncluttered. When a rocket is in flight it shows
 // live telemetry. The header and the action buttons stay pinned while the selects
@@ -26,7 +32,6 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   const selectedRocketId = useRocketStore((state) => state.selectedRocketId);
   const selectedDestinationId = useRocketStore((state) => state.selectedDestinationId);
   const selectedMissionMode = useRocketStore((state) => state.selectedMissionMode);
-  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
   const activeDestinationId = useRocketStore((state) => state.activeDestinationId);
   const activeMissionMode = useRocketStore((state) => state.activeMissionMode);
@@ -82,7 +87,7 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   }));
 
   const handleLaunch = () => {
-    launch(selected.id, selectedDestination.id, effectiveMissionMode, simulationDateMs);
+    launch(selected.id, selectedDestination.id, effectiveMissionMode, useTimeStore.getState().simulationDateMs);
   };
 
   const handleFollowRocket = () => {
@@ -175,11 +180,7 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
         {!embedded && conceptNote}
 
         {!active && effectiveMissionMode === "transfer" && selectedDestination.bodyId && (
-          <RocketTransferPreview
-            destination={selectedDestination}
-            launchDateMs={simulationDateMs}
-            profile={selected}
-          />
+          <PendingTransferPreview destination={selectedDestination} profile={selected} />
         )}
 
         {/* When a rocket is active, telemetry is the priority — show it first so the

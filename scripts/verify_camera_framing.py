@@ -15,6 +15,8 @@ PREFERRED_CAMERA_NEAR = 0.00001
 MIN_CAMERA_NEAR = 0.000001
 MAX_CAMERA_NEAR = 0.1
 FOCUS_FRAMING_SAFETY = 1.9
+MOBILE_ASPECT = 390 / 844
+DESKTOP_ASPECT = 1440 / 900
 CAMERA_DAMPING_RATES = {
     "focus_target": (4.677692, 0.075),
     "focus_position": (3.394221, 0.055),
@@ -37,15 +39,27 @@ VISUAL_RADIUS_MULTIPLIER = {
     "Saturn": 2.68,
     "Uranus": 2.05,
 }
+CAMERA_PRESET_RADII = {
+    "Earth/Moon": 3.0,
+    "Jupiter system": 8.0,
+    "Saturn system": 10.5,
+    "Kuiper belt": 386.0,
+}
+KUIPER_FADE_MULTIPLIER = 8
+KUIPER_OUTER_SCENE_RADII = (52 * REAL_UNITS_PER_AU, math.pow(52, 0.62) * 16, math.log10(52 + 1) * 52)
 
 
-def fit_distance_for_radius(radius: float, safety: float = 1.55) -> float:
-    half_fov_rad = math.radians(FOV_DEG / 2)
+def fit_distance_for_radius(radius: float, safety: float = 1.55, aspect: float = 1) -> float:
+    half_vertical_fov_rad = math.radians(FOV_DEG / 2)
+    half_horizontal_fov_rad = math.atan(math.tan(half_vertical_fov_rad) * max(aspect, MIN_FIT_RADIUS))
+    half_fov_rad = min(half_vertical_fov_rad, half_horizontal_fov_rad)
     return max(MIN_FIT_RADIUS, (max(radius, MIN_FIT_RADIUS) / math.tan(half_fov_rad)) * safety)
 
 
-def visible_radius_at_distance(distance: float) -> float:
-    return math.tan(math.radians(FOV_DEG / 2)) * distance
+def visible_radius_at_distance(distance: float, aspect: float = 1) -> float:
+    half_vertical_fov_rad = math.radians(FOV_DEG / 2)
+    half_horizontal_fov_rad = math.atan(math.tan(half_vertical_fov_rad) * max(aspect, MIN_FIT_RADIUS))
+    return math.tan(min(half_vertical_fov_rad, half_horizontal_fov_rad)) * distance
 
 
 def real_scene_radius(radius_km: float) -> float:
@@ -84,6 +98,20 @@ def main() -> None:
 
     tiny_distance = fit_distance_for_radius(0)
     assert tiny_distance > 0
+
+    for name, radius in CAMERA_PRESET_RADII.items():
+        desktop_distance = fit_distance_for_radius(radius, 1.18, DESKTOP_ASPECT)
+        mobile_distance = fit_distance_for_radius(radius, 1.18, MOBILE_ASPECT)
+        assert mobile_distance > desktop_distance, (name, desktop_distance, mobile_distance)
+        for aspect, distance in ((DESKTOP_ASPECT, desktop_distance), (MOBILE_ASPECT, mobile_distance)):
+            fill = radius / visible_radius_at_distance(distance, aspect)
+            assert 0.84 < fill < 0.85, (name, aspect, fill)
+
+    for outer_scene_radius in KUIPER_OUTER_SCENE_RADII:
+        preset_radius = outer_scene_radius * 1.06
+        mobile_distance = fit_distance_for_radius(preset_radius, 1.18, MOBILE_ASPECT)
+        fade_end = outer_scene_radius * KUIPER_FADE_MULTIPLIER
+        assert fade_end > mobile_distance + preset_radius, (outer_scene_radius, mobile_distance, fade_end)
 
     for name, radius_km in REAL_RADIUS_KM.items():
         body_radius = real_scene_radius(radius_km)

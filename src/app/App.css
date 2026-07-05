@@ -588,6 +588,32 @@ kbd {
   background: rgba(143, 199, 204, 0.12);
 }
 
+.native-select-trigger {
+  cursor: default;
+}
+
+.native-select-trigger:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.instrument-select-native {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  appearance: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.instrument-select-native:focus {
+  outline: none;
+}
+
 .instrument-select.disabled .instrument-select-trigger {
   color: rgba(245, 241, 232, 0.42);
   cursor: not-allowed;

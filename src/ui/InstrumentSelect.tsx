@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import { useIsMobile } from "./useMediaQuery";
 
 export type InstrumentSelectOption<T extends string = string> = {
   value: T;
@@ -119,6 +120,7 @@ export const InstrumentSelect = <T extends string,>({
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
+  const isMobile = useIsMobile();
 
   const optionGroups = useMemo<Array<InstrumentSelectGroup<T>>>(
     () => groups ?? [{ options: options ?? [] }],
@@ -286,6 +288,50 @@ export const InstrumentSelect = <T extends string,>({
       closeMenu();
     }
   };
+
+  if (isMobile) {
+    const select = (
+      <select
+        className="instrument-select-native"
+        value={value}
+        disabled={disabled}
+        aria-label={ariaLabel ?? label}
+        onChange={(event) => onChange(event.target.value as T)}
+      >
+        {optionGroups.map((group, groupIndex) =>
+          group.label ? (
+            <optgroup key={`${group.label}-${groupIndex}`} label={group.label}>
+              {group.options.map((option) => (
+                <option key={option.value} value={option.value} disabled={option.disabled}>
+                  {option.label}
+                </option>
+              ))}
+            </optgroup>
+          ) : (
+            group.options.map((option) => (
+              <option key={option.value} value={option.value} disabled={option.disabled}>
+                {option.label}
+              </option>
+            ))
+          ),
+        )}
+      </select>
+    );
+
+    return (
+      <div className={`instrument-select ${icon ? "has-icon" : ""} ${disabled ? "disabled" : ""} ${className}`.trim()}>
+        <label className="instrument-select-trigger native-select-trigger">
+          {icon && <span className="instrument-select-icon">{icon}</span>}
+          <span className="instrument-select-copy">
+            {label && <span className="instrument-select-label">{label}</span>}
+            <span className="instrument-select-value">{select}</span>
+          </span>
+          {selectedOption?.meta && <span className="instrument-select-meta">{selectedOption.meta}</span>}
+          <ChevronDown className="instrument-select-chevron" size={15} aria-hidden />
+        </label>
+      </div>
+    );
+  }
 
   const menuStyle = menuRect
     ? ({

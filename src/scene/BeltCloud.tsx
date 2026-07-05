@@ -96,7 +96,7 @@ const pickParticleColor = (random: () => number, type: BeltConfig["type"]) => {
 const getBeltRenderSettings = (belt: BeltConfig, mode: ScaleMode) => {
   const outerSceneRadius = scaleVectorFromSun([belt.outerRadiusKm, 0, 0], mode)[0];
   const fadeEndFloor = belt.type === "asteroidBelt" ? 160 : 220;
-  const fadeEndMultiplier = belt.type === "asteroidBelt" ? 3.1 : 1.55;
+  const fadeEndMultiplier = belt.type === "asteroidBelt" ? 3.1 : 8;
   const fadeEnd = Math.max(fadeEndFloor, outerSceneRadius * fadeEndMultiplier);
 
   return {

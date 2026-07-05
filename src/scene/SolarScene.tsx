@@ -83,13 +83,24 @@ export const SolarScene = () => {
   }, [activeScenarioId, consumedIds, selectedId]);
 
   const selectedBody = bodiesById.get(selectedId);
+  const presetMoonParentId =
+    cameraMode === "earth-moon"
+      ? "earth"
+      : cameraMode === "jupiter-system"
+        ? "jupiter"
+        : cameraMode === "saturn-system"
+          ? "saturn"
+          : undefined;
   const moonFocusParentId =
-    selectedBody?.type === "moon"
+    presetMoonParentId ??
+    (selectedBody?.type === "moon"
       ? selectedBody.parentId
       : childBodiesByParentId[selectedId]?.some((body) => body.type === "moon")
         ? selectedId
-        : undefined;
-  const isMoonContext = Boolean(moonFocusParentId && (cameraMode === "moons" || selectedBody?.type === "moon"));
+        : undefined);
+  const isMoonContext = Boolean(
+    moonFocusParentId && (presetMoonParentId || cameraMode === "moons" || selectedBody?.type === "moon"),
+  );
 
   const emphasisById = useMemo(() => {
     const emphasis = new Map<string, BodyEmphasis>();
