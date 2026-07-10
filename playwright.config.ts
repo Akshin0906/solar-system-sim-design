@@ -2,18 +2,21 @@ import { defineConfig } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 4397);
 const baseURL = `http://127.0.0.1:${port}`;
+const isCI = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 1 : 0,
-  workers: 2,
-  timeout: 30_000,
+  forbidOnly: isCI,
+  retries: isCI ? 1 : 0,
+  // GitHub's runner renders WebGL through software. Two simultaneous scenes can
+  // starve each other's initialization even though each test is stable alone.
+  workers: isCI ? 1 : 2,
+  timeout: isCI ? 60_000 : 30_000,
   expect: {
-    timeout: 8_000,
+    timeout: isCI ? 20_000 : 8_000,
   },
-  reporter: process.env.CI
+  reporter: isCI
     ? [["github"], ["html", { open: "never" }]]
     : [["list"], ["html", { open: "never" }]],
   use: {
