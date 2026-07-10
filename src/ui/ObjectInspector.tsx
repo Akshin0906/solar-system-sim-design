@@ -11,6 +11,7 @@ import { useIsMobile } from "./useMediaQuery";
 
 export const ObjectInspector = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
+  const selectionRevision = useSelectionStore((state) => state.selectionRevision);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
   const selectBody = useSelectionStore((state) => state.selectBody);
@@ -18,22 +19,27 @@ export const ObjectInspector = () => {
   const inspectorPresented = useUiStore((state) => state.inspectorPresented);
   const activeSheet = useUiStore((state) => state.activeSheet);
   const openSheet = useUiStore((state) => state.openSheet);
+  const closeSheet = useUiStore((state) => state.closeSheet);
   const presentInspector = useUiStore((state) => state.presentInspector);
   const dismissInspector = useUiStore((state) => state.dismissInspector);
   const body = bodiesById.get(selectedId) ?? bodies[0];
   const parent = body.parentId ? bodiesById.get(body.parentId) : undefined;
   const moons = childBodiesByParentId[body.id]?.filter((child) => child.type === "moon") ?? [];
 
-  // Present the inspector whenever the user actively selects a different body. The
-  // initial default selection (Earth) is skipped so phones open to a clean scene.
-  const didMount = useRef(false);
+  // Present the inspector whenever the user explicitly selects a body, even when it
+  // is already selected. The initial default selection (Earth) is skipped so phones
+  // open to a clean scene.
+  const lastSelectionRevisionRef = useRef(selectionRevision);
   useEffect(() => {
-    if (!didMount.current) {
-      didMount.current = true;
+    // Compare the store's event-like revision instead of counting effect setups.
+    // React StrictMode intentionally replays effects in development while preserving
+    // refs; an effect-run guard therefore presented Earth before the user selected it.
+    if (lastSelectionRevisionRef.current === selectionRevision) {
       return;
     }
+    lastSelectionRevisionRef.current = selectionRevision;
     presentInspector();
-  }, [selectedId, presentInspector]);
+  }, [presentInspector, selectionRevision]);
 
   const details = (
     <>
@@ -156,7 +162,7 @@ export const ObjectInspector = () => {
             </button>
           </div>
         )}
-        <BottomSheet open={expanded} onClose={dismissInspector} label={`${body.name} details`} title={body.name} footer={actions}>
+        <BottomSheet open={expanded} onClose={closeSheet} label={`${body.name} details`} title={body.name} footer={actions}>
           <p className="inspector-kicker">{formatBodyType(body.type)}</p>
           {details}
         </BottomSheet>

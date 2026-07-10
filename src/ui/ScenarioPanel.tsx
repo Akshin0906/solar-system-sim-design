@@ -237,6 +237,7 @@ export const ScenarioPanel = () => {
   const toggleDoomsdayPanel = useUiStore((state) => state.toggleDoomsdayPanel);
   const closeDoomsdayPanel = useUiStore((state) => state.closeDoomsdayPanel);
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const scenarioStatus = useScenarioStore((state) => state.status);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
 
@@ -256,6 +257,10 @@ export const ScenarioPanel = () => {
       {activeScenarioId ? <span className="doomsday-live-dot" aria-hidden /> : null}
     </>
   );
+  const activeScenarioName = activeScenarioId ? scenarioById.get(activeScenarioId)?.name : undefined;
+  const launchAriaLabel = activeScenarioId
+    ? `${activeScenarioName ?? "Doomsday scenario"} is ${scenarioStatus}. Open scenario controls`
+    : "Open Doomsday scenarios";
 
   if (isMobile) {
     return (
@@ -268,6 +273,9 @@ export const ScenarioPanel = () => {
             className={`doomsday-launch${activeScenarioId ? " live" : ""}`}
             onClick={() => toggleSheet("scenario")}
             aria-haspopup="dialog"
+            aria-label={launchAriaLabel}
+            aria-expanded={activeSheet === "scenario"}
+            aria-controls={activeSheet === "scenario" ? "doomsday-sheet" : undefined}
           >
             {launchLabel}
           </button>
@@ -294,7 +302,7 @@ export const ScenarioPanel = () => {
   };
 
   return (
-    <div className="doomsday-dock">
+    <div className={`doomsday-dock${rocketPanelOpen ? " rocket-open" : ""}`}>
       {doomsdayPanelOpen && (
         <section id="doomsday-panel-region" className="doomsday-panel" aria-label="Doomsday scenarios">
           <ScenarioControls />
@@ -304,6 +312,7 @@ export const ScenarioPanel = () => {
         type="button"
         className={`doomsday-launch${activeScenarioId ? " live" : ""}`}
         onClick={handleToggle}
+        aria-label={launchAriaLabel}
         aria-expanded={doomsdayPanelOpen}
         aria-controls="doomsday-panel-region"
       >

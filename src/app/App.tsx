@@ -3,6 +3,8 @@ import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps
 import { X } from "lucide-react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
 import { bodiesById } from "../data";
+import { scenarioById } from "../scenarios/registry";
+import { CAMERA_FOV_DEG } from "../scene/cameraFraming";
 import { SolarScene } from "../scene/SolarScene";
 import { ObjectInspector } from "../ui/ObjectInspector";
 import { ScaleControls } from "../ui/ScaleControls";
@@ -93,11 +95,19 @@ type CanvasRendererProps = Parameters<CanvasGlFactory>[0];
 
 const TimeDriver = () => {
   const tick = useTimeStore((state) => state.tick);
+  const isPaused = useTimeStore((state) => state.isPaused);
   const frameRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number | null>(null);
   const accumulatedTimeRef = useRef(0);
 
   useEffect(() => {
+    if (isPaused) {
+      frameRef.current = null;
+      lastTimeRef.current = null;
+      accumulatedTimeRef.current = 0;
+      return;
+    }
+
     const targetTickSeconds = 1 / 30;
 
     const loop = (time: number) => {
@@ -125,9 +135,11 @@ const TimeDriver = () => {
       if (frameRef.current !== null) {
         window.cancelAnimationFrame(frameRef.current);
       }
+      frameRef.current = null;
+      lastTimeRef.current = null;
       accumulatedTimeRef.current = 0;
     };
-  }, [tick]);
+  }, [isPaused, tick]);
 
   return null;
 };
@@ -218,14 +230,17 @@ const SimulationLiveRegion = () => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const isPaused = useTimeStore((state) => state.isPaused);
   const timeScale = useTimeStore((state) => state.timeScale);
+  const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const scenarioStatus = useScenarioStore((state) => state.status);
   const selected = bodiesById.get(selectedId);
+  const activeScenario = activeScenarioId ? scenarioById.get(activeScenarioId) : undefined;
   // While playing, omit the continuously-changing date: a polite live region that
   // re-announced every simulated day (up to thousands/sec at high time scales) would
   // overwhelm a screen reader. The date is announced when paused or after a scrub.
   const dateSegment = isPaused ? ` · ${liveDateFormatter.format(new Date(simulationDateMs))}` : "";
-  const message = `${selected?.name ?? "Object"} selected${dateSegment} · ${
-    isPaused ? "paused" : "playing"
-  } · ${formatTimeScale(timeScale)}`;
+  const message = activeScenario
+    ? `${selected?.name ?? "Object"} selected · ${activeScenario.name} scenario ${scenarioStatus}`
+    : `${selected?.name ?? "Object"} selected${dateSegment} · ${isPaused ? "paused" : "playing"} · ${formatTimeScale(timeScale)}`;
 
   return (
     <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -236,7 +251,7 @@ const SimulationLiveRegion = () => {
 
 const DISCOVERY_HINT_KEY = "solar-system-sim.discoveryHintDismissed";
 
-const DiscoverabilityCue = () => {
+const DiscoverabilityCue = ({ isMobile }: { isMobile: boolean }) => {
   const [visible, setVisible] = useState(() => {
     return !readBooleanPreference(DISCOVERY_HINT_KEY);
   });
@@ -251,9 +266,11 @@ const DiscoverabilityCue = () => {
       return;
     }
 
-    const timer = window.setTimeout(dismiss, 9_000);
+    // Auto-hide only for this session. Persisting an automatic timeout made the hint
+    // disappear forever even when a first-time user never noticed or acted on it.
+    const timer = window.setTimeout(() => setVisible(false), 9_000);
     return () => window.clearTimeout(timer);
-  }, [dismiss, visible]);
+  }, [visible]);
 
   if (!visible) {
     return null;
@@ -261,7 +278,11 @@ const DiscoverabilityCue = () => {
 
   return (
     <div className="discoverability-cue">
-      <span>Click a planet · press / to search · try rockets and doomsday</span>
+      <span>
+        {isMobile
+          ? "Tap a planet · use Search · try rockets and doomsday"
+          : "Click a planet · press / to search · try rockets and doomsday"}
+      </span>
       <button type="button" onClick={dismiss} aria-label="Dismiss hint">
         <X size={12} />
       </button>
@@ -272,6 +293,8 @@ const DiscoverabilityCue = () => {
 export const App = () => {
   const [webglUnavailable, setWebglUnavailable] = useState(() => !canCreateWebGlContext());
   const [webglRestoring, setWebglRestoring] = useState(false);
+  const [sceneError, setSceneError] = useState(false);
+  const [sceneRevision, setSceneRevision] = useState(0);
   const restoreTimerRef = useRef<number | null>(null);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -391,7 +414,7 @@ export const App = () => {
           // The a11y semantics (role/aria-label/tab focus) live on the inner <canvas> below —
           // the keyboard-interactive element — so the scene is announced and tab-stopped once.
           frameloop={scenarioAnimating ? "always" : "demand"}
-          camera={{ position: [24, 18, 36], fov: 48, near: 0.00001, far: 2_000 }}
+          camera={{ position: [24, 18, 36], fov: CAMERA_FOV_DEG, near: 0.00001, far: 2_000 }}
           dpr={[1, 1.65]}
           fallback={<p>WebGL unavailable</p>}
           gl={createRenderer}
@@ -430,20 +453,46 @@ export const App = () => {
             }
           }}
         >
-          {/* A render-time throw inside the scene is contained here (null fallback keeps the
-              canvas + DOM UI alive) rather than bubbling to the app-level boundary and taking
-              the whole simulator down. */}
-          <ErrorBoundary fallback={() => null}>
+          {/* Keep the DOM controls alive if only the scene fails, while reporting the failure
+              outside the canvas where a normal accessible recovery surface can render. */}
+          <ErrorBoundary
+            key={sceneRevision}
+            fallback={() => null}
+            onError={() => setSceneError(true)}
+          >
             <Suspense fallback={null}>
               <SolarScene />
             </Suspense>
           </ErrorBoundary>
         </Canvas>
       )}
+      {sceneError && !webglUnavailable && (
+        <section className="scene-error" role="alert" aria-live="assertive">
+          <span className="webgl-fallback-kicker">Scene interrupted</span>
+          <strong>The solar system could not finish rendering.</strong>
+          <p>Your controls and settings are still available. Retry the scene or reload the app.</p>
+          <div className="webgl-fallback-actions">
+            <button
+              className="reset-time webgl-retry"
+              type="button"
+              onClick={() => {
+                setSceneError(false);
+                setSceneRevision((revision) => revision + 1);
+                invalidate();
+              }}
+            >
+              Retry scene
+            </button>
+            <button className="reset-time" type="button" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
+        </section>
+      )}
       {!webglUnavailable && (
         <div id="main-controls" className="ui-layer" tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
           <TopBar />
-          <DiscoverabilityCue />
+          <DiscoverabilityCue isMobile={isMobile} />
           <ScaleControls />
           <ObjectInspector />
           {isMobile ? (

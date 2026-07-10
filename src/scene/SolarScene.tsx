@@ -32,7 +32,6 @@ import {
   getElapsedSimSeconds,
   getFragmentCapHit,
   getLiveFragmentCount,
-  isThrottled,
   startRuntime,
   stepRuntime,
   stopRuntime,
@@ -56,6 +55,10 @@ export const SolarScene = () => {
   // re-seeds on start and on every param edit (both bump the store's instanceId).
   const scenarioInstanceRef = useRef<number | null>(null);
   const elapsedReportRef = useRef(0);
+  // Throttling can be a one-frame event (for example, a tab returning from the
+  // background), so latch it until the next ~8 Hz store report instead of allowing a
+  // normal frame to clear the signal before React sees it.
+  const throttledReportRef = useRef(false);
 
   // When a live catastrophe consumes the body the camera is on, hand the camera to a
   // surviving world instead of snapping abruptly back to the origin. Prefer a large, stable
@@ -197,13 +200,14 @@ export const SolarScene = () => {
         );
         scenarioInstanceRef.current = scenario.instanceId;
         elapsedReportRef.current = 0;
+        throttledReportRef.current = false;
       }
 
       if (scenario.status === "running") {
-        // Clamp the real delta exactly like the Kepler clock (timeStore caps to 1/30s)
-        // so a backgrounded-then-refocused tab can't dump a multi-second gap into the
-        // integrator at once — that would spike to the substep cap, jank, and desync T+.
-        stepRuntime(Math.min(delta, 1 / 30), scenario.timeScaleDaysPerSec);
+        // The runtime preserves ordinary low-FPS deltas through a bounded accumulator,
+        // while safely capping background gaps and surfacing any debt/drop as throttling.
+        const step = stepRuntime(delta, scenario.timeScaleDaysPerSec);
+        throttledReportRef.current ||= step.throttled;
       }
 
       writeScenePositions(positionsRef.current, mode);
@@ -221,8 +225,9 @@ export const SolarScene = () => {
           elapsedSimSeconds: getElapsedSimSeconds(),
           fragmentCapHit: getFragmentCapHit(),
           liveFragmentCount: getLiveFragmentCount(),
-          throttled: isThrottled(),
+          throttled: throttledReportRef.current,
         });
+        throttledReportRef.current = false;
       }
       return;
     }

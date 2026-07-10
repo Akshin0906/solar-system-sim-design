@@ -8,6 +8,7 @@ import { useSelectionStore } from "../simulation/selectionStore";
 import { getBodySceneRadius, scaleDistanceFromSun, type ScaleMode } from "../simulation/units";
 import { useReducedMotion } from "../ui/useMediaQuery";
 import {
+  CAMERA_FOV_DEG,
   FOCUS_FRAMING_SAFETY,
   cameraNearForTarget,
   boundsForPoints,
@@ -88,7 +89,7 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
     const positions = positionsRef.current;
     const selectedPosition = positions[selectedId] ? asVector(positions[selectedId]) : new Vector3();
     const cameraAspect = "aspect" in camera && typeof camera.aspect === "number" ? camera.aspect : 1;
-    const fitDistance = (radius: number, safety: number) => fitDistanceForRadius(radius, 48, safety, cameraAspect);
+    const fitDistance = (radius: number, safety: number) => fitDistanceForRadius(radius, CAMERA_FOV_DEG, safety, cameraAspect);
     const pointsForIds = (ids: string[]) =>
       ids.flatMap((id) => {
         const position = positions[id];

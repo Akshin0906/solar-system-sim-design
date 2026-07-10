@@ -115,16 +115,23 @@ const createCoronaTexture = () => {
   return texture;
 };
 
+type BodyImageTextureState = {
+  texture?: Texture;
+  status: "unavailable" | "loading" | "loaded" | "failed";
+};
+
 const useBodyImageTexture = (url?: string) => {
-  const [texture, setTexture] = useState<Texture>();
+  const [state, setState] = useState<BodyImageTextureState>(() => ({
+    status: url ? "loading" : "unavailable",
+  }));
 
   useEffect(() => {
-    setTexture(undefined);
-
     if (!url) {
+      setState({ status: "unavailable" });
       return undefined;
     }
 
+    setState({ status: "loading" });
     let disposed = false;
     const loader = new TextureLoader();
     const loadedTexture = loader.load(
@@ -143,12 +150,12 @@ const useBodyImageTexture = (url?: string) => {
         nextTexture.wrapS = ClampToEdgeWrapping;
         nextTexture.wrapT = ClampToEdgeWrapping;
         nextTexture.needsUpdate = true;
-        setTexture(nextTexture);
+        setState({ status: "loaded", texture: nextTexture });
       },
       undefined,
       () => {
         if (!disposed) {
-          setTexture(undefined);
+          setState({ status: "failed" });
         }
       },
     );
@@ -156,11 +163,10 @@ const useBodyImageTexture = (url?: string) => {
     return () => {
       disposed = true;
       loadedTexture.dispose();
-      setTexture(undefined);
     };
   }, [url]);
 
-  return texture;
+  return state;
 };
 
 const useIdleTexture = (factory: () => Texture | undefined, dependencies: readonly unknown[]) => {
@@ -168,6 +174,7 @@ const useIdleTexture = (factory: () => Texture | undefined, dependencies: readon
 
   useEffect(() => {
     let disposed = false;
+    let createdTexture: Texture | undefined;
     setTexture(undefined);
 
     const load = () => {
@@ -176,6 +183,7 @@ const useIdleTexture = (factory: () => Texture | undefined, dependencies: readon
         nextTexture?.dispose();
         return;
       }
+      createdTexture = nextTexture;
       setTexture(nextTexture);
     };
 
@@ -193,6 +201,7 @@ const useIdleTexture = (factory: () => Texture | undefined, dependencies: readon
       } else if (timeoutId !== undefined) {
         window.clearTimeout(timeoutId);
       }
+      createdTexture?.dispose();
     };
     // The dependency list is intentionally supplied by the caller because these
     // texture factories are body-specific and expensive.
@@ -219,9 +228,15 @@ export const BodyMesh = memo(({ body, mode, positionsRef, selected, showLabel, l
   // Only stars render a corona sprite, so only build (and rasterize) the texture for them
   // — previously every body allocated a 192² CanvasTexture that nothing but the Sun used.
   const coronaTexture = useMemo(() => (body.type === "star" ? createCoronaTexture() : null), [body.type]);
-  const proceduralSurfaceTexture = useIdleTexture(() => createSurfaceTexture(body), [body]);
-  const imageSurfaceTexture = useBodyImageTexture(body.physical.texture);
-  const surfaceTexture = imageSurfaceTexture ?? proceduralSurfaceTexture;
+  const imageSurface = useBodyImageTexture(body.physical.texture);
+  const proceduralSurfaceTexture = useIdleTexture(
+    () =>
+      imageSurface.status === "unavailable" || imageSurface.status === "failed"
+        ? createSurfaceTexture(body)
+        : undefined,
+    [body, imageSurface.status],
+  );
+  const surfaceTexture = imageSurface.texture ?? proceduralSurfaceTexture;
   const bumpTexture = useIdleTexture(() => createBodyBumpTexture(body), [body]);
   const cloudTexture = useIdleTexture(() => createCloudTexture(body), [body]);
   const emphasisOpacity = getEmphasisOpacity(emphasis);

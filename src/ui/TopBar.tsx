@@ -1,5 +1,5 @@
 import { CalendarDays, CircleHelp, Rocket, Search, SlidersHorizontal } from "lucide-react";
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { bodiesById } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
@@ -25,7 +25,6 @@ const ROCKET_SHEET_ID = "rocket-preview-sheet";
 const HELP_POPOVER_ID = "help-popover";
 
 export const TopBar = () => {
-  const [helpOpen, setHelpOpen] = useState(false);
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const selectedId = useSelectionStore((state) => state.selectedId);
@@ -34,8 +33,11 @@ export const TopBar = () => {
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const searchOpen = useUiStore((state) => state.searchOpen);
+  const helpOpen = useUiStore((state) => state.helpOpen);
   const closeSearch = useUiStore((state) => state.closeSearch);
+  const closeHelp = useUiStore((state) => state.closeHelp);
   const toggleSearch = useUiStore((state) => state.toggleSearch);
+  const toggleHelp = useUiStore((state) => state.toggleHelp);
   const toggleSheet = useUiStore((state) => state.toggleSheet);
   const selected = bodiesById.get(selectedId);
 
@@ -47,7 +49,7 @@ export const TopBar = () => {
 
   const handleRocket = () => {
     closeSearch();
-    setHelpOpen(false);
+    closeHelp();
     if (isMobile) {
       toggleSheet("rocket");
     } else {
@@ -71,10 +73,7 @@ export const TopBar = () => {
           ref={searchButtonRef}
           className={`icon-button tooltip-trigger ${searchOpen ? "active" : ""}`}
           type="button"
-          onClick={() => {
-            setHelpOpen(false);
-            toggleSearch();
-          }}
+          onClick={toggleSearch}
           data-tooltip={`Search objects (/ or ${commandKey})`}
           aria-label="Search objects"
           aria-haspopup="dialog"
@@ -90,7 +89,7 @@ export const TopBar = () => {
             type="button"
             onClick={() => {
               closeSearch();
-              setHelpOpen(false);
+              closeHelp();
               toggleSheet("view");
             }}
             data-tooltip="View settings"
@@ -120,10 +119,7 @@ export const TopBar = () => {
           ref={helpButtonRef}
           className={`icon-button tooltip-trigger ${helpOpen ? "active" : ""}`}
           type="button"
-          onClick={() => {
-            closeSearch();
-            setHelpOpen((value) => !value);
-          }}
+          onClick={toggleHelp}
           data-tooltip="Help and shortcuts"
           aria-label="Help and shortcuts"
           aria-haspopup="dialog"
@@ -134,7 +130,7 @@ export const TopBar = () => {
         </button>
       </div>
       <SearchCommand open={searchOpen} onClose={closeSearch} restoreFocusRef={searchButtonRef} />
-      <HelpPopover open={helpOpen} onClose={() => setHelpOpen(false)} triggerRef={helpButtonRef} />
+      <HelpPopover open={helpOpen} onClose={closeHelp} triggerRef={helpButtonRef} />
     </header>
   );
 };

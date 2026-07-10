@@ -4,22 +4,27 @@ import re
 from pathlib import Path
 
 
-CONSTANT_NAMES = (
+LABEL_CONSTANT_NAMES = (
     "REAL_LABEL_REFERENCE_DISTANCE",
     "MIN_REAL_LABEL_SCALE",
     "MAX_REAL_LABEL_SCALE",
     "BODY_LABEL_DISTANCE_FACTOR",
-    "DEFAULT_LABEL_CAMERA_FOV_DEG",
     "MIN_PROJECTED_LABEL_DISTANCE",
     "MIN_PROJECTED_LABEL_SCALE",
     "MAX_PROJECTED_LABEL_SCALE",
 )
-CONSTANT_RE = re.compile(r"export const (" + "|".join(CONSTANT_NAMES) + r") = ([0-9.]+);")
+CONSTANT_NAMES = (*LABEL_CONSTANT_NAMES, "DEFAULT_LABEL_CAMERA_FOV_DEG")
+CONSTANT_RE = re.compile(r"export const (" + "|".join(LABEL_CONSTANT_NAMES) + r") = ([0-9.]+);")
+CAMERA_FOV_RE = re.compile(r"export const CAMERA_FOV_DEG = ([0-9.]+);")
 
 
 def load_constants() -> dict[str, float]:
     source = Path("src/scene/labelScaling.ts").read_text()
     constants = {name: float(value) for name, value in CONSTANT_RE.findall(source)}
+    camera_source = Path("src/scene/cameraFraming.ts").read_text()
+    camera_fov_match = CAMERA_FOV_RE.search(camera_source)
+    if camera_fov_match:
+        constants["DEFAULT_LABEL_CAMERA_FOV_DEG"] = float(camera_fov_match.group(1))
     expected = set(CONSTANT_NAMES)
 
     if set(constants) != expected:

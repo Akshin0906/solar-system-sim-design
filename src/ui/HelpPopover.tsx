@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
-import { useRef, type RefObject } from "react";
-import { useFocusTrap } from "./focusTrap";
+import { useEffect, useRef, type RefObject } from "react";
 import { commandKey } from "./shortcuts";
+import { useIsMobile } from "./useMediaQuery";
 
 type HelpPopoverProps = {
   open: boolean;
@@ -13,12 +13,53 @@ type HelpPopoverProps = {
 // (per DESIGN.md) while giving the previously-dead settings button a real job.
 export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  // Keep the latest onClose without re-running the focus effect every parent
-  // render (TopBar re-renders each frame with the clock).
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const isMobile = useIsMobile();
 
-  useFocusTrap(containerRef, open, () => onCloseRef.current(), triggerRef);
+  // Help is a non-modal popover: focus moves into it when opened, but Tab may
+  // continue into the rest of the toolbar/app. Escape and the close button
+  // return focus to the trigger; an outside pointer press simply dismisses it.
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const focusFrame = window.requestAnimationFrame(() => containerRef.current?.focus());
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      onCloseRef.current();
+      window.requestAnimationFrame(() => triggerRef?.current?.focus());
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      if (containerRef.current?.contains(target) || triggerRef?.current?.contains(target)) {
+        return;
+      }
+      onCloseRef.current();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [open, triggerRef]);
+
+  const closeAndRestoreFocus = () => {
+    onClose();
+    window.requestAnimationFrame(() => triggerRef?.current?.focus());
+  };
 
   if (!open) {
     return null;
@@ -30,45 +71,48 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
       id="help-popover"
       className="help-popover"
       role="dialog"
-      aria-modal="true"
       aria-label="Help and shortcuts"
       tabIndex={-1}
     >
       <div className="help-head">
-        <span>Shortcuts</span>
-        <button className="icon-button subtle" type="button" onClick={onClose} title="Close help" aria-label="Close help">
+        <span>{isMobile ? "Touch controls" : "Shortcuts"}</span>
+        <button className="icon-button subtle" type="button" onClick={closeAndRestoreFocus} title="Close help" aria-label="Close help">
           <X size={15} />
         </button>
       </div>
-      <dl className="help-list">
-        <div>
-          <dt>Play / pause</dt>
-          <dd>
-            <kbd>Space</kbd>
-          </dd>
-        </div>
-        <div>
-          <dt>Step a day</dt>
-          <dd>
-            <kbd>←</kbd>
-            <kbd>→</kbd>
-          </dd>
-        </div>
-        <div>
-          <dt>Search objects</dt>
-          <dd>
-            <kbd>/</kbd>
-            <kbd>{commandKey}</kbd>
-          </dd>
-        </div>
-        <div>
-          <dt>Close popovers</dt>
-          <dd>
-            <kbd>Esc</kbd>
-          </dd>
-        </div>
-      </dl>
-      <div className="help-divider" />
+      {!isMobile && (
+        <>
+          <dl className="help-list">
+            <div>
+              <dt>Play / pause</dt>
+              <dd>
+                <kbd>Space</kbd>
+              </dd>
+            </div>
+            <div>
+              <dt>Step a day</dt>
+              <dd>
+                <kbd>←</kbd>
+                <kbd>→</kbd>
+              </dd>
+            </div>
+            <div>
+              <dt>Search objects</dt>
+              <dd>
+                <kbd>/</kbd>
+                <kbd>{commandKey}</kbd>
+              </dd>
+            </div>
+            <div>
+              <dt>Close popovers</dt>
+              <dd>
+                <kbd>Esc</kbd>
+              </dd>
+            </div>
+          </dl>
+          <div className="help-divider" />
+        </>
+      )}
       <dl className="help-list">
         <div>
           <dt>Rotate view</dt>
@@ -76,15 +120,15 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
         </div>
         <div>
           <dt>Zoom</dt>
-          <dd>Scroll</dd>
+          <dd>{isMobile ? "Pinch" : "Scroll"}</dd>
         </div>
         <div>
           <dt>Pan</dt>
-          <dd>Right-drag</dd>
+          <dd>{isMobile ? "Two-finger drag" : "Right-drag"}</dd>
         </div>
         <div>
           <dt>Inspect a body</dt>
-          <dd>Click it</dd>
+          <dd>{isMobile ? "Tap it" : "Click it"}</dd>
         </div>
       </dl>
     </div>

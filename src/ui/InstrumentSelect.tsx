@@ -117,6 +117,7 @@ export const InstrumentSelect = <T extends string,>({
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const activeOptionRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [menuRect, setMenuRect] = useState<MenuRect | null>(null);
@@ -129,6 +130,7 @@ export const InstrumentSelect = <T extends string,>({
   const flatOptions = useMemo(() => optionGroups.flatMap((group) => group.options), [optionGroups]);
   const selectedIndex = flatOptions.findIndex((option) => option.value === value);
   const selectedOption = selectedIndex >= 0 ? flatOptions[selectedIndex] : undefined;
+  const descriptionId = `${listboxId}-selected-description`;
 
   const updateMenuRect = useCallback(() => {
     const rect = triggerRef.current?.getBoundingClientRect();
@@ -227,8 +229,21 @@ export const InstrumentSelect = <T extends string,>({
     };
   }, [closeMenu, open, updateMenuRect]);
 
+  useEffect(() => {
+    if (open) {
+      activeOptionRef.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeIndex, open]);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) {
+      return;
+    }
+
+    if (event.key === "Tab" && open) {
+      // The listbox uses virtual focus via aria-activedescendant, so Tab should
+      // close it and continue naturally to the next control after the trigger.
+      closeMenu();
       return;
     }
 
@@ -296,6 +311,7 @@ export const InstrumentSelect = <T extends string,>({
         value={value}
         disabled={disabled}
         aria-label={ariaLabel ?? label}
+        aria-describedby={selectedOption?.description ? descriptionId : undefined}
         onChange={(event) => onChange(event.target.value as T)}
       >
         {optionGroups.map((group, groupIndex) =>
@@ -325,6 +341,11 @@ export const InstrumentSelect = <T extends string,>({
           <span className="instrument-select-copy">
             {label && <span className="instrument-select-label">{label}</span>}
             <span className="instrument-select-value">{select}</span>
+            {selectedOption?.description && (
+              <span id={descriptionId} className="instrument-select-description">
+                {selectedOption.description}
+              </span>
+            )}
           </span>
           {selectedOption?.meta && <span className="instrument-select-meta">{selectedOption.meta}</span>}
           <ChevronDown className="instrument-select-chevron" size={15} aria-hidden />
@@ -354,8 +375,13 @@ export const InstrumentSelect = <T extends string,>({
         style={menuStyle}
       >
         {optionGroups.map((group, groupIndex) => (
-          <div className="instrument-select-group" key={`${group.label ?? "group"}-${groupIndex}`}>
-            {group.label && <div className="instrument-select-group-label">{group.label}</div>}
+          <div
+            className="instrument-select-group"
+            key={`${group.label ?? "group"}-${groupIndex}`}
+            role={group.label ? "group" : "presentation"}
+            aria-label={group.label}
+          >
+            {group.label && <div className="instrument-select-group-label" aria-hidden>{group.label}</div>}
             {group.options.map((option) => {
               optionIndex += 1;
               const currentIndex = optionIndex;
@@ -363,16 +389,17 @@ export const InstrumentSelect = <T extends string,>({
               const active = currentIndex === activeIndex;
 
               return (
-                <button
+                <div
                   key={option.value}
                   id={`${listboxId}-option-${currentIndex}`}
                   className={`instrument-select-option ${selected ? "selected" : ""} ${active ? "active" : ""}`.trim()}
-                  type="button"
                   role="option"
+                  ref={active ? activeOptionRef : undefined}
                   aria-selected={selected}
-                  disabled={option.disabled}
+                  aria-disabled={option.disabled || undefined}
                   onMouseEnter={() => setActiveIndex(currentIndex)}
-                  onClick={() => selectOption(option)}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => !option.disabled && selectOption(option)}
                 >
                   <span className="instrument-select-option-mark" aria-hidden>
                     {selected && <Check size={14} />}
@@ -382,7 +409,7 @@ export const InstrumentSelect = <T extends string,>({
                     {option.description && <small>{option.description}</small>}
                   </span>
                   {option.meta && <span className="instrument-select-option-meta">{option.meta}</span>}
-                </button>
+                </div>
               );
             })}
           </div>
@@ -399,12 +426,15 @@ export const InstrumentSelect = <T extends string,>({
         ref={triggerRef}
         className="instrument-select-trigger"
         type="button"
+        role="combobox"
         disabled={disabled}
         aria-label={ariaLabel ?? label}
+        aria-describedby={selectedOption?.description ? descriptionId : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
-        aria-activedescendant={open ? `${listboxId}-option-${activeIndex}` : undefined}
+        aria-activedescendant={open && menuRect ? `${listboxId}-option-${activeIndex}` : undefined}
+        aria-autocomplete="none"
         onClick={() => {
           if (open) {
             closeMenu();
@@ -422,6 +452,11 @@ export const InstrumentSelect = <T extends string,>({
         {selectedOption?.meta && <span className="instrument-select-meta">{selectedOption.meta}</span>}
         <ChevronDown className="instrument-select-chevron" size={15} aria-hidden />
       </button>
+      {selectedOption?.description && (
+        <span id={descriptionId} className="sr-only">
+          {selectedOption.description}
+        </span>
+      )}
 
       {menu && createPortal(menu, document.body)}
     </div>

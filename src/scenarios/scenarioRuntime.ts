@@ -25,9 +25,34 @@ type Runtime = {
   // scenario, so their Kepler positions only need recomputing when the mode changes — not
   // every frame. null = not yet written.
   baseLayerMode: ScaleMode | null;
+  // Real render time waiting to be handed to the physics integrator. Keeping this debt
+  // outside the sim-time accumulator lets low-FPS frames catch up without allowing a
+  // backgrounded tab to dump an unbounded gap into one render.
+  pendingRealSeconds: number;
 };
 
 let current: Runtime | null = null;
+
+// A quarter second still fits below the integrator's 4,000-substep ceiling at the
+// store's maximum 300 days/sec scale (3,600 steps). Retain one additional slice so a
+// brief stall can catch up on the next frame, but discard anything beyond that bounded
+// backlog and surface it as throttling.
+export const SCENARIO_MAX_FRAME_ADVANCE_SECONDS = 0.25;
+export const SCENARIO_MAX_REALTIME_BACKLOG_SECONDS = 0.5;
+
+export type ScenarioRuntimeStepResult = {
+  advancedRealSeconds: number;
+  pendingRealSeconds: number;
+  droppedRealSeconds: number;
+  throttled: boolean;
+};
+
+const EMPTY_STEP_RESULT: ScenarioRuntimeStepResult = {
+  advancedRealSeconds: 0,
+  pendingRealSeconds: 0,
+  droppedRealSeconds: 0,
+  throttled: false,
+};
 
 export const runtimeInstanceId = () => current?.instanceId ?? null;
 
@@ -57,6 +82,7 @@ export const startRuntime = (
     bodiesById,
     frozenDate: new Date(startDateMs),
     baseLayerMode: null,
+    pendingRealSeconds: 0,
   };
 };
 
@@ -64,15 +90,38 @@ export const stopRuntime = () => {
   current = null;
 };
 
-// Step the live sim forward by one rendered frame's worth of time.
-export const stepRuntime = (realDeltaSeconds: number, timeScaleDaysPerSec: number) => {
+// Step the live sim forward by one rendered frame's worth of time. Ordinary low-FPS
+// deltas are preserved in full. Long stalls are metered through a bounded accumulator:
+// one quarter-second slice runs now, one can wait for the next frame, and any excess is
+// explicitly dropped and reported instead of silently slowing the scenario clock.
+export const stepRuntime = (
+  realDeltaSeconds: number,
+  timeScaleDaysPerSec: number,
+): ScenarioRuntimeStepResult => {
   if (!current) {
-    return;
+    return EMPTY_STEP_RESULT;
   }
-  const simSeconds = realDeltaSeconds * timeScaleDaysPerSec * DAY_SECONDS;
+
+  const incomingRealSeconds = Number.isNaN(realDeltaSeconds) || realDeltaSeconds <= 0 ? 0 : realDeltaSeconds;
+  const unboundedBacklog = current.pendingRealSeconds + incomingRealSeconds;
+  const boundedBacklog = Math.min(unboundedBacklog, SCENARIO_MAX_REALTIME_BACKLOG_SECONDS);
+  const droppedRealSeconds = Math.max(unboundedBacklog - boundedBacklog, 0);
+  const advancedRealSeconds = Math.min(boundedBacklog, SCENARIO_MAX_FRAME_ADVANCE_SECONDS);
+  current.pendingRealSeconds = boundedBacklog - advancedRealSeconds;
+
+  const simSeconds = advancedRealSeconds * timeScaleDaysPerSec * DAY_SECONDS;
   const { scenario, params, state, bodiesById } = current;
   const beforeStep = scenario.drive ? (dt: number) => scenario.drive!({ state, params, bodiesById }, dt) : undefined;
   advance(state, simSeconds, beforeStep);
+
+  const throttled = state.throttled || droppedRealSeconds > 0 || current.pendingRealSeconds > 0;
+  state.throttled = throttled;
+  return {
+    advancedRealSeconds,
+    pendingRealSeconds: current.pendingRealSeconds,
+    droppedRealSeconds,
+    throttled,
+  };
 };
 
 // Project the live sim into the scene-position cache that BodyMesh already reads.

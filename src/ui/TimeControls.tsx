@@ -1,4 +1,4 @@
-import { CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
+import { AlertTriangle, CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
 import type { CSSProperties } from "react";
 import { DAY_MS, TIME_PRESETS, type TimePresetId } from "../data/constants";
 import { useScenarioStore } from "../scenarios/scenarioStore";
@@ -8,6 +8,7 @@ import {
   SIMULATION_WINDOW_DAYS,
   getDateMsFromEpochDays,
   getDaysFromEpoch,
+  isOrbitModelExtrapolated,
   useTimeStore,
 } from "../simulation/timeStore";
 import { formatNowDelta, formatTimeScale } from "../simulation/units";
@@ -78,7 +79,31 @@ const TimelineScrubber = () => {
 
 const SheetDate = () => {
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
-  return <span className="sheet-date-line">{scrubDateFormatter.format(new Date(simulationDateMs))}</span>;
+  const extrapolated = isOrbitModelExtrapolated(simulationDateMs);
+
+  return (
+    <div className="sheet-date-status">
+      <span className="sheet-date-line">{scrubDateFormatter.format(new Date(simulationDateMs))}</span>
+      {extrapolated && (
+        <span className="orbit-model-warning" role="status">
+          <AlertTriangle size={13} aria-hidden /> Extrapolated outside the validated 1800–2050 orbit model
+        </span>
+      )}
+    </div>
+  );
+};
+
+const OrbitModelWarning = () => {
+  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
+  if (!isOrbitModelExtrapolated(simulationDateMs)) {
+    return null;
+  }
+
+  return (
+    <span className="orbit-model-warning desktop-orbit-warning" role="status">
+      <AlertTriangle size={13} aria-hidden /> Orbit positions extrapolated beyond the validated 1800–2050 model
+    </span>
+  );
 };
 
 // Mobile transport chip: surfaces the absolute sim date (otherwise unreachable on a
@@ -87,19 +112,22 @@ const SpeedChip = ({ active, speedLabel, onOpen }: { active: boolean; speedLabel
   const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const absoluteDateLabel = scrubDateFormatter.format(new Date(simulationDateMs));
   const nowDeltaLabel = formatNowDelta((simulationDateMs - Date.now()) / DAY_MS);
+  const extrapolated = isOrbitModelExtrapolated(simulationDateMs);
 
   return (
     <button
-      className={`speed-chip ${active ? "active" : ""}`}
+      className={`speed-chip ${active ? "active" : ""} ${extrapolated ? "extrapolated" : ""}`.trim()}
       type="button"
       onClick={onOpen}
-      aria-label={`Time and speed: ${absoluteDateLabel}, ${speedLabel}, ${nowDeltaLabel} from now`}
+      aria-label={`Time and speed: ${absoluteDateLabel}, ${speedLabel}, ${nowDeltaLabel} from now${
+        extrapolated ? ", orbit positions extrapolated beyond the validated 1800 to 2050 model" : ""
+      }`}
       aria-haspopup="dialog"
     >
-      <Gauge size={15} aria-hidden />
+      {extrapolated ? <AlertTriangle size={15} aria-hidden /> : <Gauge size={15} aria-hidden />}
       <span className="speed-chip-value">{absoluteDateLabel}</span>
       <span className="speed-chip-delta">
-        {speedLabel} · {nowDeltaLabel}
+        {extrapolated ? `Extrapolated model · ${speedLabel}` : `${speedLabel} · ${nowDeltaLabel}`}
       </span>
     </button>
   );
@@ -276,6 +304,7 @@ export const TimeControls = () => {
       <button className="reset-time" type="button" onClick={jumpToNow}>
         Now
       </button>
+      <OrbitModelWarning />
     </section>
   );
 };

@@ -28,6 +28,8 @@ const defaultPreset = TIME_PRESETS[2];
 const j2000Ms = Date.parse(J2000_EPOCH);
 
 export const SIMULATION_WINDOW_DAYS = 365.256 * 100;
+export const ORBIT_MODEL_VALID_FROM_MS = Date.parse("1800-01-01T00:00:00.000Z");
+export const ORBIT_MODEL_VALID_TO_MS = Date.parse("2050-12-31T23:59:59.999Z");
 export const MIN_TIME_SCALE = TIME_PRESETS[0].secondsPerSecond;
 export const MAX_TIME_SCALE = TIME_PRESETS[TIME_PRESETS.length - 1].secondsPerSecond;
 const MAX_TICK_REAL_SECONDS = 1 / 30;
@@ -119,6 +121,9 @@ export const useTimeStore = create<TimeState>((set, get) => ({
 }));
 
 export const getDaysFromEpoch = (dateMs: number) => (dateMs - j2000Ms) / DAY_MS;
+
+export const isOrbitModelExtrapolated = (dateMs: number) =>
+  dateMs < ORBIT_MODEL_VALID_FROM_MS || dateMs > ORBIT_MODEL_VALID_TO_MS;
 
 export const getDateMsFromEpochDays = (days: number) =>
   clampSimulationDateMs(getDateMsFromEpochDaysValue(days));

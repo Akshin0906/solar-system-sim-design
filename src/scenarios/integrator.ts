@@ -16,6 +16,9 @@ export const FIXED_STEP_SECONDS = 1_800;
 // dropped (sim-time slows) rather than spiralling — and `state.throttled` flips so
 // the UI can say so. No silent truncation.
 export const MAX_SUBSTEPS_PER_FRAME = 4_000;
+// The UI only needs recent narration plus a count-like signal. Bound retained history so
+// a long collision-heavy sandbox cannot grow memory for the lifetime of the tab.
+export const MAX_RETAINED_SCENARIO_EVENTS = 256;
 // Plummer softening: forces use (r^2 + EPS^2) so a near-miss can't inject infinite
 // energy with a fixed step. ~30k km is well below planetary separations but smooths
 // the singularity that collision-merging would otherwise have to catch perfectly.
@@ -74,6 +77,13 @@ const EJECTION_DISTANCE_KM = 250 * AU_KM;
 const VELOCITY_SAMPLE_SECONDS = 3_600;
 
 const PARTICIPANT_TYPES = new Set<CelestialBody["type"]>(["star", "planet"]);
+
+const recordEvent = (state: IntegratorState, event: IntegratorState["events"][number]) => {
+  state.events.push(event);
+  if (state.events.length > MAX_RETAINED_SCENARIO_EVENTS) {
+    state.events.splice(0, state.events.length - MAX_RETAINED_SCENARIO_EVENTS);
+  }
+};
 
 // Heliocentric velocity of a data body via central difference of the pure Kepler
 // solver. The Sun sits at the origin for all dates, so this returns ~0 for it and
@@ -232,7 +242,7 @@ const merge = (state: IntegratorState, a: SimBody, b: SimBody) => {
   victim.alive = false;
   state.revision += 1;
 
-  state.events.push({
+  recordEvent(state, {
     type: "collision",
     simSeconds: state.elapsedSimSeconds,
     aId: survivor.id,
@@ -439,7 +449,7 @@ const shatter = (state: IntegratorState, a: SimBody, b: SimBody, speedRel: numbe
     dir: impactAxis,
     strength: 0.45,
   });
-  state.events.push({
+  recordEvent(state, {
     type: "collision",
     simSeconds: state.elapsedSimSeconds,
     aId: a.id,
@@ -487,7 +497,7 @@ const mergeWithRing = (state: IntegratorState, a: SimBody, b: SimBody, ringFract
   killBody(state, victim);
 
   emitFragments(state, count, ringMu, ringVol, comPos, comVel, escSpeed * 0.95, survivor.color);
-  state.events.push({
+  recordEvent(state, {
     type: "collision",
     simSeconds: state.elapsedSimSeconds,
     aId: survivor.id,
@@ -605,7 +615,7 @@ const crater = (state: IntegratorState, a: SimBody, b: SimBody, speedRel: number
     comVel[1] - pSplash[1] / survivorMu,
     comVel[2] - pSplash[2] / survivorMu,
   ];
-  state.events.push({
+  recordEvent(state, {
     type: "collision",
     simSeconds: state.elapsedSimSeconds,
     aId: planet.id,
@@ -639,7 +649,7 @@ export const tidalDisrupt = (state: IntegratorState, body: SimBody, streamDir: V
     body.color,
     { dir: streamDir, strength: 0.85 },
   );
-  state.events.push({
+  recordEvent(state, {
     type: "collision",
     simSeconds: state.elapsedSimSeconds,
     aId: body.id,
@@ -743,7 +753,7 @@ const logEjections = (state: IntegratorState) => {
       const outbound = sb.posKm[0] * sb.velKmS[0] + sb.posKm[1] * sb.velKmS[1] + sb.posKm[2] * sb.velKmS[2] > 0;
       if (outbound) {
         state.ejectedIds.add(sb.id);
-        state.events.push({
+        recordEvent(state, {
           type: "ejection",
           simSeconds: state.elapsedSimSeconds,
           aId: sb.id,
@@ -804,7 +814,7 @@ const compactDeadFragments = (state: IntegratorState) => {
   for (const sb of state.bodies) {
     if (!sb.alive && sb.kind === "fragment") {
       hasDeadFragment = true;
-      break;
+      state.ejectedIds.delete(sb.id);
     }
   }
   if (!hasDeadFragment) {

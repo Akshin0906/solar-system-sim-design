@@ -22,6 +22,10 @@ type RocketCameraTarget = {
 
 type SelectionState = {
   selectedId: string;
+  // Increments for every explicit body-selection request, including a repeated
+  // selection of the current body. Mobile UI uses this to reopen a dismissed
+  // inspector when the user taps the same body again.
+  selectionRevision: number;
   cameraMode: CameraMode;
   rocketTarget: RocketCameraTarget | null;
   setSelectedId: (selectedId: string) => void;
@@ -39,10 +43,16 @@ const positionsMatch = (a: Vec3, b: Vec3) =>
 
 export const useSelectionStore = create<SelectionState>((set) => ({
   selectedId: "earth",
+  selectionRevision: 0,
   cameraMode: "overview",
   rocketTarget: null,
   setSelectedId: (selectedId) => set({ selectedId, rocketTarget: null }),
-  selectBody: (selectedId) => set({ selectedId, rocketTarget: null }),
+  selectBody: (selectedId) =>
+    set((state) => ({
+      selectedId,
+      selectionRevision: state.selectionRevision + 1,
+      rocketTarget: null,
+    })),
   setCameraMode: (cameraMode) =>
     set((state) => ({
       cameraMode,

@@ -1,8 +1,10 @@
-import { readdir, stat, writeFile } from "node:fs/promises";
-import { extname, join, relative, sep } from "node:path";
+import { readFile, readdir, writeFile } from "node:fs/promises";
+import { extname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-const distDir = new URL("../dist/", import.meta.url);
+const defaultDistDir = fileURLToPath(new URL("../dist/", import.meta.url));
+const distDir = resolve(process.argv[3] ?? defaultDistDir);
 const cacheableExtensions = new Set([
   ".css",
   ".html",
@@ -53,25 +55,27 @@ const walk = async (directory) => {
   return files;
 };
 
-const files = await walk(distDir.pathname);
+const files = await walk(distDir);
 const records = await Promise.all(
   files.map(async (file) => {
-    const metadata = await stat(file);
-    const publicPath = toPublicPath(relative(distDir.pathname, file).split(sep).join("/"));
-    return { publicPath, size: metadata.size };
+    const content = await readFile(file);
+    const publicPath = toPublicPath(relative(distDir, file).split(sep).join("/"));
+    const contentHash = createHash("sha256").update(content).digest("hex");
+    return { publicPath, contentHash };
   }),
 );
 
 const precacheUrls = [basePath, ...records.map((record) => record.publicPath)].sort();
-// Hash path + size only. Vite already content-hashes asset filenames, so identical
-// content yields an identical cache name across builds; mixing in mtimeMs would make
-// every rebuild of the same commit churn the entire precache for returning users.
+// Include each file's bytes, not just its path or size. Public assets such as the
+// manifest and icons do not have Vite content hashes in their filenames, and a
+// same-size edit must still produce a fresh cache.
 const cacheHash = createHash("sha256")
-  .update(records.map((record) => `${record.publicPath}:${record.size}`).sort().join("|"))
+  .update(records.map((record) => `${record.publicPath}:${record.contentHash}`).sort().join("|"))
   .digest("hex")
   .slice(0, 12);
 
-const serviceWorker = `const CACHE_NAME = "solar-system-sim-${cacheHash}";
+const serviceWorker = `const CACHE_PREFIX = "solar-system-sim-";
+const CACHE_NAME = CACHE_PREFIX + "${cacheHash}";
 const BASE_PATH = ${JSON.stringify(basePath)};
 const PRECACHE_URLS = ${JSON.stringify(precacheUrls, null, 2)};
 
@@ -88,7 +92,13 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -129,5 +139,5 @@ self.addEventListener("fetch", (event) => {
 });
 `;
 
-await writeFile(new URL("../dist/service-worker.js", import.meta.url), serviceWorker);
+await writeFile(join(distDir, "service-worker.js"), serviceWorker);
 console.log(`Generated service worker with ${precacheUrls.length} precached URLs.`);

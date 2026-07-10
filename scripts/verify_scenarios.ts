@@ -13,6 +13,16 @@ import {
   tidalDisrupt,
 } from "../src/scenarios/integrator";
 import { IMPACTOR_ID, INTERLOPER_ID, scenarioById } from "../src/scenarios/registry";
+import {
+  SCENARIO_MAX_FRAME_ADVANCE_SECONDS,
+  SCENARIO_MAX_REALTIME_BACKLOG_SECONDS,
+  getElapsedSimSeconds,
+  getParticipant,
+  isThrottled,
+  startRuntime,
+  stepRuntime,
+  stopRuntime,
+} from "../src/scenarios/scenarioRuntime";
 import { useSelectionStore } from "../src/simulation/selectionStore";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import type { IntegratorState, SimBody } from "../src/scenarios/types";
@@ -124,6 +134,59 @@ check("integration is deterministic (identical runs match exactly)", () => {
   const a = run();
   const b = run();
   assert.deepEqual(a, b, "two identical runs diverged");
+});
+
+check("one low-FPS frame preserves the same elapsed time and state as smaller frames", () => {
+  const timeScaleDaysPerSec = 30;
+  const run = (realFrameDeltas: number[]) => {
+    startRuntime(1, "freefall", {}, bodies, bodiesById, J2000_MS);
+    for (const realDeltaSeconds of realFrameDeltas) {
+      stepRuntime(realDeltaSeconds, timeScaleDaysPerSec);
+    }
+    const result = {
+      elapsedSimSeconds: getElapsedSimSeconds(),
+      earthPosition: [...getParticipant("earth")!.posKm] as Vec3,
+      throttled: isThrottled(),
+    };
+    stopRuntime();
+    return result;
+  };
+
+  const smallerFrames = run([0.05, 0.05, 0.05, 0.05]);
+  const lowFpsFrame = run([0.2]);
+  const expectedSimSeconds = 0.2 * timeScaleDaysPerSec * DAY_SECONDS;
+  assert.equal(lowFpsFrame.elapsedSimSeconds, expectedSimSeconds, "the 0.2s frame must not be clamped to 1/30s");
+  assert.deepEqual(lowFpsFrame, smallerFrames, "equivalent real time must produce the same deterministic state");
+  assert.equal(lowFpsFrame.throttled, false, "an ordinary low-FPS frame should fit without throttling");
+});
+
+check("background backlog is bounded and any deferred or dropped time is reported", () => {
+  startRuntime(2, "freefall", {}, bodies, bodiesById, J2000_MS);
+  const oversizedDelta = SCENARIO_MAX_REALTIME_BACKLOG_SECONDS + SCENARIO_MAX_FRAME_ADVANCE_SECONDS;
+  const capped = stepRuntime(oversizedDelta, 1);
+
+  assert.equal(capped.advancedRealSeconds, SCENARIO_MAX_FRAME_ADVANCE_SECONDS);
+  assert.equal(
+    capped.pendingRealSeconds,
+    SCENARIO_MAX_REALTIME_BACKLOG_SECONDS - SCENARIO_MAX_FRAME_ADVANCE_SECONDS,
+  );
+  assert.equal(capped.droppedRealSeconds, SCENARIO_MAX_FRAME_ADVANCE_SECONDS);
+  assert.equal(capped.throttled, true, "bounded frame work must be surfaced as throttled");
+  assert.equal(isThrottled(), true, "the runtime status must expose the capped frame");
+  assert.equal(
+    getElapsedSimSeconds(),
+    SCENARIO_MAX_FRAME_ADVANCE_SECONDS * DAY_SECONDS,
+    "only the bounded per-frame slice should advance immediately",
+  );
+
+  const drained = stepRuntime(0, 1);
+  assert.equal(drained.pendingRealSeconds, 0, "the retained slice should catch up on the next frame");
+  assert.equal(
+    getElapsedSimSeconds(),
+    SCENARIO_MAX_REALTIME_BACKLOG_SECONDS * DAY_SECONDS,
+    "the bounded backlog should be preserved while excess time stays dropped",
+  );
+  stopRuntime();
 });
 
 // --- 4. Collision: heavy rogue consumes the Sun ------------------------------

@@ -458,6 +458,15 @@ select:focus:not(:focus-visible) {
   border-radius: var(--radius);
 }
 
+/* Keep transient top-bar surfaces inside the clear center lane on desktop. At
+   1280px this places their right edge before the inspector rail instead of
+   letting the inspector paint over Help/Search. */
+.search-popover,
+.help-popover {
+  z-index: 30;
+  right: max(0px, calc((1480px - 100vw) / 2));
+}
+
 .help-head {
   display: flex;
   align-items: center;
@@ -532,6 +541,17 @@ kbd {
   border: 1px solid var(--hairline);
   border-radius: 7px;
   background: rgba(0, 0, 0, 0.18);
+}
+
+.segmented-control.direction-control {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.direction-control button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
 }
 
 .segmented-control button {
@@ -647,6 +667,15 @@ kbd {
   white-space: nowrap;
 }
 
+.instrument-select-description {
+  overflow: hidden;
+  color: var(--quiet);
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .instrument-select-meta {
   display: inline-flex;
   align-items: center;
@@ -724,7 +753,7 @@ kbd {
   color: #ffe0a5;
 }
 
-.instrument-select-option:disabled {
+.instrument-select-option[aria-disabled="true"] {
   color: rgba(245, 241, 232, 0.42);
   cursor: not-allowed;
 }
@@ -985,17 +1014,40 @@ option {
 }
 
 .time-controls {
+  --transport-left: max(360px, calc(50% - 450px));
   position: absolute;
   bottom: max(16px, env(safe-area-inset-bottom));
-  left: 50%;
+  left: var(--transport-left);
   display: grid;
-  width: min(900px, calc(100vw - 32px));
+  width: min(900px, calc(100vw - var(--transport-left) - 16px));
   grid-template-columns: repeat(4, 34px) minmax(126px, 150px) minmax(110px, 1fr) minmax(160px, 1.5fr) 46px;
   align-items: center;
   gap: 8px;
   padding: 9px;
   border-radius: var(--radius);
-  transform: translateX(-50%);
+  transform: none;
+}
+
+.orbit-model-warning {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #f3d49a;
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+.desktop-orbit-warning {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 7px);
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 5px 8px;
+  border: 1px solid rgba(217, 173, 105, 0.36);
+  border-radius: 7px;
+  background: rgba(30, 23, 12, 0.84);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(14px) saturate(120%);
 }
 
 .transport-bar {
@@ -1234,7 +1286,7 @@ input[type="range"] {
 
 .sheet-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: minmax(0, 1fr) 44px;
   align-items: center;
   gap: 8px;
 }
@@ -1248,8 +1300,8 @@ input[type="range"] {
 }
 
 .sheet-close {
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
 }
 
 .sheet-body {
@@ -1289,6 +1341,11 @@ input[type="range"] {
   font-weight: 650;
 }
 
+.sheet-date-status {
+  display: grid;
+  gap: 4px;
+}
+
 .sheet-select {
   padding: 8px 9px;
   border: 1px solid var(--hairline);
@@ -1315,6 +1372,35 @@ input[type="range"] {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
   backdrop-filter: blur(18px) saturate(125%);
   transform: translate(-50%, -50%);
+}
+
+.scene-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 14;
+  display: grid;
+  width: min(390px, calc(100vw - 32px));
+  gap: 9px;
+  padding: 15px;
+  border: 1px solid rgba(201, 116, 92, 0.48);
+  border-radius: var(--radius);
+  background: rgba(20, 16, 13, 0.92);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px) saturate(125%);
+  transform: translate(-50%, -50%);
+}
+
+.scene-error strong {
+  font-size: 16px;
+  font-weight: 680;
+}
+
+.scene-error p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .webgl-fallback-kicker {
@@ -1498,7 +1584,9 @@ input[type="range"] {
 }
 
 .rocket-panel {
-  --rocket-panel-top: 292px;
+  /* The scale/view stack ends at ~370px at 1280x720; keep this second
+     left-rail surface below it and scroll its body in shorter viewports. */
+  --rocket-panel-top: 382px;
   position: absolute;
   left: 16px;
   top: var(--rocket-panel-top);
@@ -1876,6 +1964,17 @@ input[type="range"] {
   user-select: none;
 }
 
+@media (min-width: 901px) and (max-width: 1100px) and (pointer: fine) {
+  .time-controls {
+    grid-template-columns: repeat(4, 30px) minmax(70px, 110px) minmax(70px, 1fr) minmax(110px, 1.5fr) 38px;
+    gap: 5px;
+  }
+
+  .time-controls .transport {
+    width: 30px;
+  }
+}
+
 @media (max-width: 900px), (pointer: coarse) {
   :root {
     --mobile-control-bottom: max(12px, env(safe-area-inset-bottom));
@@ -1883,8 +1982,9 @@ input[type="range"] {
 
   .top-bar {
     display: flex;
-    left: 12px;
-    width: calc(100vw - 24px);
+    right: max(12px, env(safe-area-inset-right));
+    left: max(12px, env(safe-area-inset-left));
+    width: auto;
     gap: 10px;
     min-height: 58px;
     padding: 7px 8px 7px 12px;
@@ -1927,20 +2027,37 @@ input[type="range"] {
     max-height: calc(100dvh - 96px - env(safe-area-inset-bottom));
   }
 
+  .search-input-wrap {
+    grid-template-columns: 16px minmax(0, 1fr) 44px;
+  }
+
   .body-label {
     /* Touch-friendly without the oversized 58px square that read as chunky, overlapping
        boxes near the Sun. A wider-than-tall pill keeps a comfortable tap target (matching
        the 44px controls elsewhere) while staying legible and letting more labels coexist. */
     min-width: 44px;
-    min-height: 36px;
+    min-height: 44px;
     padding: 4px 11px;
   }
 
   .segmented-control button,
+  .toggle-row label,
   .moon-list button,
   .inspector-actions button,
   .doomsday-segment {
     min-height: 44px;
+  }
+
+  .instrument-select-trigger,
+  .range-shell,
+  .sheet-now,
+  .doomsday-scenario-btn {
+    min-height: 44px;
+  }
+
+  .sheet .icon-button {
+    width: 44px;
+    height: 44px;
   }
 
   /* The Doomsday choice segments are a primary touch target on the scenario sheet; lift
@@ -1958,6 +2075,15 @@ input[type="range"] {
     bottom: calc(var(--mobile-control-bottom) + 72px);
     width: min(340px, calc(100vw - 20px));
   }
+
+  .discoverability-cue button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .doomsday-launch {
+    min-height: 44px;
+  }
 }
 
 @media (max-width: 430px) {
@@ -1971,8 +2097,8 @@ input[type="range"] {
   }
 
   .top-bar .icon-button {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
   }
 }
 
@@ -2011,13 +2137,19 @@ input[type="range"] {
 /* --- Doomsday scenarios -------------------------------------------------- */
 .doomsday-dock {
   position: absolute;
-  left: 16px;
+  left: max(16px, env(safe-area-inset-left));
   bottom: max(76px, calc(env(safe-area-inset-bottom) + 76px));
   z-index: 12;
   display: grid;
   gap: 10px;
   justify-items: start;
   pointer-events: none;
+}
+
+/* Keep the launcher available while the rocket panel is open without stealing
+   most of the rocket panel's vertical space on a 720px-tall laptop viewport. */
+.doomsday-dock.rocket-open {
+  left: 316px;
 }
 
 /* When the mobile inspector peek bar is showing it occupies the same bottom band; lift the
@@ -2068,7 +2200,9 @@ input[type="range"] {
 .doomsday-panel {
   pointer-events: auto;
   width: min(330px, calc(100vw - 32px));
-  max-height: min(70vh, 560px);
+  /* The panel grows upward from its dock. This cap keeps its top below the
+     scale/view stack just like the mutually-exclusive rocket panel. */
+  max-height: min(70vh, 560px, max(0px, calc(var(--app-viewport-height) - 502px)));
   overflow-y: auto;
   padding: 13px;
   border: 1px solid var(--hairline);

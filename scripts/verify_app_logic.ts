@@ -9,7 +9,17 @@ import { computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
 import { rocketLaunchModes } from "../src/features/rockets/missionOptions";
 import { getSceneLabelledIds } from "../src/scene/sceneLabels";
+import {
+  MIN_CAMERA_NEAR,
+  cameraNearForTarget,
+  fitDistanceForRadius,
+} from "../src/scene/cameraFraming";
+import { getBodyLabelScale } from "../src/scene/labelScaling";
+import { isOrbitModelExtrapolated } from "../src/simulation/timeStore";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
+import { rankSearchItems } from "../src/ui/searchRanking";
+import { useUiStore } from "../src/ui/uiStore";
+import { useSelectionStore } from "../src/simulation/selectionStore";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -255,9 +265,23 @@ const assertBodyDataInvariants = () => {
         `${body.id} semiMajorAxisKm must be positive`,
       );
       assert(
+        Number.isFinite(body.orbit.eccentricity) &&
+          body.orbit.eccentricity >= 0 &&
+          body.orbit.eccentricity < 1,
+        `${body.id} eccentricity must describe a bound elliptical orbit`,
+      );
+      assert(
         Number.isFinite(body.orbit.orbitalPeriodDays) && body.orbit.orbitalPeriodDays > 0,
         `${body.id} orbitalPeriodDays must be positive`,
       );
+    }
+
+    const ancestry = new Set([body.id]);
+    let parentId = body.parentId;
+    while (parentId) {
+      assert(!ancestry.has(parentId), `${body.id} parent chain contains a cycle at ${parentId}`);
+      ancestry.add(parentId);
+      parentId = bodiesById.get(parentId)?.parentId ?? null;
     }
   }
 
@@ -543,6 +567,82 @@ const assertSafeBooleanPreferences = () => {
   }
 };
 
+const assertRuntimeUiMathHelpers = () => {
+  const normalFit = fitDistanceForRadius(2, 48, 1.55, 1);
+  const doubleRadiusFit = fitDistanceForRadius(4, 48, 1.55, 1);
+  const portraitFit = fitDistanceForRadius(2, 48, 1.55, 0.6);
+  assertClose(doubleRadiusFit / normalFit, 2, 1e-12, "camera fit radius scaling");
+  assert(portraitFit > normalFit, "portrait camera framing should compensate for the narrower horizontal FOV");
+
+  assert.equal(cameraNearForTarget(0.5, 1), MIN_CAMERA_NEAR, "camera inside a target must use the minimum near plane");
+  const nearSurface = cameraNearForTarget(1.001, 1);
+  assert(nearSurface > 0 && nearSurface < 0.001, "near plane must remain inside a narrow surface clearance");
+
+  const readableNear = getBodyLabelScale("readable", 0.05, 48);
+  const readableFar = getBodyLabelScale("readable", 20, 48);
+  assert(readableNear < readableFar, "readable label compensation should counter perspective scaling across distance");
+  assert.equal(getBodyLabelScale("real", 0), 0.42, "real-mode labels should retain their minimum scale up close");
+  assert.equal(getBodyLabelScale("real", Number.POSITIVE_INFINITY), 1, "non-finite real-mode distances should stay bounded");
+
+  assert.equal(isOrbitModelExtrapolated(Date.parse("1800-01-01T00:00:00.000Z")), false);
+  assert.equal(isOrbitModelExtrapolated(Date.parse("2050-12-31T23:59:59.999Z")), false);
+  assert.equal(isOrbitModelExtrapolated(Date.parse("1799-12-31T23:59:59.999Z")), true);
+  assert.equal(isOrbitModelExtrapolated(Date.parse("2051-01-01T00:00:00.000Z")), true);
+};
+
+const assertSearchRanking = () => {
+  const ranked = rankSearchItems(
+    [
+      {
+        title: "Saturn system",
+        subtitle: "Frame Saturn and its major moons",
+        keywords: "saturn titan enceladus rhea iapetus",
+      },
+      { title: "Titan", subtitle: "Moon", keywords: "titan moon saturn" },
+      { title: "Titania", subtitle: "Moon", keywords: "titania moon uranus" },
+    ],
+    "Titan",
+  );
+
+  assert.deepEqual(
+    ranked.map((item) => item.title),
+    ["Titan", "Titania", "Saturn system"],
+    "exact and prefix title matches should outrank incidental command keywords",
+  );
+};
+
+const assertTransientUiMutualExclusion = () => {
+  useUiStore.setState({ activeSheet: "none", searchOpen: false, helpOpen: false });
+  useUiStore.getState().openHelp();
+  assert.equal(useUiStore.getState().helpOpen, true);
+  assert.equal(useUiStore.getState().searchOpen, false);
+
+  useUiStore.getState().openSearch();
+  assert.equal(useUiStore.getState().searchOpen, true);
+  assert.equal(useUiStore.getState().helpOpen, false, "Search must close Help so only one focus owner exists");
+
+  useUiStore.getState().openHelp();
+  useUiStore.getState().openSheet("view");
+  assert.equal(useUiStore.getState().helpOpen, false, "Opening a mobile sheet must dismiss Help");
+  useUiStore.getState().closeSheet();
+};
+
+const assertRepeatedBodySelectionIsObservable = () => {
+  const baseline = useSelectionStore.getState();
+  useSelectionStore.getState().selectBody(baseline.selectedId);
+  assert.equal(
+    useSelectionStore.getState().selectionRevision,
+    baseline.selectionRevision + 1,
+    "reselecting the current body should be observable so a dismissed mobile inspector can reopen",
+  );
+  useSelectionStore.setState({
+    selectedId: baseline.selectedId,
+    selectionRevision: baseline.selectionRevision,
+    cameraMode: baseline.cameraMode,
+    rocketTarget: baseline.rocketTarget,
+  });
+};
+
 assertBodyDataInvariants();
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
@@ -553,5 +653,9 @@ assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();
 assertRealModeHidesBodyLabels();
 assertSafeBooleanPreferences();
+assertRuntimeUiMathHelpers();
+assertSearchRanking();
+assertTransientUiMutualExclusion();
+assertRepeatedBodySelectionIsObservable();
 
 console.log("App logic checks passed");

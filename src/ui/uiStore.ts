@@ -9,6 +9,7 @@ export type SheetId = "none" | "view" | "rocket" | "speed" | "inspector" | "scen
 type UiState = {
   activeSheet: SheetId;
   searchOpen: boolean;
+  helpOpen: boolean;
   // The inspector has a third "peek" state: presented as a slim bar but not expanded.
   // `inspectorPresented` tracks whether the inspector should appear at all (peek or
   // full); `activeSheet === "inspector"` means it is expanded.
@@ -23,6 +24,9 @@ type UiState = {
   openSearch: () => void;
   closeSearch: () => void;
   toggleSearch: () => void;
+  openHelp: () => void;
+  closeHelp: () => void;
+  toggleHelp: () => void;
   presentInspector: () => void;
   dismissInspector: () => void;
   openDoomsdayPanel: () => void;
@@ -33,20 +37,23 @@ type UiState = {
 export const useUiStore = create<UiState>((set) => ({
   activeSheet: "none",
   searchOpen: false,
+  helpOpen: false,
   inspectorPresented: false,
   doomsdayPanelOpen: false,
   openSheet: (activeSheet) =>
     set({
       activeSheet,
       searchOpen: false,
+      helpOpen: false,
     }),
   closeSheet: () => set({ activeSheet: "none" }),
   toggleSheet: (sheet) =>
     set((state) => ({
       activeSheet: state.activeSheet === sheet ? "none" : sheet,
       searchOpen: state.activeSheet === sheet ? state.searchOpen : false,
+      helpOpen: state.activeSheet === sheet ? state.helpOpen : false,
     })),
-  openSearch: () => set({ activeSheet: "none", searchOpen: true }),
+  openSearch: () => set({ activeSheet: "none", searchOpen: true, helpOpen: false }),
   closeSearch: () => set({ searchOpen: false }),
   toggleSearch: () =>
     set((state) =>
@@ -55,6 +62,19 @@ export const useUiStore = create<UiState>((set) => ({
         : {
             activeSheet: "none",
             searchOpen: true,
+            helpOpen: false,
+          },
+    ),
+  openHelp: () => set({ activeSheet: "none", searchOpen: false, helpOpen: true }),
+  closeHelp: () => set({ helpOpen: false }),
+  toggleHelp: () =>
+    set((state) =>
+      state.helpOpen
+        ? { helpOpen: false }
+        : {
+            activeSheet: "none",
+            searchOpen: false,
+            helpOpen: true,
           },
     ),
   presentInspector: () => set({ inspectorPresented: true }),

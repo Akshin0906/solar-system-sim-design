@@ -5,6 +5,7 @@ type ErrorBoundaryProps = {
   // Render prop so callers can offer recovery. `reset` clears the caught error and
   // re-renders the children — useful when the failure was transient.
   fallback?: (reset: () => void) => ReactNode;
+  onError?: (error: Error) => void;
   onReset?: () => void;
 };
 
@@ -31,6 +32,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     // A console diagnostic beats a silent white screen for a deployed PWA. This is the
     // single place app errors are reported; a real telemetry sink could hook in here.
     console.error("Unhandled render error:", error, info.componentStack);
+    this.props.onError?.(error);
   }
 
   reset = () => {

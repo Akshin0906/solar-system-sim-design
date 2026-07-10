@@ -27,11 +27,14 @@ import {
 } from "react";
 import { selectableBodies } from "../data";
 import { useRocketStore } from "../features/rockets/rocketStore";
+import { scenarioById } from "../scenarios/registry";
+import { useScenarioStore } from "../scenarios/scenarioStore";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatBodyType } from "../simulation/units";
 import { useFocusTrap } from "./focusTrap";
+import { rankSearchItems, scoreSearchMatch } from "./searchRanking";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 
@@ -53,7 +56,6 @@ type CommandItem = {
   shortcut?: string;
 };
 
-const normalize = (value: string) => value.toLowerCase();
 const clampCommandActiveIndex = (index: number, itemCount: number) =>
   itemCount <= 0 ? 0 : Math.min(Math.max(index, 0), itemCount - 1);
 
@@ -70,6 +72,10 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const isPaused = useTimeStore((state) => state.isPaused);
   const togglePaused = useTimeStore((state) => state.togglePaused);
   const jumpToNow = useTimeStore((state) => state.jumpToNow);
+  const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const scenarioStatus = useScenarioStore((state) => state.status);
+  const toggleScenarioPause = useScenarioStore((state) => state.togglePause);
+  const stopScenario = useScenarioStore((state) => state.stop);
   const showGrid = useScaleStore((state) => state.showGrid);
   const showOrbits = useScaleStore((state) => state.showOrbits);
   const showTrails = useScaleStore((state) => state.showTrails);
@@ -79,6 +85,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
   const openSheet = useUiStore((state) => state.openSheet);
   const openDoomsdayPanel = useUiStore((state) => state.openDoomsdayPanel);
+  const activeScenarioName = activeScenarioId ? scenarioById.get(activeScenarioId)?.name : undefined;
 
   useFocusTrap(containerRef, open, onClose, restoreFocusRef);
 
@@ -94,21 +101,26 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       {
         id: "toggle-time",
         group: "Actions",
-        title: isPaused ? "Play simulation" : "Pause simulation",
-        subtitle: "Toggle the time transport",
+        title: activeScenarioId
+          ? `${scenarioStatus === "paused" ? "Resume" : "Pause"} ${activeScenarioName ?? "scenario"}`
+          : isPaused
+            ? "Play simulation"
+            : "Pause simulation",
+        subtitle: activeScenarioId ? "Toggle the active Doomsday scenario" : "Toggle the time transport",
         keywords: "play pause time transport space",
-        icon: isPaused ? <Play size={16} /> : <Pause size={16} />,
-        action: togglePaused,
+        icon:
+          (activeScenarioId ? scenarioStatus === "paused" : isPaused) ? <Play size={16} /> : <Pause size={16} />,
+        action: activeScenarioId ? toggleScenarioPause : togglePaused,
         shortcut: "Space",
       },
       {
         id: "jump-now",
         group: "Actions",
-        title: "Jump to now",
-        subtitle: "Reset the simulation clock",
-        keywords: "now today reset date clock",
+        title: activeScenarioId ? `Exit ${activeScenarioName ?? "scenario"}` : "Jump to now",
+        subtitle: activeScenarioId ? "Restore the saved solar-system view and clock" : "Reset the simulation clock",
+        keywords: activeScenarioId ? "exit stop restore scenario doomsday" : "now today reset date clock",
         icon: <TimerReset size={16} />,
-        action: jumpToNow,
+        action: activeScenarioId ? stopScenario : jumpToNow,
       },
       {
         id: "rocket-preview",
@@ -284,6 +296,8 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
     ],
     [
       cameraMode,
+      activeScenarioId,
+      activeScenarioName,
       isMobile,
       isPaused,
       jumpToNow,
@@ -299,13 +313,16 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       showGrid,
       showOrbits,
       showTrails,
+      scenarioStatus,
+      stopScenario,
+      toggleScenarioPause,
       togglePaused,
     ],
   );
 
   const getVisibleItems = useCallback(
     (rawQuery: string) => {
-      const cleanQuery = normalize(rawQuery.trim());
+      const cleanQuery = rawQuery.trim();
 
       if (!cleanQuery) {
         return [
@@ -315,12 +332,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         ];
       }
 
-      return commandItems
-        .filter((item) => {
-          const haystack = normalize(`${item.title} ${item.subtitle} ${item.keywords}`);
-          return haystack.includes(cleanQuery);
-        })
-        .slice(0, 18);
+      return rankSearchItems(commandItems, cleanQuery).slice(0, 18);
     },
     [commandItems],
   );
@@ -332,13 +344,11 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   // How many results a query actually matched, so the list can signal when it has been
   // capped (otherwise a broad term silently hides matches and reads as "no such object").
   const totalFilteredCount = useMemo(() => {
-    const cleanQuery = normalize(query.trim());
+    const cleanQuery = query.trim();
     if (!cleanQuery) {
       return visibleItems.length;
     }
-    return commandItems.filter((item) =>
-      normalize(`${item.title} ${item.subtitle} ${item.keywords}`).includes(cleanQuery),
-    ).length;
+    return commandItems.filter((item) => scoreSearchMatch(item, cleanQuery) !== null).length;
   }, [commandItems, query, visibleItems.length]);
   const resultsTruncated = totalFilteredCount > visibleItems.length;
 

@@ -1,10 +1,11 @@
 import type { ScaleMode } from "../simulation/units";
+import { CAMERA_FOV_DEG } from "./cameraFraming";
 
 export const REAL_LABEL_REFERENCE_DISTANCE = 3.2;
 export const MIN_REAL_LABEL_SCALE = 0.42;
 export const MAX_REAL_LABEL_SCALE = 1;
 export const BODY_LABEL_DISTANCE_FACTOR = 10;
-export const DEFAULT_LABEL_CAMERA_FOV_DEG = 48;
+export const DEFAULT_LABEL_CAMERA_FOV_DEG = CAMERA_FOV_DEG;
 export const MIN_PROJECTED_LABEL_DISTANCE = 0.05;
 export const MIN_PROJECTED_LABEL_SCALE = 0.78;
 export const MAX_PROJECTED_LABEL_SCALE = 1.08;
