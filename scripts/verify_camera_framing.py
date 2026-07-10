@@ -15,6 +15,10 @@ PREFERRED_CAMERA_NEAR = 0.00001
 MIN_CAMERA_NEAR = 0.000001
 MAX_CAMERA_NEAR = 0.1
 FOCUS_FRAMING_SAFETY = 1.9
+OBSERVER_SURFACE_MULTIPLIER = 1.04
+OBSERVER_LOOK_RADIUS_MULTIPLIER = 40
+OBSERVER_MIN_LOOK_DISTANCE = 8
+OBSERVER_DOWNWARD_BIAS = 0.25
 MOBILE_ASPECT = 390 / 844
 DESKTOP_ASPECT = 1440 / 900
 CAMERA_DAMPING_RATES = {
@@ -88,6 +92,16 @@ def damping_alpha(rate_per_second: float, delta_seconds: float) -> float:
     return 1 - math.exp(-rate_per_second * min(delta_seconds, 0.12))
 
 
+def observer_pose(radius: float) -> tuple[float, float]:
+    camera_from_center = radius * OBSERVER_SURFACE_MULTIPLIER
+    look_distance = max(radius * OBSERVER_LOOK_RADIUS_MULTIPLIER, OBSERVER_MIN_LOOK_DISTANCE)
+    return camera_from_center, look_distance
+
+
+def observer_near(radius: float) -> float:
+    return max(min(radius * 0.02, 0.01), MIN_CAMERA_NEAR)
+
+
 def main() -> None:
     for radius in (0.25, 1, 12, 90, 145):
         distance = fit_distance_for_radius(radius)
@@ -136,6 +150,25 @@ def main() -> None:
 
         assert abs(alpha_60fps - expected_alpha_60fps) < 0.000001, (name, alpha_60fps, expected_alpha_60fps)
         assert alpha_10fps > expected_alpha_60fps, (name, alpha_10fps, expected_alpha_60fps)
+
+    for radius in (0.0001, 0.25, 1.0):
+        camera_from_center, look_distance = observer_pose(radius)
+        assert camera_from_center > radius, (radius, camera_from_center)
+        assert math.isclose(camera_from_center / radius, OBSERVER_SURFACE_MULTIPLIER)
+        assert look_distance >= OBSERVER_MIN_LOOK_DISTANCE
+        assert observer_near(radius) < camera_from_center - radius
+
+    # A terminator observer's surface normal is perpendicular to the sunlight
+    # direction, so looking sunward skims the visible horizon.
+    sunward = (1.0, 0.0, 0.0)
+    terminator = (0.0, 1.0, 0.0)
+    assert math.isclose(sum(a * b for a, b in zip(sunward, terminator)), 0.0)
+    sun_angle_from_view_deg = math.degrees(math.atan(OBSERVER_DOWNWARD_BIAS))
+    body_center_angle_deg = math.degrees(math.acos(OBSERVER_DOWNWARD_BIAS / math.sqrt(1 + OBSERVER_DOWNWARD_BIAS**2)))
+    body_angular_radius_deg = math.degrees(math.asin(1 / OBSERVER_SURFACE_MULTIPLIER))
+    horizon_edge_deg = body_center_angle_deg - body_angular_radius_deg
+    assert sun_angle_from_view_deg < FOV_DEG / 2
+    assert 0 < horizon_edge_deg < 5
 
     print("Camera framing checks passed")
     print(f"FOV: {FOV_DEG} deg")

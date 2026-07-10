@@ -3,11 +3,13 @@ import type { RocketDestination } from "./destinationCatalog";
 import type { RocketProfile } from "./rocketCatalog";
 import { formatDeltaV, formatMissionTime, formatPhaseAngle } from "./rocketState";
 import { estimateTransfer, type LaunchWindowQuality } from "./transferModel";
+import type { RocketMissionMode } from "./missionOptions";
 
 type RocketTransferPreviewProps = {
   destination: RocketDestination;
   launchDateMs: number;
   profile: RocketProfile;
+  missionMode: RocketMissionMode;
 };
 
 const qualityLabel: Record<LaunchWindowQuality, string> = {
@@ -19,32 +21,31 @@ const qualityLabel: Record<LaunchWindowQuality, string> = {
 
 const formatDate = (dateMs: number) => new Date(dateMs).toISOString().slice(0, 10);
 
-export const RocketTransferPreview = ({ destination, launchDateMs, profile }: RocketTransferPreviewProps) => {
+export const RocketTransferPreview = ({ destination, launchDateMs, profile, missionMode }: RocketTransferPreviewProps) => {
   const body = destination.bodyId ? bodiesById.get(destination.bodyId) : undefined;
 
   if (!body) {
     return null;
   }
 
-  const estimate = estimateTransfer(body, bodiesById, launchDateMs, profile);
+  const trajectoryModel = body.type === "moon" || missionMode !== "lambert" ? "hohmann" : "lambert";
+  const estimate = estimateTransfer(body, bodiesById, launchDateMs, profile, trajectoryModel);
 
   if (!estimate) {
     return (
       <p className="rocket-note">
-        Transfer preview is unavailable for {destination.label}; launch will use direct aim.
+        Physical transfer is unavailable for {destination.label}; launch will use Guided direct.
       </p>
     );
   }
 
   const totalDeltaVKmS =
-    estimate.arrivalDeltaVKmS === null
-      ? estimate.departureDeltaVKmS
-      : estimate.departureDeltaVKmS + estimate.arrivalDeltaVKmS;
+    (estimate.parkingOrbitInjectionDeltaVKmS ?? 0) + (estimate.captureDeltaVKmS ?? 0);
 
   return (
     <div className="rocket-telemetry rocket-transfer-preview">
       <div className="rocket-preview-head">
-        <span>Concept transfer</span>
+        <span>{estimate.trajectoryModel === "lambert" ? "Lambert intercept" : "Hohmann coast"}</span>
         {/* Launch-window quality is only meaningful for heliocentric planet transfers; the
             Moon's simplified Earth-centered estimate has no real lead-angle, so omit it. */}
         {!estimate.targetIsMoon && (
@@ -75,8 +76,20 @@ export const RocketTransferPreview = ({ destination, launchDateMs, profile }: Ro
           </>
         )}
         <div>
-          <dt>Delta-v total</dt>
+          <dt>LEO injection</dt>
+          <dd>{formatDeltaV(estimate.parkingOrbitInjectionDeltaVKmS)}</dd>
+        </div>
+        <div>
+          <dt>Arrival capture</dt>
+          <dd>{formatDeltaV(estimate.captureDeltaVKmS)}</dd>
+        </div>
+        <div>
+          <dt>Injection + capture</dt>
           <dd>{formatDeltaV(totalDeltaVKmS)}</dd>
+        </div>
+        <div>
+          <dt>Arrival miss</dt>
+          <dd>{estimate.arrivalMissDistanceKm < 1 ? "<1 km" : `${estimate.arrivalMissDistanceKm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km`}</dd>
         </div>
       </dl>
       <p className="rocket-note">{estimate.notes[0]} Scrub time to hunt for a better launch window.</p>

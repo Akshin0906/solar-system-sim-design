@@ -20,12 +20,18 @@ import {
 import type { RocketDestination } from "./destinationCatalog";
 import { sampleFlight } from "./flightModel";
 import {
+  defaultArrivalMode,
   defaultLaunchMode,
-  directSpeedOffsetForLaunchMode,
+  type RocketArrivalMode,
   type RocketLaunchMode,
   type RocketMissionMode,
 } from "./missionOptions";
 import type { RocketProfile } from "./rocketCatalog";
+import {
+  estimateVelocityKmS,
+  propagateTwoBody,
+  sampleTwoBodyTrajectory,
+} from "./orbitalTransfer";
 import {
   estimateTransfer,
   interpolateTransferArcKm,
@@ -38,14 +44,13 @@ import {
 // assumption, and current simulation time into a scale-independent scene/telemetry
 // view. It never mutates celestial body data.
 //
-// Direct aim predicts a straight-line intercept with the moving target. Transfer
-// preview uses approximate Hohmann-style timing and a visual route to the arrival
-// point. After arrival, both modes keep the rocket attached to the destination so
-// the scene keeps reading as "arrived" while the simulation clock continues.
+// Guided direct is an explicitly steered demonstration. Hohmann and Lambert modes use
+// propagated two-body trajectories: Hohmann can miss when the phase is poor, while
+// Lambert solves the endpoint and reports the required velocity independently of
+// the illustrative rocket catalog.
 
 const EARTH_ID = "earth";
 
-const DEPART_FROM_EARTH_KM = 1_000_000;
 const DIRECT_APPROACH_FRACTION = 0.25;
 const CLOSEST_APPROACH_SAMPLES = 40;
 const TRANSFER_CACHE_LIMIT = 16;
@@ -55,6 +60,7 @@ const DIRECT_INTERCEPT_SEARCH_ITERATIONS = 56;
 const DIRECT_SCENE_PATH_SAMPLES = 36;
 const DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS = 1;
 const ARRIVAL_PROGRESS_THRESHOLD = 0.999_999;
+const POST_ENCOUNTER_TRAIL_SAMPLES = 18;
 
 export type MissionStatus =
   | "pre-launch"
@@ -62,7 +68,9 @@ export type MissionStatus =
   | "coast"
   | "transfer"
   | "approach"
-  | "arrived";
+  | "arrived"
+  | "flyby"
+  | "missed";
 
 export const missionStatusLabel: Record<MissionStatus, string> = {
   "pre-launch": "Pre-launch",
@@ -71,6 +79,8 @@ export const missionStatusLabel: Record<MissionStatus, string> = {
   transfer: "Transfer",
   approach: "Approach",
   arrived: "Arrived",
+  flyby: "Flyby complete",
+  missed: "Missed target",
 };
 
 export type RocketDestinationView = {
@@ -90,6 +100,9 @@ export type RocketTransferView = {
   arcLengthKm: number;
   interceptScenePosition: Vec3;
   targetArrivalScenePosition: Vec3;
+  continuationScenePoints: Vec3[];
+  captureAvailable: boolean;
+  captureApplied: boolean;
 };
 
 export type RocketView = {
@@ -100,6 +113,7 @@ export type RocketView = {
   status: MissionStatus;
   missionMode: RocketMissionMode;
   launchMode: RocketLaunchMode;
+  arrivalMode: RocketArrivalMode;
   scenePosition: Vec3;
   launchScenePosition: Vec3;
   sceneDirection: Vec3;
@@ -134,11 +148,8 @@ const setBoundedCacheEntry = <T>(cache: Map<string, T>, key: string, value: T, l
 const sampleDirectFlight = (
   profile: RocketProfile,
   elapsedSeconds: number,
-  launchMode: RocketLaunchMode,
-) =>
-  sampleFlight(profile, elapsedSeconds, {
-    speedOffsetKmS: directSpeedOffsetForLaunchMode(launchMode),
-  });
+  _launchMode: RocketLaunchMode,
+) => sampleFlight(profile, elapsedSeconds);
 
 const interpolatePoints = (points: Vec3[], progress: number): Vec3 => {
   if (points.length === 0) {
@@ -323,14 +334,15 @@ const getTransferPlan = (
   profile: RocketProfile,
   destBody: CelestialBody,
   launchDateMs: number,
+  trajectoryModel: "hohmann" | "lambert",
 ): CachedTransferPlan | null => {
-  const key = `${profile.id}|${destBody.id}|${launchDateMs}`;
+  const key = `${profile.id}|${destBody.id}|${launchDateMs}|${trajectoryModel}`;
   const cached = transferPlanCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs, profile);
+  const estimate = estimateTransfer(destBody, bodiesById, launchDateMs, profile, trajectoryModel);
   if (!estimate) {
     return null;
   }
@@ -443,6 +455,148 @@ const makeDestinationFollowScenePoints = (
   return [computeBodyScenePosition(destBody, bodiesById, new Date(endDateMs), mode)];
 };
 
+type PostTransferContinuation = {
+  positionKm: Vec3;
+  velocityKmS: Vec3;
+  scenePosition: Vec3;
+  sceneDirection: Vec3;
+  trailScenePoints: Vec3[];
+};
+
+// Continue an uncaptured conic beyond the planned encounter. Heliocentric
+// transfers remain Sun-centered; the Moon preview is propagated in an
+// Earth-centered frame and then translated by Earth's dated ephemeris state.
+const getPostTransferContinuation = (
+  plan: CachedTransferPlan,
+  destinationBody: CelestialBody,
+  simulationDateMs: number,
+  mode: ScaleMode,
+): PostTransferContinuation | null => {
+  const postSeconds = (simulationDateMs - plan.estimate.arrivalDateMs) / 1_000;
+  if (postSeconds <= 0) {
+    return null;
+  }
+
+  const trailSeconds = Math.min(
+    postSeconds,
+    Math.max(3_600, Math.min(plan.estimate.transferTimeSeconds * 0.12, 60 * 86_400)),
+  );
+  const trailStartSeconds = postSeconds - trailSeconds;
+  let currentPositionKm: Vec3;
+  let currentVelocityKmS: Vec3;
+  let trailPositionsKm: Vec3[];
+
+  if (plan.estimate.centralBodyId === "earth") {
+    const earth = bodiesById.get(EARTH_ID);
+    const earthMu = earth?.physical.gravitationalParameterKm3S2 ?? 0;
+    if (!earth || earthMu <= 0) {
+      return null;
+    }
+    const earthPositionAt = (date: Date) => getBodyPositionKm(earth, bodiesById, date);
+    const arrivalDate = new Date(plan.estimate.arrivalDateMs);
+    const earthArrivalPositionKm = earthPositionAt(arrivalDate);
+    const earthArrivalVelocityKmS = estimateVelocityKmS(earthPositionAt, plan.estimate.arrivalDateMs);
+    const localArrivalPositionKm = sub(plan.estimate.arrivalTrajectoryPositionKm, earthArrivalPositionKm);
+    const localArrivalVelocityKmS = sub(plan.estimate.arrivalTrajectoryVelocityKmS, earthArrivalVelocityKmS);
+    const localCurrent = propagateTwoBody(localArrivalPositionKm, localArrivalVelocityKmS, postSeconds, earthMu);
+    const localTrailStart = propagateTwoBody(
+      localArrivalPositionKm,
+      localArrivalVelocityKmS,
+      trailStartSeconds,
+      earthMu,
+    );
+    if (!localCurrent || !localTrailStart) {
+      return null;
+    }
+    const localTrail = sampleTwoBodyTrajectory(
+      localTrailStart.positionKm,
+      localTrailStart.velocityKmS,
+      trailSeconds,
+      earthMu,
+      POST_ENCOUNTER_TRAIL_SAMPLES,
+    );
+    if (!localTrail) {
+      return null;
+    }
+    const currentDate = new Date(simulationDateMs);
+    const earthCurrentPositionKm = earthPositionAt(currentDate);
+    const earthCurrentVelocityKmS = estimateVelocityKmS(earthPositionAt, simulationDateMs);
+    currentPositionKm = add(earthCurrentPositionKm, localCurrent.positionKm);
+    currentVelocityKmS = add(earthCurrentVelocityKmS, localCurrent.velocityKmS);
+    trailPositionsKm = localTrail.map((localPositionKm, index) => {
+      const fraction = localTrail.length > 1 ? index / (localTrail.length - 1) : 1;
+      const sampleDate = new Date(
+        plan.estimate.arrivalDateMs + (trailStartSeconds + trailSeconds * fraction) * 1_000,
+      );
+      return add(earthPositionAt(sampleDate), localPositionKm);
+    });
+  } else {
+    const sun = bodiesById.get("sun");
+    const sunMu = sun?.physical.gravitationalParameterKm3S2 ?? 0;
+    if (sunMu <= 0) {
+      return null;
+    }
+    const current = propagateTwoBody(
+      plan.estimate.arrivalTrajectoryPositionKm,
+      plan.estimate.arrivalTrajectoryVelocityKmS,
+      postSeconds,
+      sunMu,
+    );
+    const trailStart = propagateTwoBody(
+      plan.estimate.arrivalTrajectoryPositionKm,
+      plan.estimate.arrivalTrajectoryVelocityKmS,
+      trailStartSeconds,
+      sunMu,
+    );
+    if (!current || !trailStart) {
+      return null;
+    }
+    const trail = sampleTwoBodyTrajectory(
+      trailStart.positionKm,
+      trailStart.velocityKmS,
+      trailSeconds,
+      sunMu,
+      POST_ENCOUNTER_TRAIL_SAMPLES,
+    );
+    if (!trail) {
+      return null;
+    }
+    currentPositionKm = current.positionKm;
+    currentVelocityKmS = current.velocityKmS;
+    trailPositionsKm = trail;
+  }
+
+  const trailScenePoints =
+    plan.estimate.centralBodyId === "earth"
+      ? trailPositionsKm.map((positionKm, index) => {
+          const earth = bodiesById.get(EARTH_ID)!;
+          const fraction = trailPositionsKm.length > 1 ? index / (trailPositionsKm.length - 1) : 1;
+          const sampleDate = new Date(
+            simulationDateMs - trailSeconds * 1_000 + trailSeconds * 1_000 * fraction,
+          );
+          const earthPositionKm = getBodyPositionKm(earth, bodiesById, sampleDate);
+          const earthScene = computeBodyScenePosition(earth, bodiesById, sampleDate, mode);
+          return add(
+            earthScene,
+            scaleMoonOffset(sub(positionKm, earthPositionKm), mode, {
+              parentBody: earth,
+              moonBody: destinationBody,
+            }),
+          );
+        })
+      : trailPositionsKm.map((positionKm) => scaleVectorFromSun(positionKm, mode));
+  const scenePosition = trailScenePoints[trailScenePoints.length - 1] ?? scaleVectorFromSun(currentPositionKm, mode);
+  const previousScenePosition = trailScenePoints[trailScenePoints.length - 2] ?? scenePosition;
+
+  return {
+    positionKm: currentPositionKm,
+    velocityKmS: currentVelocityKmS,
+    scenePosition,
+    sceneDirection: normalize(sub(scenePosition, previousScenePosition)),
+    trailScenePoints,
+  };
+};
+
 const getDirectScenePosition = (
   rocketHelioKm: Vec3,
   progress: number,
@@ -502,9 +656,10 @@ const buildFreeFlightView = (
     speedKmS: flight.speedKmS,
     distanceTraveledKm: flight.distanceTraveledKm,
     distanceFromEarthKm,
-    status: preLaunch ? "pre-launch" : distanceFromEarthKm < DEPART_FROM_EARTH_KM ? "burn" : "coast",
+    status: preLaunch ? "pre-launch" : elapsedSeconds < profile.directCurve.burnDurationSeconds ? "burn" : "coast",
     missionMode: "direct",
     launchMode,
+    arrivalMode: defaultArrivalMode,
     scenePosition,
     launchScenePosition: earthLaunchScene,
     sceneDirection: normalize(earthLaunchScene),
@@ -522,6 +677,7 @@ export const computeRocketView = (
   destination: RocketDestination | null,
   missionMode: RocketMissionMode = "direct",
   launchMode: RocketLaunchMode = defaultLaunchMode,
+  arrivalMode: RocketArrivalMode = defaultArrivalMode,
 ): RocketView => {
   const launchDate = new Date(launchDateMs);
   const simDate = new Date(simulationDateMs);
@@ -546,45 +702,54 @@ export const computeRocketView = (
     );
   }
 
-  if (missionMode === "transfer") {
-    const plan = getTransferPlan(profile, destBody, launchDateMs);
+  if (missionMode !== "direct") {
+    const effectiveTransferMode = destBody.type === "moon" ? "hohmann" : missionMode;
+    const plan = getTransferPlan(profile, destBody, launchDateMs, effectiveTransferMode);
     if (plan) {
       const elapsedSeconds = Math.max(0, (simulationDateMs - launchDateMs) / 1_000);
       const transferTimeSeconds = Math.max(plan.estimate.transferTimeSeconds, 1);
       const progress = clamp01(elapsedSeconds / transferTimeSeconds);
       const arrivalDate = new Date(plan.estimate.arrivalDateMs);
-      const transferTargetBody = bodiesById.get(plan.estimate.transferTargetBodyId) ?? destBody;
-      const arrived =
+      const transferComplete =
         progress >= ARRIVAL_PROGRESS_THRESHOLD ||
         elapsedSeconds + DIRECT_ARRIVAL_TIME_TOLERANCE_SECONDS >= transferTimeSeconds;
+      const interceptToleranceKm = Math.max(destBody.physical.radiusKm * 1.05, 10);
+      const interceptPredicted =
+        plan.estimate.interceptGuaranteed || plan.estimate.arrivalMissDistanceKm <= interceptToleranceKm;
+      const intercepted = transferComplete && interceptPredicted;
+      const captureAvailable = interceptPredicted && plan.estimate.captureDeltaVKmS !== null;
+      const captured = transferComplete && arrivalMode === "capture" && captureAvailable;
       const targetArrivalScenePosition = computeBodyScenePosition(destBody, bodiesById, arrivalDate, mode);
-      const interceptScenePosition = computeBodyScenePosition(transferTargetBody, bodiesById, arrivalDate, mode);
       const transferScenePoints = getTransferSceneArc(plan, destBody, launchDateMs, mode);
-      const followScenePoints = arrived
-        ? makeDestinationFollowScenePoints(destBody, plan.estimate.arrivalDateMs, simulationDateMs, mode)
-        : [];
-      const arcScenePoints = [...transferScenePoints, ...followScenePoints];
-      const scenePosition = arrived
+      const postContinuation = transferComplete && !captured
+        ? getPostTransferContinuation(plan, destBody, simulationDateMs, mode)
+        : null;
+      const arcScenePoints = transferScenePoints;
+      const interceptScenePosition =
+        transferScenePoints[transferScenePoints.length - 1] ?? targetArrivalScenePosition;
+      const scenePosition = captured
         ? computeBodyScenePosition(destBody, bodiesById, simDate, mode)
-        : interpolatePoints(arcScenePoints, progress);
-      const sceneDirection = directionAlongPoints(arcScenePoints, progress);
+        : postContinuation?.scenePosition ?? interpolatePoints(transferScenePoints, progress);
+      const sceneDirection =
+        postContinuation?.sceneDirection ?? directionAlongPoints(arcScenePoints, progress);
       const destNowKm = getBodyPositionKm(destBody, bodiesById, simDate);
-      const rocketHelioKm = arrived ? destNowKm : interpolateTransferArcKm(plan.arc, progress);
-      const distanceToTargetKm = arrived ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
+      const rocketHelioKm = captured
+        ? destNowKm
+        : postContinuation?.positionKm ?? interpolateTransferArcKm(plan.arc, progress);
+      const distanceToTargetKm = captured ? 0 : vectorLength(sub(destNowKm, rocketHelioKm));
       const plannedClosestApproachKm = getPlannedTransferClosestApproach(
         plan.arc,
         plan.estimate,
         destBody,
         launchDateMs,
       );
-      const closestApproachKm = arrived ? 0 : Math.min(plannedClosestApproachKm, distanceToTargetKm);
+      const closestApproachKm = captured ? 0 : Math.min(plannedClosestApproachKm, distanceToTargetKm);
       const remainingSeconds = (plan.estimate.arrivalDateMs - simulationDateMs) / 1_000;
       const preLaunch = simulationDateMs < launchDateMs;
       const averageSpeedKmS = plan.estimate.meanTransferSpeedKmS;
-      const burnEndSeconds = Math.min(
-        profile.burnDurationSeconds,
-        transferTimeSeconds * 0.12,
-      );
+      // This is the displayed parking-orbit injection event, not a claim that the
+      // selected rocket's illustrative 1-D burn profile powers the heliocentric coast.
+      const burnEndSeconds = 600;
       let status: MissionStatus;
       if (preLaunch) {
         status = "pre-launch";
@@ -592,20 +757,25 @@ export const computeRocketView = (
         status = "burn";
       } else if (progress < 0.82) {
         status = "transfer";
-      } else if (!arrived) {
+      } else if (!transferComplete) {
         status = "approach";
+      } else if (!intercepted) {
+        status = "missed";
+      } else if (!captured) {
+        status = "flyby";
       } else {
         status = "arrived";
       }
 
       return {
         elapsedSeconds,
-        speedKmS: averageSpeedKmS,
+        speedKmS: postContinuation ? vectorLength(postContinuation.velocityKmS) : averageSpeedKmS,
         distanceTraveledKm: plan.arc.arcLengthKm * progress,
         distanceFromEarthKm: preLaunch ? 0 : vectorLength(sub(rocketHelioKm, earthNowKm)),
         status,
-        missionMode,
+        missionMode: effectiveTransferMode,
         launchMode,
+        arrivalMode,
         scenePosition,
         launchScenePosition: earthLaunchScene,
         sceneDirection,
@@ -626,6 +796,9 @@ export const computeRocketView = (
           arcLengthKm: plan.arc.arcLengthKm,
           interceptScenePosition,
           targetArrivalScenePosition,
+          continuationScenePoints: postContinuation?.trailScenePoints ?? [],
+          captureAvailable,
+          captureApplied: captured,
         },
       };
     }
@@ -687,7 +860,7 @@ export const computeRocketView = (
     ? "pre-launch"
     : getDirectStatus(
         elapsedSeconds,
-        profile.burnDurationSeconds,
+        profile.directCurve.burnDurationSeconds,
         progress,
         closing,
         distanceToTargetKm,
@@ -704,6 +877,7 @@ export const computeRocketView = (
     status,
     missionMode: "direct",
     launchMode,
+    arrivalMode: defaultArrivalMode,
     scenePosition,
     launchScenePosition: earthLaunchScene,
     sceneDirection: normalize(sub(destInterceptScene, earthLaunchScene)),

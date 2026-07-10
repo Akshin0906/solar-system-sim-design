@@ -1,7 +1,10 @@
 import { create } from "zustand";
+import { bodiesById } from "../data";
+import { useExperienceStore } from "../features/experiences/experienceStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
-import { defaultParamsFor, scenarioById } from "./registry";
+import { defaultParamsFor, impactTargetId, scenarioById } from "./registry";
+import type { SimEvent } from "./types";
 
 export type ScenarioStatus = "idle" | "running" | "paused";
 
@@ -33,6 +36,7 @@ type ScenarioState = {
   fragmentCapHit: number;
   liveFragmentCount: number;
   throttled: boolean;
+  latestEvent: SimEvent | null;
   start: (scenarioId: string) => void;
   stop: () => void;
   togglePause: () => void;
@@ -46,9 +50,27 @@ type ScenarioState = {
     throttled: boolean;
   }) => void;
   reportConsumed: (ids: string[]) => void;
+  reportEvent: (event: SimEvent | null) => void;
 };
 
-export const useScenarioStore = create<ScenarioState>((set) => ({
+const frameScenarioAction = (scenarioId: string, params: Record<string, number>) => {
+  const selection = useSelectionStore.getState();
+
+  if (scenarioId === "impact" || scenarioId === "collision") {
+    selection.goToBody(impactTargetId(params.target ?? 2, bodiesById));
+    return;
+  }
+
+  if (scenarioId === "red-giant") {
+    selection.selectBody("sun");
+    selection.setCameraMode("inner");
+    return;
+  }
+
+  selection.setCameraMode("overview");
+};
+
+export const useScenarioStore = create<ScenarioState>((set, get) => ({
   activeScenarioId: null,
   instanceId: 0,
   status: "idle",
@@ -59,14 +81,23 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
   fragmentCapHit: 0,
   liveFragmentCount: 0,
   throttled: false,
+  latestEvent: null,
 
   start: (scenarioId) => {
     const scenario = scenarioById.get(scenarioId);
     if (!scenario) {
       return;
     }
-    priorClockPaused = useTimeStore.getState().isPaused;
-    frozenSimulationDateMs = useTimeStore.getState().simulationDateMs;
+    // A scenario owns both the view and a frozen base clock. Restore any Director
+    // session before capturing the scenario snapshot so exit returns to the user's
+    // actual pre-tour state rather than to a transient authored stop.
+    useExperienceStore.getState().stop();
+    const replacingActiveScenario = get().activeScenarioId !== null;
+    if (!replacingActiveScenario) {
+      priorClockPaused = useTimeStore.getState().isPaused;
+      frozenSimulationDateMs = useTimeStore.getState().simulationDateMs;
+      useSelectionStore.getState().beginViewSession("scenario");
+    }
     useTimeStore.getState().setPaused(true);
     // Lock the J2000 transport so the user can't scrub/step/un-pause the frozen clock out
     // from under the scenario's frozen base layer (which would desync the date readout and
@@ -75,27 +106,34 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
     // The rocket marker is hidden while a scenario runs; release a rocket-follow camera so
     // it doesn't get stuck tracking a now-hidden rocket.
     useSelectionStore.getState().clearRocketTarget();
+    const params = defaultParamsFor(scenarioId);
     set((state) => ({
       activeScenarioId: scenarioId,
       instanceId: state.instanceId + 1,
       status: "running",
-      params: defaultParamsFor(scenarioId),
+      params,
       timeScaleDaysPerSec: scenario.defaultTimeScaleDaysPerSec,
       elapsedSimSeconds: 0,
       consumedIds: [],
       fragmentCapHit: 0,
       liveFragmentCount: 0,
       throttled: false,
+      latestEvent: null,
     }));
+    frameScenarioAction(scenarioId, params);
   },
 
   stop: () => {
+    if (get().activeScenarioId === null) {
+      return;
+    }
     // Unlock first — setSimulationDateMs is itself gated by the lock — then restore the
     // exact date the scenario froze at (a backstop in case anything slipped the freeze)
     // and the prior paused state, so exit is always consistent.
     useTimeStore.getState().setTransportLocked(false);
     useTimeStore.getState().setSimulationDateMs(frozenSimulationDateMs);
     useTimeStore.getState().setPaused(priorClockPaused);
+    useSelectionStore.getState().restoreViewSession("scenario");
     set((state) => ({
       activeScenarioId: null,
       instanceId: state.instanceId + 1,
@@ -105,6 +143,7 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       fragmentCapHit: 0,
       liveFragmentCount: 0,
       throttled: false,
+      latestEvent: null,
     }));
   },
 
@@ -116,23 +155,28 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       return { status: state.status === "running" ? "paused" : "running" };
     }),
 
-  setParam: (key, value) =>
-    set((state) => {
-      if (!state.activeScenarioId) {
-        return state;
-      }
-      // A param edit re-seeds from T+0 (instanceId bump) so the new initial condition
-      // is shown immediately — the sandbox half of "watch and play".
-      return {
-        params: { ...state.params, [key]: value },
-        instanceId: state.instanceId + 1,
-        elapsedSimSeconds: 0,
-        consumedIds: [],
-        fragmentCapHit: 0,
-        liveFragmentCount: 0,
-        throttled: false,
-      };
-    }),
+  setParam: (key, value) => {
+    const activeScenarioId = get().activeScenarioId;
+    if (!activeScenarioId) {
+      return;
+    }
+    // A param edit re-seeds from T+0 (instanceId bump) so the new initial condition
+    // is shown immediately — the sandbox half of "watch and play".
+    set((state) => ({
+      params: { ...state.params, [key]: value },
+      instanceId: state.instanceId + 1,
+      elapsedSimSeconds: 0,
+      consumedIds: [],
+      fragmentCapHit: 0,
+      liveFragmentCount: 0,
+      throttled: false,
+      latestEvent: null,
+    }));
+
+    if (key === "target" && (activeScenarioId === "impact" || activeScenarioId === "collision")) {
+      frameScenarioAction(activeScenarioId, get().params);
+    }
+  },
 
   setTimeScale: (daysPerSec) =>
     set({
@@ -162,4 +206,5 @@ export const useScenarioStore = create<ScenarioState>((set) => ({
       }
       return changed ? { consumedIds: [...merged] } : state;
     }),
+  reportEvent: (latestEvent) => set({ latestEvent }),
 }));

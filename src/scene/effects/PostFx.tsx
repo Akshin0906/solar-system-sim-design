@@ -1,7 +1,9 @@
 import { Bloom, EffectComposer, Vignette } from "@react-three/postprocessing";
+import { useThree } from "@react-three/fiber";
 import { KernelSize } from "postprocessing";
 import { useScenarioStore } from "../../scenarios/scenarioStore";
 import { useIsMobile } from "../../ui/useMediaQuery";
+import { combinedRenderQuality, useRenderQualityStore } from "../renderQuality";
 
 // Per-scenario bloom intensity. The compact, luminous catastrophes — a black hole's
 // accretion glow, impact flashes, a molten remnant — push bloom harder so they read as
@@ -27,19 +29,23 @@ const SCENARIO_BLOOM: Record<string, number> = {
 export const PostFx = () => {
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
   const isMobile = useIsMobile();
+  const interactionFactor = useThree((state) => state.performance.current);
+  const measuredFactor = useRenderQualityStore((state) => state.measuredFactor);
+  const performanceFactor = combinedRenderQuality(interactionFactor, measuredFactor);
+  const underLoad = performanceFactor < 0.8;
 
   const base = activeScenarioId ? (SCENARIO_BLOOM[activeScenarioId] ?? 1.15) : 0.55;
-  const intensity = isMobile ? base * 0.7 : base;
+  const intensity = base * (isMobile ? 0.7 : 1) * (underLoad ? 0.82 : 1);
 
   return (
-    <EffectComposer multisampling={isMobile ? 0 : 4}>
+    <EffectComposer multisampling={isMobile || underLoad ? 0 : 2}>
       <Bloom
-        mipmapBlur
+        mipmapBlur={!underLoad}
         intensity={intensity}
         luminanceThreshold={activeScenarioId ? 0.6 : 0.72}
         luminanceSmoothing={0.22}
         radius={isMobile ? 0.7 : 0.78}
-        kernelSize={isMobile ? KernelSize.MEDIUM : KernelSize.LARGE}
+        kernelSize={isMobile || underLoad ? KernelSize.MEDIUM : KernelSize.LARGE}
       />
       <Vignette eskil={false} offset={0.28} darkness={0.52} />
     </EffectComposer>

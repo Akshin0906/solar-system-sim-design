@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate rounded dwarf planet and major moon values in the app data."""
+"""Verify the minor-body scientific contract against frozen official values."""
 
 from __future__ import annotations
 
@@ -7,82 +7,85 @@ import json
 import math
 import shutil
 import subprocess
-import sys
 from pathlib import Path
+
 
 AU_KM = 149_597_870.7
 ROOT = Path(__file__).resolve().parents[1]
 
+# JPL Horizons ELEMENTS, 2025-01-01 00:00 TDB, heliocentric IAU76/80
+# ecliptic of J2000.  Reproducible with scripts/fetch_horizons_elements.py.
 DWARF_PLANETS = {
-    "ceres": dict(a_au=2.7675, period_days=1_680.5, eccentricity=0.0758, inclination_deg=10.59),
-    "pluto": dict(a_au=39.48, period_days=90_560, eccentricity=0.2488, inclination_deg=17.16),
-    "eris": dict(a_au=67.78, period_days=203_600, eccentricity=0.44, inclination_deg=44.04),
-    "haumea": dict(a_au=43.13, period_days=103_774, eccentricity=0.195, inclination_deg=28.2),
-    "makemake": dict(a_au=45.79, period_days=112_897, eccentricity=0.161, inclination_deg=29.0),
+    "ceres": dict(a_au=2.766360233580095, period_days=1680.589037698568, eccentricity=.07927929080437446, inclination_deg=10.58793299269121),
+    "pluto": dict(a_au=39.28778257358678, period_days=89946.58972003507, eccentricity=.2438605399689669, inclination_deg=16.93906659887321),
+    "eris": dict(a_au=68.08675543103006, period_days=205207.1011778137, eccentricity=.4348062032901582, inclination_deg=43.7908184116636),
+    "haumea": dict(a_au=42.9318631481777, period_days=102746.7352881387, eccentricity=.1978806241186673, inclination_deg=28.2083786346087),
+    "makemake": dict(a_au=45.40809140196068, period_days=111763.0638230585, eccentricity=.1629618398485094, inclination_deg=29.03460516900455),
 }
 
+# Shape/reference-plane values are from JPL Planetary Satellite Mean Elements.
+# Periods are the two-date effective values emitted by calibrate_moon_phases.py.
 MAJOR_MOONS = {
-    "moon": dict(a_km=384_400, period_days=27.3217, eccentricity=0.0549, inclination_deg=5.145),
-    "io": dict(a_km=421_700, period_days=1.769, eccentricity=0.0041, inclination_deg=0.04),
-    "europa": dict(a_km=671_100, period_days=3.551, eccentricity=0.009, inclination_deg=0.47),
-    "ganymede": dict(a_km=1_070_400, period_days=7.154, eccentricity=0.0013, inclination_deg=0.2),
-    "callisto": dict(a_km=1_882_700, period_days=16.689, eccentricity=0.0074, inclination_deg=0.192),
-    "titan": dict(a_km=1_221_870, period_days=15.945, eccentricity=0.0288, inclination_deg=0.3485),
-    "enceladus": dict(a_km=238_020, period_days=1.37, eccentricity=0.0047, inclination_deg=0.009),
-    "rhea": dict(a_km=527_108, period_days=4.518, eccentricity=0.001, inclination_deg=0.345),
-    "iapetus": dict(a_km=3_560_820, period_days=79.32, eccentricity=0.0286, inclination_deg=15.47),
-    "titania": dict(a_km=435_910, period_days=8.706, eccentricity=0.0011, inclination_deg=0.34),
-    "oberon": dict(a_km=583_520, period_days=13.463, eccentricity=0.0014, inclination_deg=0.058),
-    "ariel": dict(a_km=190_900, period_days=2.52, eccentricity=0.0012, inclination_deg=0.31),
-    "umbriel": dict(a_km=266_000, period_days=4.144, eccentricity=0.0039, inclination_deg=0.36),
-    "miranda": dict(a_km=129_900, period_days=1.413, eccentricity=0.0013, inclination_deg=4.338),
-    # Inclination 156.865° (>90°) already produces retrograde motion; the data must
-    # NOT also set the retrograde flag, or the two cancel. Assert the flag stays off.
-    "triton": dict(a_km=354_759, period_days=5.877, eccentricity=0.000016, inclination_deg=156.865, retrograde=False),
+    "moon": dict(a_km=384400, period_days=27.321890868, eccentricity=.0554, inclination_deg=5.16, frame="ecliptic-j2000"),
+    "io": dict(a_km=421800, period_days=1.769104042, eccentricity=.004, inclination_deg=0, frame="laplace-plane"),
+    "europa": dict(a_km=671100, period_days=3.551372776, eccentricity=.009, inclination_deg=.5, frame="laplace-plane"),
+    "ganymede": dict(a_km=1070400, period_days=7.155586438, eccentricity=.001, inclination_deg=.2, frame="laplace-plane"),
+    "callisto": dict(a_km=1882700, period_days=16.690445553, eccentricity=.007, inclination_deg=.3, frame="laplace-plane"),
+    "titan": dict(a_km=1221900, period_days=15.946851096, eccentricity=.029, inclination_deg=.3, frame="laplace-plane"),
+    "enceladus": dict(a_km=238400, period_days=1.370236382, eccentricity=.005, inclination_deg=0, frame="laplace-plane"),
+    "rhea": dict(a_km=527200, period_days=4.517587576, eccentricity=.001, inclination_deg=.3, frame="laplace-plane"),
+    "iapetus": dict(a_km=3561700, period_days=79.336717467, eccentricity=.028, inclination_deg=7.6, frame="laplace-plane"),
+    "titania": dict(a_km=436298, period_days=8.708282309, eccentricity=.002, inclination_deg=.1, frame="body-equator"),
+    "oberon": dict(a_km=583511, period_days=13.462963591, eccentricity=.002, inclination_deg=.1, frame="body-equator"),
+    "ariel": dict(a_km=190929, period_days=2.520680208, eccentricity=.001, inclination_deg=0, frame="body-equator"),
+    "umbriel": dict(a_km=265986, period_days=4.144113730, eccentricity=.004, inclination_deg=.1, frame="body-equator"),
+    "miranda": dict(a_km=129846, period_days=1.413556407, eccentricity=.001, inclination_deg=4.4, frame="body-equator"),
+    "triton": dict(a_km=354800, period_days=5.876563900, eccentricity=0, inclination_deg=157.3, frame="laplace-plane"),
 }
 
 
-def load_app_orbits() -> dict[str, dict[str, object]]:
-    ids = sorted([*DWARF_PLANETS.keys(), *MAJOR_MOONS.keys()])
+def load_app_contract() -> dict[str, dict[str, object]]:
+    ids = sorted([*DWARF_PLANETS, *MAJOR_MOONS])
     code = f"""
-      import {{ bodiesById }} from "./src/data";
+      import {{ bodies, bodiesById }} from "./src/data";
       const ids = {json.dumps(ids)};
-      const out = Object.fromEntries(ids.map((id) => {{
+      const selected = Object.fromEntries(ids.map((id) => {{
         const body = bodiesById.get(id);
-        if (!body?.orbit) {{
-          return [id, null];
-        }}
+        if (!body?.orbit) return [id, null];
         return [id, {{
           type: body.type,
           semiMajorAxisKm: body.orbit.semiMajorAxisKm,
           orbitalPeriodDays: body.orbit.orbitalPeriodDays,
           eccentricity: body.orbit.eccentricity,
           inclinationDeg: body.orbit.inclinationDeg,
-          retrograde: body.orbit.retrograde === true,
+          meanAnomalyAtEpochDeg: body.orbit.meanAnomalyAtEpochDeg,
+          epochTimeScale: body.orbit.epochTimeScale,
+          referenceFrame: body.orbit.referenceFrame,
+          orbitMetadata: body.orbit.metadata,
+          bodyMetadata: body.scientific,
+          orientation: body.physical.orientation,
+          rotationPeriodHours: body.physical.rotationPeriodHours,
         }}];
       }}));
-      console.log(JSON.stringify(out));
+      const all = bodies.map((body) => ({{
+        id: body.id,
+        hasScientific: Boolean(body.scientific),
+        orbitComplete: !body.orbit || Boolean(
+          body.orbit.epochTimeScale && body.orbit.referenceFrame && body.orbit.metadata
+        ),
+        rotationPeriodHours: body.physical.rotationPeriodHours ?? null,
+      }}));
+      console.log(JSON.stringify({{ selected, all }}));
     """
-    # Resolve tsx from the local install first, then PATH, then npx. If none is
-    # available (e.g. a fresh checkout without `npm install`), skip these checks with a
-    # warning instead of crashing the whole verify:math suite — the pure-Python JPL
-    # checks above have already validated the orbital math.
     local_tsx = ROOT / "node_modules" / ".bin" / "tsx"
     if local_tsx.exists():
-        tsx_cmd = [str(local_tsx)]
-    elif shutil.which("tsx"):
-        tsx_cmd = ["tsx"]
-    elif shutil.which("npx"):
-        tsx_cmd = ["npx", "--yes", "tsx"]
+        command = str(local_tsx)
     else:
-        print(
-            "WARN: tsx not found (run `npm install`); skipping minor-body data checks.",
-            file=sys.stderr,
-        )
-        sys.exit(0)
-
+        command = shutil.which("tsx")
+        if not command:
+            raise RuntimeError("tsx is required; run npm install before verify:math")
     result = subprocess.run(
-        [*tsx_cmd, "--eval", code],
+        [command, "--eval", code],
         cwd=ROOT,
         check=True,
         text=True,
@@ -97,30 +100,47 @@ def assert_close(actual: float, expected: float, tolerance: float, label: str) -
 
 
 def main() -> None:
-    app_orbits = load_app_orbits()
+    contract = load_app_contract()
+    selected = contract["selected"]
 
     for body_id, expected in DWARF_PLANETS.items():
-        actual = app_orbits[body_id]
+        actual = selected[body_id]
         assert actual, f"missing app orbit for {body_id}"
-        assert actual["type"] == "dwarfPlanet", f"{body_id} should be a dwarf planet"
-        assert_close(actual["semiMajorAxisKm"] / AU_KM, expected["a_au"], 0.000_01, f"{body_id} semi-major axis AU")
-        assert_close(actual["orbitalPeriodDays"], expected["period_days"], 0.05, f"{body_id} period days")
-        assert_close(actual["eccentricity"], expected["eccentricity"], 0.000_1, f"{body_id} eccentricity")
-        assert_close(actual["inclinationDeg"], expected["inclination_deg"], 0.01, f"{body_id} inclination")
+        assert actual["type"] == "dwarfPlanet"
+        assert_close(actual["semiMajorAxisKm"] / AU_KM, expected["a_au"], 1e-12, f"{body_id} a")
+        assert_close(actual["orbitalPeriodDays"], expected["period_days"], 1e-7, f"{body_id} period")
+        assert_close(actual["eccentricity"], expected["eccentricity"], 1e-12, f"{body_id} eccentricity")
+        assert_close(actual["inclinationDeg"], expected["inclination_deg"], 1e-10, f"{body_id} inclination")
+        assert actual["epochTimeScale"] == "TDB"
+        assert actual["referenceFrame"]["id"] == "ecliptic-j2000"
+        assert actual["orbitMetadata"]["accuracy"]["tier"] == "ephemeris-snapshot"
+        assert "horizons" in actual["orbitMetadata"]["sources"][0]["id"]
 
     for body_id, expected in MAJOR_MOONS.items():
-        actual = app_orbits[body_id]
+        actual = selected[body_id]
         assert actual, f"missing app orbit for {body_id}"
-        assert actual["type"] == "moon", f"{body_id} should be a moon"
-        assert_close(actual["semiMajorAxisKm"], expected["a_km"], 0.5, f"{body_id} semi-major axis km")
-        assert_close(actual["orbitalPeriodDays"], expected["period_days"], 0.000_5, f"{body_id} period days")
-        assert_close(actual["eccentricity"], expected["eccentricity"], 0.000_01, f"{body_id} eccentricity")
-        assert_close(actual["inclinationDeg"], expected["inclination_deg"], 0.001, f"{body_id} inclination")
-        if "retrograde" in expected:
-            assert actual["retrograde"] is expected["retrograde"], f"{body_id} retrograde flag should be {expected['retrograde']}"
+        assert actual["type"] == "moon"
+        assert_close(actual["semiMajorAxisKm"], expected["a_km"], 1e-6, f"{body_id} a")
+        assert_close(actual["orbitalPeriodDays"], expected["period_days"], 1e-9, f"{body_id} period")
+        assert_close(actual["eccentricity"], expected["eccentricity"], 1e-12, f"{body_id} eccentricity")
+        assert_close(actual["inclinationDeg"], expected["inclination_deg"], 1e-12, f"{body_id} inclination")
+        assert actual["epochTimeScale"] == "TDB"
+        assert actual["referenceFrame"]["id"] == expected["frame"]
+        assert actual["orbitMetadata"]["accuracy"]["tier"] == "mean-elements"
+        assert actual["orientation"]["kind"] == "iau-pck"
+        assert actual["orientation"]["synchronous"]["parentId"]
 
-    print("Minor body source-value checks passed")
-    print(f"Checked {len(DWARF_PLANETS)} dwarf planets and {len(MAJOR_MOONS)} major moons")
+    for body in contract["all"]:
+        assert body["hasScientific"], f"{body['id']} missing body scientific metadata"
+        assert body["orbitComplete"], f"{body['id']} orbit contract is incomplete"
+        period = body["rotationPeriodHours"]
+        assert period is None or period > 0, f"{body['id']} has a signed legacy rotation period"
+
+    assert selected["triton"]["referenceFrame"]["poleRightAscensionDeg"] == 299.8
+    assert selected["titania"]["referenceFrame"]["poleDeclinationDeg"] == -15.175
+
+    print("Scientific contract source-value checks passed")
+    print(f"Checked {len(DWARF_PLANETS)} Horizons dwarf snapshots and {len(MAJOR_MOONS)} JPL moon models")
 
 
 if __name__ == "__main__":

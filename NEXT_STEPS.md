@@ -1,8 +1,14 @@
-# Solar System MVP: What Comes Next
+# Solar System: Current Status And Historical Roadmap
 
-## Current MVP Snapshot
+> Status note (2026-07-10): this file began as the post-MVP roadmap. The app has since
+> shipped most of that polish plus educational rockets, live scenarios, scientific
+> provenance, authored experiences, observer/photo modes, and shareable views. The
+> original sequencing below is retained as project history; `DATA_SOURCES.md`,
+> `ROCKETS.md`, and the current `QA_CHECKLIST.md` describe the active contracts.
 
-The MVP is now a working Vite + React + Three.js solar system app. It opens directly into a 3D simulation with:
+## Current Product Snapshot
+
+The app is a working Vite + React + Three.js solar-system simulator. It opens directly into a 3D simulation with:
 
 - Sun, planets, dwarf planets, major moons, asteroid belt, and Kuiper belt data.
 - Keplerian orbit solving with eccentricity, inclination, and orbital speed estimates.
@@ -15,12 +21,16 @@ The MVP is now a working Vite + React + Three.js solar system app. It opens dire
 - Best-effort PWA/offline shell via a build-time generated service worker
   (`scripts/generate-service-worker.mjs` → `dist/service-worker.js`).
 - Educational rocket feature in `src/features/rockets/`: launch panel, rocket catalog,
-  a speed-profile flight model, direct-aim and approximate Hohmann-style transfer
-  previews, and 13 destinations (Moon, Mercury–Neptune, plus Ceres/Pluto/Eris/Haumea/
-  Makemake — see `src/features/rockets/destinationCatalog.ts` for the source of truth).
-  See `ROCKETS.md`.
+  illustrative direct/free curves, propagated Hohmann coasts, endpoint-targeted Lambert
+  intercepts, explicit flyby/capture outcomes, and 13 destinations (Moon,
+  Mercury–Neptune, plus Ceres/Pluto/Eris/Haumea/Makemake). See `ROCKETS.md`.
+- Per-body scientific model/source/validity contracts, corrected reference frames and
+  orientation models, physical lighting/materials, analytic focused-system eclipses,
+  adaptive exposure, and screen-space rendering quality.
+- Reversible rocket/scenario watch modes, authored Eclipse Chase/Scale Revelation/Three
+  Worlds experiences, a terminator observer, Photo mode, and shareable view links.
 
-## Verification Notes
+## Historical Verification Notes
 
 Checks run:
 
@@ -36,7 +46,10 @@ Known warning:
 
 - Vite reports the built JavaScript chunk is over 500 kB. This is expected for an early Three.js MVP, but should be addressed before the app grows.
 
-## Highest Priority Fixes
+## Historical V1 Polish Backlog
+
+Most items in this backlog have since shipped. They remain useful as the record of why
+the corresponding controls, provenance layer, camera presets, and performance work exist.
 
 ### 1. Polish The Scale Control Layout
 
@@ -97,9 +110,10 @@ Done when:
 - The app still opens to the simulation while offline.
 - Offline behavior is documented in the README or QA checklist.
 
-## Next Product Milestone
+## Historical Next Product Milestone
 
-The next product milestone should be **Solar System v1 Polish**, not rockets yet.
+At this point in the project, the next product milestone was **Solar System v1 Polish**,
+before rockets. That sequencing has now been completed and superseded.
 
 Goal:
 
@@ -219,7 +233,10 @@ Acceptance checks:
 - User can quickly inspect Earth/Moon, Jupiter, Saturn, and outer solar system.
 - Manual camera movement exits automated modes predictably.
 
-## Rocket Work: Still Defer
+## Historical Rocket Deferral (Superseded)
+
+This was the original sequencing guardrail. The educational rocket module now ships;
+its current evidence and trajectory contracts are documented in `ROCKETS.md`.
 
 Do not build rockets in the next milestone unless the solar system polish is complete.
 
@@ -240,7 +257,7 @@ When rockets do begin, start with a design-only spike:
 - Keep patched conics and user-steered flight for later.
 - Clearly label futuristic propulsion assumptions as speculative.
 
-## Suggested New Docs
+## Historical Suggested Docs
 
 Add these next:
 
@@ -249,7 +266,7 @@ Add these next:
 - `PERFORMANCE_NOTES.md`: known performance risks and profiling observations.
 - `ROCKETS_PHASE_2.md`: future rocket architecture and product design, only after v1 polish.
 
-## Recommended Next Agent Prompt
+## Historical Next-Agent Prompt (Do Not Reuse As Current State)
 
 ```text
 You are working in /Users/Apple/Documents/solar-system-sim-design.
@@ -264,4 +281,3 @@ Run:
 
 Use the local Vite app for visual verification.
 ```
-

@@ -2,7 +2,15 @@
 
 Use this checklist after meaningful scene, UI, scale, camera, time, or service-worker changes.
 
-## Latest QA Run - 2026-06-14 (Rocket Phase 2)
+## Historical QA Runs
+
+The June entries below preserve what was tested against the then-current rocket
+prototype. Names and behavior such as `Transfer preview`, confidence labels, the LEO
+speed offset, and automatic post-arrival attachment were superseded by the current
+Hohmann/Lambert, evidence-contract, and explicit flyby/capture model. Use the current
+checklists later in this document for release sign-off.
+
+### 2026-06-14 (Rocket Phase 2)
 
 - `npm run verify:math` passed, including `scripts/verify_rocket_transfer_math.py`.
 - `npm run build` passed and regenerated the service worker.
@@ -27,7 +35,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
   rejected by the browser range control and coordinate dragging did not move the native
   slider in the in-app Browser. Recheck physical range dragging before strict release sign-off.
 
-## Latest QA Run - 2026-06-13 (Rocket Destination Targeting)
+### 2026-06-13 (Rocket Destination Targeting)
 
 - `npm run verify:math` passed (destination feature does not touch orbital math).
 - `tsc --noEmit` and `npm run build` passed; service worker regenerated.
@@ -44,7 +52,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
   Reset remained visible at 1280×800 with no overlap. Phone docked the panel between the
   scale and time controls with the inspector hidden while open; no horizontal overflow.
 
-## Latest QA Run - 2026-06-13 (Rocket MVP)
+### 2026-06-13 (Rocket MVP)
 
 - `npm run verify:math` passed (rocket feature does not touch orbital math).
 - `tsc --noEmit` and `npm run build` passed; service worker regenerated.
@@ -57,7 +65,7 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - No panel overlap on desktop. On phone the launcher docks between the scale and
   time controls and the inspector is hidden while it is open (it returns on close).
 
-## Latest QA Run - 2026-06-14
+### 2026-06-14 (Solar-system polish)
 
 - `npm run verify:math` passed.
 - `npm run build` passed and generated `dist/service-worker.js`.
@@ -116,13 +124,31 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Orbit toggle hides and shows orbit rings.
 - [ ] Trail toggle hides and shows optional body trails.
 - [ ] Focus, Follow, and Moons buttons show their active state when selected.
+- [ ] Double-clicking a body or choosing it in Search moves to a useful focused view.
+- [ ] Observe places a non-stellar body beneath a visible Sun-facing horizon and shows
+      the terminator-observer scale disclosure.
+- [ ] Turning off labels, grid, orbits, and trails exposes the recovery action, and that
+      action restores a useful recommended view.
+
+## Scientific Trust And Sharing Checks
+
+- [ ] The inspector shows the selected body's model tier and exposes its sources,
+      reference frame, accuracy description, and important omissions.
+- [ ] Moving outside a model's validated interval shows the extrapolation warning.
+- [ ] Real scale keeps physical radius and distance on one linear scale; every other
+      lens states what it enlarges or compresses.
+- [ ] Photo mode hides the UI while leaving a reachable Show controls action.
+- [ ] A copied view link restores body, date, camera mode, scale lens, playback state,
+      labels, grid, orbits, and trails without console errors.
 
 ## Rocket Launch Checks
 
 - [ ] Rocket panel is hidden by default; the default view stays uncluttered.
 - [ ] The rocket button in the top bar opens and closes the launch panel.
-- [ ] Selecting a profile updates the category, confidence badge, and description.
-- [ ] Confidence is clearly labeled: Flown, Estimated, or Speculative.
+- [ ] Selecting a profile updates hardware status, direct/free curve confidence,
+      description, primary sources, and any contextual payload/C3 benchmarks.
+- [ ] Hardware maturity, curve confidence, and capability benchmarks remain visibly
+      separate; a physical transfer never claims launcher feasibility.
 - [ ] Preview free flight shows a marker, outbound trail, and label in the scene.
 - [ ] Telemetry shows mission time, speed, distance traveled, distance from Earth,
       and target range/arrival when applicable, and all update as time advances.
@@ -136,14 +162,16 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
       and returns when it is closed.
 - [ ] No console errors after launching, resetting, and switching scale modes.
 
-## Rocket Destination Targeting Checks
+## Rocket Destination And Mission Checks
 
 - [ ] The Target selector groups Free flight, planets, dwarf planets, and Moon only.
-- [ ] The mission mode selector offers Direct aim and Transfer preview, and disables for Free flight.
+- [ ] The mission mode selector offers Guided direct, Hohmann coast, and Lambert intercept
+      for heliocentric targets; Moon omits unsupported Lambert, and Free flight disables the selector.
 - [ ] The launch assumption selector offers Earth departure, Low Earth orbit, and Surface launch.
-- [ ] The Preview button label reflects the target and mission mode (e.g. "Preview direct aim to Mars", "Preview transfer to Mars", "Preview free flight").
+- [ ] The Preview button label reflects the target and mission mode (for example,
+      "Preview guided direct to Mars", "Preview Hohmann coast to Mars", or "Preview free flight").
 - [ ] Launching toward a destination shows a subtle highlight ring on the target body.
-- [ ] Direct aim shows a straight outbound path and a thin dashed line to the selected destination.
+- [ ] Guided direct shows a straight outbound path and a thin dashed line to the selected destination.
 - [ ] Destination telemetry shows the target name, distance to target, estimated arrival,
       and closest approach.
 - [ ] Distance to target changes over time (decreases while approaching).
@@ -154,22 +182,37 @@ Use this checklist after meaningful scene, UI, scale, camera, time, or service-w
 - [ ] Destination launches do not move or modify any planet/moon.
 - [ ] No console errors after selecting destinations, launching, and resetting.
 
-## Rocket Transfer Preview Checks
+## Physical Rocket Transfer Checks
 
-- [ ] Transfer preview renders a curved transfer arc instead of only a straight line.
+- [ ] Hohmann and Lambert modes render propagated transfer arcs instead of a guided straight line.
 - [ ] The arc shows a launch marker, current rocket marker, and intercept/arrival cue.
 - [ ] Rocket progress advances along the arc as time runs and updates when time is scrubbed.
-- [ ] After the transfer arrival date, the rocket remains visually attached to the current destination
-      and the target distance reads 0 km instead of drifting from the old intercept point.
-- [ ] Telemetry shows Mission mode, Phase, Launch mode, Transfer time, Intercept date,
-      Launch window, Ideal phase, Delta-v, distance fields, and closest approach.
-- [ ] Transfer math is clearly labeled approximate and not a professional mission planner.
-- [ ] Launch-window quality changes with target/date and includes a phase offset.
-- [ ] Transfer preview to the Moon uses the simplified Earth-centered estimate.
+- [ ] A Hohmann coast can report and visibly continue through a phase-dependent miss;
+      Lambert reaches its dated modeled endpoint without borrowing a catalog speed curve.
+- [ ] Flyby continues the propagated conic after encounter. Capture follows the destination
+      only after a valid intercept and application of the displayed idealized burn.
+- [ ] Telemetry shows mission/arrival modes, transfer time, intercept date, phase offset,
+      v-infinity, C3, 400 km LEO injection, capture burn, arrival miss, and closest approach.
+- [ ] Transfer math is labeled as a two-body educational model, not a launcher verdict or
+      professional mission planner.
+- [ ] Hohmann launch-window quality changes with target/date and includes a phase offset.
+- [ ] A Moon transfer clearly identifies its simplified Earth-centered Hohmann model.
 - [ ] Non-Earth moons are absent from rocket destinations until local capture is modeled.
-- [ ] Direct aim predicts a moving-target straight-line intercept and can report Arrived near the target.
-- [ ] Low Earth orbit launch mode changes the direct/free-flight speed readout without
-      changing planet or moon data.
+- [ ] Guided direct predicts a moving-target straight-line intercept and can report Arrived near the target.
+- [ ] Low Earth orbit is a 400 km injection reference; its orbital speed is never added
+      as free scalar cruise speed and launch assumptions never change the physical conic.
+
+## Authored Experience And Scenario Checks
+
+- [ ] Scale Revelation visits Real, Readable, Compact, and Map with a persistent disclosure
+      of what each lens preserves or distorts.
+- [ ] Eclipse Chase computes a live model event, keeps its mean-element timing limitation
+      visible, and supports replay/hold controls.
+- [ ] Three Worlds visits Earth/Moon, Jupiter, and Saturn with useful watch prompts.
+- [ ] Exiting an authored experience, rocket watch, or scenario restores the pre-session
+      clock, view, and scale state, including a manually composed free-look camera.
+- [ ] Each Doomsday scenario shows integrated/guided/stylized fidelity badges, uses its
+      compact watch HUD, narrates the latest event, and restores the untouched system on exit.
 
 ## Production Offline Check
 

@@ -1,5 +1,6 @@
 import { AU_KM, DAY_MS, DAY_SECONDS } from "../data/constants";
 import type { CelestialBody, Orbit, Vec3 } from "./orbitalElements";
+import { orbitFrameVectorToScene } from "./coordinateFrames";
 import { addVec3, vectorLength } from "./vec3";
 
 // Re-exported so existing importers keep their `./solveOrbit` source; the canonical
@@ -130,7 +131,7 @@ export const getOrbitElementsAtDate = (orbit: Orbit, date: Date): ResolvedOrbitE
   };
 };
 
-const getPositionFromElementsKm = (elements: ResolvedOrbitElements): Vec3 => {
+const getPositionInElementFrameKm = (elements: ResolvedOrbitElements): Vec3 => {
   const meanAnomalyRad = degToRad(elements.meanAnomalyDeg);
   // sqrt(1 - e^2) and the (1 - e cos E) Newton step below go imaginary/degenerate
   // for e >= 1; clamp so bad data never poisons Three.js transforms with NaN.
@@ -156,13 +157,13 @@ const getPositionFromElementsKm = (elements: ResolvedOrbitElements): Vec3 => {
 
   return [
     radiusKm * (cosNode * cosArg - sinNode * sinArg * cosInc),
-    radiusKm * (sinArg * sinInc),
     radiusKm * (sinNode * cosArg + cosNode * sinArg * cosInc),
+    radiusKm * (sinArg * sinInc),
   ];
 };
 
 export const getOrbitPositionKm = (orbit: Orbit, date: Date): Vec3 =>
-  getPositionFromElementsKm(getOrbitElementsAtDate(orbit, date));
+  orbitFrameVectorToScene(getPositionInElementFrameKm(getOrbitElementsAtDate(orbit, date)), orbit.referenceFrame);
 
 export const getBodyPositionKm = (
   body: CelestialBody,
@@ -217,7 +218,12 @@ export const sampleOrbitKm = (orbit: Orbit, samples = 192, date = new Date(orbit
   const elements = getOrbitElementsAtDate(orbit, date);
 
   for (let index = 0; index <= samples; index += 1) {
-    points.push(getPositionFromElementsKm({ ...elements, meanAnomalyDeg: index * step }));
+    points.push(
+      orbitFrameVectorToScene(
+        getPositionInElementFrameKm({ ...elements, meanAnomalyDeg: index * step }),
+        orbit.referenceFrame,
+      ),
+    );
   }
 
   return points;

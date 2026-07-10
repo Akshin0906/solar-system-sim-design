@@ -2,8 +2,23 @@ import { useScenarioStore } from "../../scenarios/scenarioStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import { formatDistance } from "../../simulation/units";
 import type { RocketDestination } from "./destinationCatalog";
-import { launchModeLabel, missionModeLabel, type RocketLaunchMode, type RocketMissionMode } from "./missionOptions";
-import { confidenceLabel, type RocketProfile } from "./rocketCatalog";
+import {
+  arrivalModeLabel,
+  launchModeLabel,
+  missionModeLabel,
+  type RocketArrivalMode,
+  type RocketLaunchMode,
+  type RocketMissionMode,
+} from "./missionOptions";
+import type { RocketProfile } from "./rocketCatalog";
+import {
+  directCurveConfidenceLabel,
+  formatCapabilityBenchmark,
+  hardwareKindLabel,
+  hardwareStatusLabel,
+  hardwareStatusTone,
+  rocketReferences,
+} from "./rocketEvidence";
 import {
   formatDeltaV,
   formatMissionTime,
@@ -18,6 +33,7 @@ type RocketTelemetryProps = {
   destination: RocketDestination | null;
   missionMode: RocketMissionMode;
   launchMode: RocketLaunchMode;
+  arrivalMode: RocketArrivalMode;
   launchDateMs: number;
 };
 
@@ -37,12 +53,15 @@ export const RocketTelemetry = ({
   destination,
   missionMode,
   launchMode,
+  arrivalMode,
   launchDateMs,
 }: RocketTelemetryProps) => {
-  const view = useRocketView(profile, destination, missionMode, launchMode, launchDateMs);
+  const view = useRocketView(profile, destination, missionMode, launchMode, arrivalMode, launchDateMs);
   const preLaunch = view.status === "pre-launch";
   const target = view.destination;
   const transfer = view.transfer;
+  const isTransfer = view.missionMode !== "direct";
+  const c3Benchmarks = profile.capabilityBenchmarks.filter((benchmark) => benchmark.c3Km2S2 !== undefined);
   const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
 
   const playForward = () => {
@@ -56,7 +75,15 @@ export const RocketTelemetry = ({
     <div className="rocket-telemetry">
       <div className="rocket-status-row">
         <span className={`rocket-status ${view.status}`}>{missionStatusLabel[view.status]}</span>
-        <span className={`rocket-badge ${profile.sourceConfidence}`}>{confidenceLabel[profile.sourceConfidence]}</span>
+        <div className="rocket-evidence-badges">
+          <span className={`rocket-badge ${hardwareStatusTone[profile.hardware.status]}`}>
+            {hardwareStatusLabel[profile.hardware.status]}
+          </span>
+          <span className={`rocket-badge curve-${profile.directCurve.confidence}`}>
+            {directCurveConfidenceLabel[profile.directCurve.confidence]}
+            {isTransfer ? " · unused" : ""}
+          </span>
+        </div>
       </div>
 
       {scenarioActive && (
@@ -75,11 +102,51 @@ export const RocketTelemetry = ({
         </p>
       )}
 
-      <p className="rocket-note">Conceptual mission preview; values are educational estimates.</p>
+      <div className={`rocket-model-contract ${isTransfer ? "physical" : "illustrative"}`}>
+        <strong>{isTransfer ? "Physical transfer · hardware unchecked" : "Illustrative direct/free curve"}</strong>
+        <p>
+          {isTransfer
+            ? "The dated conic and its C3/delta-v requirements are solved without the selected catalog curve. No payload, staging, propellant, or launcher margin is selected, so this is not a capability verdict."
+            : profile.directCurve.note}
+        </p>
+      </div>
 
       {transfer && (
         <p className="rocket-note">
-          Approximate transfer preview. {transfer.estimate.notes[0]} It is not a professional mission planner.
+          {transfer.estimate.notes[0]} It is not a professional mission planner.
+        </p>
+      )}
+
+      {transfer && c3Benchmarks.length > 0 && (
+        <details className="rocket-c3-context">
+          <summary>Reference C3 point · not a feasibility verdict</summary>
+          <p className="rocket-note">
+            This trajectory requires C3 {transfer.estimate.departureC3Km2S2.toFixed(2)} km²/s². The source point below
+            has its own payload, configuration, date, and mission assumptions; it is context, not a pass/fail comparison.
+          </p>
+          {c3Benchmarks.map((benchmark) => {
+            const source = rocketReferences[benchmark.sourceId];
+            return (
+              <div className="rocket-c3-benchmark" key={benchmark.id}>
+                <strong>{benchmark.label}</strong>
+                <span>{formatCapabilityBenchmark(benchmark)}</span>
+                <small>
+                  {benchmark.configuration}. {benchmark.caveat}
+                </small>
+                <a href={source.url} target="_blank" rel="noreferrer">
+                  {source.publisher} source
+                </a>
+              </div>
+            );
+          })}
+        </details>
+      )}
+
+      {transfer && c3Benchmarks.length === 0 && (
+        <p className="rocket-note rocket-capability-disclaimer">
+          {profile.hardware.kind === "launch-vehicle"
+            ? `No like-for-like payload-versus-C3 curve is stored for ${profile.name}; no launch-capability claim is made.`
+            : `${profile.name} is ${hardwareKindLabel[profile.hardware.kind].toLowerCase()}, not an Earth launch vehicle; no launch-capability claim is made.`}
         </p>
       )}
 
@@ -88,25 +155,32 @@ export const RocketTelemetry = ({
           <dt>Mission mode</dt>
           <dd>{missionModeLabel[view.missionMode]}</dd>
         </div>
-            <div>
-              <dt>Launch</dt>
-              <dd>{launchModeLabel[view.launchMode]}</dd>
-            </div>
+        {isTransfer && (
+          <div>
+            <dt>Encounter</dt>
+            <dd>{arrivalModeLabel[view.arrivalMode]}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Launch</dt>
+          <dd>{launchModeLabel[view.launchMode]}</dd>
+        </div>
         <div>
           <dt>Mission time</dt>
           <dd>{formatMissionTime(view.elapsedSeconds)}</dd>
         </div>
         <div>
-          <dt>{view.missionMode === "transfer" ? "Avg speed" : "Speed"}</dt>
+          <dt>
+            {isTransfer && view.transfer?.progress === 1 && !view.transfer.captureApplied
+              ? "Current inertial speed"
+              : isTransfer
+                ? "Route mean speed"
+                : "Speed"}
+          </dt>
           <dd>{formatSpeed(view.speedKmS)}</dd>
         </div>
         <div>
-          {/* In transfer mode the drawn route is an illustrative arc (not the Hohmann
-              ellipse), so its length is a route measure, not a physical odometer that
-              reconciles with the vis-viva "Avg speed" shown above. */}
-          <dt title={view.missionMode === "transfer" ? "Illustrative route length, not a physical odometer" : undefined}>
-            {view.missionMode === "transfer" ? "Route length (approx.)" : "Distance traveled"}
-          </dt>
+          <dt>{isTransfer ? "Transfer arc length" : "Distance traveled"}</dt>
           <dd>{formatDistance(view.distanceTraveledKm)}</dd>
         </div>
         <div>
@@ -158,11 +232,36 @@ export const RocketTelemetry = ({
               </>
             )}
             <div>
-              <dt>Delta-v</dt>
+              <dt>Departure v∞</dt>
               <dd>
-                {formatDeltaV(transfer.estimate.departureDeltaVKmS)} /{" "}
-                {formatDeltaV(transfer.estimate.arrivalDeltaVKmS)}
+                {formatDeltaV(transfer.estimate.departureVInfinityKmS)} · C3{" "}
+                {transfer.estimate.departureC3Km2S2.toFixed(1)} km²/s²
               </dd>
+            </div>
+            <div>
+              <dt>LEO injection</dt>
+              <dd>{formatDeltaV(transfer.estimate.parkingOrbitInjectionDeltaVKmS)}</dd>
+            </div>
+            <div>
+              <dt>Arrival v∞</dt>
+              <dd>{formatDeltaV(transfer.estimate.arrivalVInfinityKmS)}</dd>
+            </div>
+            <div>
+              <dt>
+                {transfer.captureApplied
+                  ? "Capture burn (applied)"
+                  : view.arrivalMode === "capture"
+                    ? "Capture burn (planned)"
+                    : "Capture burn (not applied)"}
+              </dt>
+              <dd>
+                {formatDeltaV(transfer.estimate.captureDeltaVKmS)}
+                {view.arrivalMode === "capture" && !transfer.captureAvailable ? " · unavailable" : ""}
+              </dd>
+            </div>
+            <div>
+              <dt>Arrival miss</dt>
+              <dd>{formatDistance(transfer.estimate.arrivalMissDistanceKm)}</dd>
             </div>
           </>
         )}
@@ -170,11 +269,20 @@ export const RocketTelemetry = ({
 
       <p className="rocket-note">
         {launchMode === "low-earth-orbit"
-          ? "Concept baseline: direct and free-flight previews include a simplified parking-orbit speed offset."
+          ? "400 km circular parking orbit: injection is reported as a burn requirement, never added as free cruise speed."
           : launchMode === "surface"
-            ? "Concept baseline: surface launch uses the Earth marker; atmosphere and gravity losses are not modeled."
-            : "Concept baseline: the tracked cruise begins after Earth departure."}
+            ? "Surface reference: atmosphere, gravity loss, staging, and ascent are explicitly outside this trajectory model."
+            : "Earth-departure reference: launcher and trajectory capability are reported separately."}
       </p>
+      {transfer && view.arrivalMode === "capture" && (
+        <p className="rocket-note">
+          {transfer.captureApplied
+            ? "The idealized impulsive capture burn is applied at intercept. Propellant, engine limits, and burn duration are not modeled."
+            : transfer.captureAvailable && transfer.progress < 1
+              ? "A valid intercept and idealized capture burn are planned. Propellant, engine limits, and burn duration are not modeled."
+              : "Capture was requested but no valid intercept and finite capture burn were available, so the trajectory remains uncaptured."}
+        </p>
+      )}
     </div>
   );
 };

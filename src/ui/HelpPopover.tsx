@@ -130,6 +130,18 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
           <dt>Inspect a body</dt>
           <dd>{isMobile ? "Tap it" : "Click it"}</dd>
         </div>
+        <div>
+          <dt>Go to a body</dt>
+          <dd>{isMobile ? "Choose it in Search" : "Double-click or choose it in Search"}</dd>
+        </div>
+        <div>
+          <dt>Surface observer</dt>
+          <dd>Choose Observe in a body’s inspector</dd>
+        </div>
+        <div>
+          <dt>Clean screenshot</dt>
+          <dd>Use Photo mode in the top bar</dd>
+        </div>
       </dl>
     </div>
   );

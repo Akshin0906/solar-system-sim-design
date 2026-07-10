@@ -122,6 +122,12 @@ export type ScenarioContext = {
   bodiesById: Map<string, CelestialBody>;
 };
 
+export type ScenarioFidelityBadge = {
+  label: string;
+  detail: string;
+  tier: "integrated" | "guided" | "stylized" | "visual";
+};
+
 export type DoomsdayScenario = {
   id: string;
   name: string;
@@ -132,6 +138,7 @@ export type DoomsdayScenario = {
     summary: string;
     watch: string;
   };
+  fidelity: ScenarioFidelityBadge[];
   params: ScenarioParam[];
   defaultTimeScaleDaysPerSec: number;
   // Inject extra bodies or tweak state immediately after the base Kepler seed at T+0.

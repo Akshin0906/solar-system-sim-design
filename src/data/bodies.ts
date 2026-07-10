@@ -1,5 +1,12 @@
 import { AU_KM, J2000_EPOCH } from "./constants";
 import type { CelestialBody } from "../simulation/orbitalElements";
+import { BODY_ORIENTATIONS } from "./orientations";
+import {
+  BODY_PHYSICAL_METADATA,
+  ECLIPTIC_J2000_FRAME,
+  PLANET_ORBIT_METADATA,
+  createHorizonsSnapshotMetadata,
+} from "./scientificMetadata";
 
 const planetOrbitColor = "#d8c7a4";
 const dwarfOrbitColor = "#9fb7be";
@@ -26,7 +33,7 @@ const sun: CelestialBody = {
   },
 };
 
-export const majorBodies: CelestialBody[] = [
+const rawMajorBodies: CelestialBody[] = [
   sun,
   {
     id: "mercury",
@@ -70,7 +77,7 @@ export const majorBodies: CelestialBody[] = [
       color: "#d7b482",
       texture: "textures/venus.jpg",
       axialTiltDeg: 177.36,
-      rotationPeriodHours: -5_832.5,
+      rotationPeriodHours: 5_832.5,
       gravitationalParameterKm3S2: 324_858.592,
     },
     orbit: {
@@ -234,7 +241,7 @@ export const majorBodies: CelestialBody[] = [
       radiusKm: 25_362,
       color: "#9cd3cf",
       axialTiltDeg: 97.77,
-      rotationPeriodHours: -17.24,
+      rotationPeriodHours: 17.24,
       gravitationalParameterKm3S2: 5_793_939,
     },
     orbit: {
@@ -292,10 +299,29 @@ export const majorBodies: CelestialBody[] = [
   },
 ];
 
-// Dwarf planet values are rounded, approximate Kepler elements for education and
-// scale context. They are not date-fitted ephemerides; use JPL Horizons or the
-// JPL Small-Body Database for precision work.
-export const dwarfPlanets: CelestialBody[] = [
+export const majorBodies: CelestialBody[] = rawMajorBodies.map((body) => ({
+  ...body,
+  physical: {
+    ...body.physical,
+    orientation: BODY_ORIENTATIONS[body.id],
+  },
+  orbit: body.orbit
+    ? {
+        ...body.orbit,
+        epochTimeScale: "TT",
+        referenceFrame: ECLIPTIC_J2000_FRAME,
+        metadata: PLANET_ORBIT_METADATA,
+      }
+    : undefined,
+  scientific: BODY_PHYSICAL_METADATA,
+}));
+
+// JPL Horizons osculating elements at 2025-01-01 TDB.  The propagator remains a
+// two-body approximation away from that snapshot, but phase and plane are no
+// longer decorative local guesses.  scripts/fetch_horizons_elements.py reproduces
+// these records from the official API.
+const HORIZONS_DWARF_EPOCH = "2025-01-01T00:00:00.000Z";
+const rawDwarfPlanets: CelestialBody[] = [
   {
     id: "ceres",
     name: "Ceres",
@@ -307,14 +333,17 @@ export const dwarfPlanets: CelestialBody[] = [
       rotationPeriodHours: 9.074,
     },
     orbit: {
-      semiMajorAxisKm: 2.7675 * AU_KM,
-      eccentricity: 0.0758,
-      inclinationDeg: 10.59,
-      longitudeOfAscendingNodeDeg: 80.3,
-      argumentOfPeriapsisDeg: 73.6,
-      meanAnomalyAtEpochDeg: 95.99,
-      orbitalPeriodDays: 1_680.5,
-      epoch: J2000_EPOCH,
+      semiMajorAxisKm: 2.766_360_233_580_095 * AU_KM,
+      eccentricity: 0.079_279_290_804_374_46,
+      inclinationDeg: 10.587_932_992_691_21,
+      longitudeOfAscendingNodeDeg: 80.254_308_381_698_64,
+      argumentOfPeriapsisDeg: 73.262_382_741_957_68,
+      meanAnomalyAtEpochDeg: 162.150_082_770_982_4,
+      orbitalPeriodDays: 1_680.589_037_698_568,
+      epoch: HORIZONS_DWARF_EPOCH,
+      epochTimeScale: "TDB",
+      referenceFrame: ECLIPTIC_J2000_FRAME,
+      metadata: createHorizonsSnapshotMetadata("1 Ceres; center 500@10; epoch JD 2460676.5 TDB"),
     },
     render: { showLabelDefault: false, orbitColor: dwarfOrbitColor, trailColor: "#aaa59a" },
   },
@@ -327,17 +356,20 @@ export const dwarfPlanets: CelestialBody[] = [
       radiusKm: 1_188.3,
       color: "#b99a79",
       axialTiltDeg: 119.61,
-      rotationPeriodHours: -153.2928,
+      rotationPeriodHours: 153.2928,
     },
     orbit: {
-      semiMajorAxisKm: 39.48 * AU_KM,
-      eccentricity: 0.2488,
-      inclinationDeg: 17.16,
-      longitudeOfAscendingNodeDeg: 110.3,
-      argumentOfPeriapsisDeg: 113.8,
-      meanAnomalyAtEpochDeg: 14.5,
-      orbitalPeriodDays: 90_560,
-      epoch: J2000_EPOCH,
+      semiMajorAxisKm: 39.287_782_573_586_78 * AU_KM,
+      eccentricity: 0.243_860_539_968_966_9,
+      inclinationDeg: 16.939_066_598_873_21,
+      longitudeOfAscendingNodeDeg: 110.171_454_753_948_9,
+      argumentOfPeriapsisDeg: 113.575_486_823_267_9,
+      meanAnomalyAtEpochDeg: 51.936_553_437_274_63,
+      orbitalPeriodDays: 89_946.589_720_035_07,
+      epoch: HORIZONS_DWARF_EPOCH,
+      epochTimeScale: "TDB",
+      referenceFrame: ECLIPTIC_J2000_FRAME,
+      metadata: createHorizonsSnapshotMetadata("999 Pluto; center 500@10; epoch JD 2460676.5 TDB"),
     },
     render: { showLabelDefault: true, orbitColor: dwarfOrbitColor, trailColor: "#b99a79" },
   },
@@ -352,14 +384,17 @@ export const dwarfPlanets: CelestialBody[] = [
       rotationPeriodHours: 25.9,
     },
     orbit: {
-      semiMajorAxisKm: 67.78 * AU_KM,
-      eccentricity: 0.44,
-      inclinationDeg: 44.04,
-      longitudeOfAscendingNodeDeg: 35.9,
-      argumentOfPeriapsisDeg: 151.6,
-      meanAnomalyAtEpochDeg: 205,
-      orbitalPeriodDays: 203_600,
-      epoch: J2000_EPOCH,
+      semiMajorAxisKm: 68.086_755_431_030_06 * AU_KM,
+      eccentricity: 0.434_806_203_290_158_2,
+      inclinationDeg: 43.790_818_411_663_6,
+      longitudeOfAscendingNodeDeg: 36.058_453_280_810_82,
+      argumentOfPeriapsisDeg: 150.704_796_918_017_7,
+      meanAnomalyAtEpochDeg: 210.765_499_032_663_8,
+      orbitalPeriodDays: 205_207.101_177_813_7,
+      epoch: HORIZONS_DWARF_EPOCH,
+      epochTimeScale: "TDB",
+      referenceFrame: ECLIPTIC_J2000_FRAME,
+      metadata: createHorizonsSnapshotMetadata("136199 Eris; center 500@10; epoch JD 2460676.5 TDB"),
     },
     render: { showLabelDefault: false, orbitColor: dwarfOrbitColor, trailColor: "#c9c4bc" },
   },
@@ -374,14 +409,17 @@ export const dwarfPlanets: CelestialBody[] = [
       rotationPeriodHours: 3.915,
     },
     orbit: {
-      semiMajorAxisKm: 43.13 * AU_KM,
-      eccentricity: 0.195,
-      inclinationDeg: 28.2,
-      longitudeOfAscendingNodeDeg: 122.2,
-      argumentOfPeriapsisDeg: 240.8,
-      meanAnomalyAtEpochDeg: 205,
-      orbitalPeriodDays: 103_774,
-      epoch: J2000_EPOCH,
+      semiMajorAxisKm: 42.931_863_148_177_7 * AU_KM,
+      eccentricity: 0.197_880_624_118_667_3,
+      inclinationDeg: 28.208_378_634_608_7,
+      longitudeOfAscendingNodeDeg: 121.845_995_960_054_2,
+      argumentOfPeriapsisDeg: 241.020_922_327_108_1,
+      meanAnomalyAtEpochDeg: 221.106_278_601_515_6,
+      orbitalPeriodDays: 102_746.735_288_138_7,
+      epoch: HORIZONS_DWARF_EPOCH,
+      epochTimeScale: "TDB",
+      referenceFrame: ECLIPTIC_J2000_FRAME,
+      metadata: createHorizonsSnapshotMetadata("136108 Haumea; center 500@10; epoch JD 2460676.5 TDB"),
     },
     render: { showLabelDefault: false, orbitColor: dwarfOrbitColor, trailColor: "#d4d0c5" },
   },
@@ -396,15 +434,27 @@ export const dwarfPlanets: CelestialBody[] = [
       rotationPeriodHours: 22.83,
     },
     orbit: {
-      semiMajorAxisKm: 45.79 * AU_KM,
-      eccentricity: 0.161,
-      inclinationDeg: 29.0,
-      longitudeOfAscendingNodeDeg: 79.6,
-      argumentOfPeriapsisDeg: 296.6,
-      meanAnomalyAtEpochDeg: 164,
-      orbitalPeriodDays: 112_897,
-      epoch: J2000_EPOCH,
+      semiMajorAxisKm: 45.408_091_401_960_68 * AU_KM,
+      eccentricity: 0.162_961_839_848_509_4,
+      inclinationDeg: 29.034_605_169_004_55,
+      longitudeOfAscendingNodeDeg: 79.255_130_053_155_95,
+      argumentOfPeriapsisDeg: 296.858_168_411_040_4,
+      meanAnomalyAtEpochDeg: 168.538_041_311_595_5,
+      orbitalPeriodDays: 111_763.063_823_058_5,
+      epoch: HORIZONS_DWARF_EPOCH,
+      epochTimeScale: "TDB",
+      referenceFrame: ECLIPTIC_J2000_FRAME,
+      metadata: createHorizonsSnapshotMetadata("136472 Makemake; center 500@10; epoch JD 2460676.5 TDB"),
     },
     render: { showLabelDefault: false, orbitColor: dwarfOrbitColor, trailColor: "#c28f78" },
   },
 ];
+
+export const dwarfPlanets: CelestialBody[] = rawDwarfPlanets.map((body) => ({
+  ...body,
+  physical: {
+    ...body.physical,
+    orientation: BODY_ORIENTATIONS[body.id],
+  },
+  scientific: BODY_PHYSICAL_METADATA,
+}));

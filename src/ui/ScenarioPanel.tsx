@@ -1,5 +1,5 @@
-import { Pause, Play, Skull, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Pause, Play, SlidersHorizontal, Skull, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { DAY_SECONDS } from "../data/constants";
 import { bodiesById } from "../data";
 import { useRocketStore } from "../features/rockets/rocketStore";
@@ -15,6 +15,10 @@ import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 
 const formatParam = (value: number, unit?: string) => `${value}${unit ? ` ${unit}` : ""}`;
+
+const formatScenarioEventDetail = (detail: string) => {
+  return detail.replace(/[a-z][a-z0-9-]*/gi, (token) => bodiesById.get(token.toLowerCase())?.name ?? token);
+};
 
 // A sandbox slider that shows its value live while dragging but only COMMITS (which
 // re-seeds the scenario from T+0) on release — so dragging the thumb doesn't restart
@@ -105,7 +109,7 @@ const ParamControl = (props: {
   onCommit: (key: string, value: number) => void;
 }) => (props.param.options ? <ChoiceControl {...props} /> : <ParamSlider {...props} />);
 
-const formatElapsed = (seconds: number) => {
+export const formatScenarioElapsed = (seconds: number) => {
   const days = seconds / DAY_SECONDS;
   if (days >= 365.256) {
     return `${(days / 365.256).toFixed(days > 3_652 ? 0 : 1)} yr`;
@@ -118,7 +122,7 @@ const formatElapsed = (seconds: number) => {
 
 // The Doomsday control surface — the "watch and play" half of the scenario system.
 // Reused verbatim in the desktop dock and the mobile bottom sheet.
-const ScenarioControls = () => {
+const ScenarioControls = ({ onStart }: { onStart: (scenarioId: string) => void }) => {
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
   const status = useScenarioStore((state) => state.status);
   const params = useScenarioStore((state) => state.params);
@@ -128,7 +132,6 @@ const ScenarioControls = () => {
   const liveFragmentCount = useScenarioStore((state) => state.liveFragmentCount);
   const fragmentCapHit = useScenarioStore((state) => state.fragmentCapHit);
   const throttled = useScenarioStore((state) => state.throttled);
-  const start = useScenarioStore((state) => state.start);
   const stop = useScenarioStore((state) => state.stop);
   const togglePause = useScenarioStore((state) => state.togglePause);
   const setParam = useScenarioStore((state) => state.setParam);
@@ -146,7 +149,7 @@ const ScenarioControls = () => {
         <ul className="doomsday-list">
           {SCENARIOS.map((scenario) => (
             <li key={scenario.id}>
-              <button type="button" className="doomsday-scenario-btn" onClick={() => start(scenario.id)}>
+              <button type="button" className="doomsday-scenario-btn" onClick={() => onStart(scenario.id)}>
                 <strong>{scenario.name}</strong>
                 <span>{scenario.tagline}</span>
               </button>
@@ -165,7 +168,7 @@ const ScenarioControls = () => {
         <div>
           <strong>{active.name}</strong>
           <span className="doomsday-clock">
-            T+ {formatElapsed(elapsed)} · {status === "paused" ? "paused" : "running"}
+            T+ {formatScenarioElapsed(elapsed)} · {status === "paused" ? "paused" : "running"}
           </span>
         </div>
         <div className="doomsday-transport">
@@ -184,24 +187,31 @@ const ScenarioControls = () => {
         </div>
       </div>
 
-      <label className="doomsday-slider">
-        <span>
-          Speed <em>{timeScale} days/s</em>
-        </span>
-        <input
-          type="range"
-          min={SCENARIO_MIN_TIME_SCALE}
-          max={SCENARIO_MAX_TIME_SCALE}
-          step={1}
-          value={timeScale}
-          aria-valuetext={`${timeScale} days per second`}
-          onChange={(event) => setTimeScale(Number(event.target.value))}
-        />
-      </label>
+      <details className="doomsday-tuning">
+        <summary>
+          <SlidersHorizontal size={14} aria-hidden /> Tune scenario
+        </summary>
+        <div className="doomsday-tuning-fields">
+          <label className="doomsday-slider">
+            <span>
+              Speed <em>{timeScale} days/s</em>
+            </span>
+            <input
+              type="range"
+              min={SCENARIO_MIN_TIME_SCALE}
+              max={SCENARIO_MAX_TIME_SCALE}
+              step={1}
+              value={timeScale}
+              aria-valuetext={`${timeScale} days per second`}
+              onChange={(event) => setTimeScale(Number(event.target.value))}
+            />
+          </label>
 
-      {active.params.map((param) => (
-        <ParamControl key={param.key} param={param} value={params[param.key] ?? param.default} onCommit={setParam} />
-      ))}
+          {active.params.map((param) => (
+            <ParamControl key={param.key} param={param} value={params[param.key] ?? param.default} onCommit={setParam} />
+          ))}
+        </div>
+      </details>
 
       {destroyed.length > 0 && (
         <p className="doomsday-destroyed">Destroyed: {destroyed.join(", ")}</p>
@@ -218,28 +228,120 @@ const ScenarioControls = () => {
         <p className="doomsday-throttle">Sim-time can’t keep up at this speed — lower the speed for accurate timing.</p>
       )}
 
-      <div className="doomsday-science">
-        <p className="doomsday-science-time">{active.science.realTimescale}</p>
-        <p>{active.science.summary}</p>
-        <p className="doomsday-science-watch">{active.science.watch}</p>
-      </div>
+      <details className="doomsday-science">
+        <summary>Science & what to watch</summary>
+        <div>
+          <p className="doomsday-science-time">{active.science.realTimescale}</p>
+          <p>{active.science.summary}</p>
+          <p className="doomsday-science-watch">{active.science.watch}</p>
+          <ul className="scenario-fidelity-list" aria-label="Scenario fidelity">
+            {active.fidelity.map((badge) => (
+              <li key={`${badge.tier}-${badge.label}`}>
+                <span className={`scenario-fidelity-badge ${badge.tier}`}>{badge.label}</span>
+                <small>{badge.detail}</small>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
     </div>
+  );
+};
+
+const ScenarioWatchHud = ({ onOpenControls }: { onOpenControls: () => void }) => {
+  const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const status = useScenarioStore((state) => state.status);
+  const elapsed = useScenarioStore((state) => state.elapsedSimSeconds);
+  const consumedIds = useScenarioStore((state) => state.consumedIds);
+  const fragmentCapHit = useScenarioStore((state) => state.fragmentCapHit);
+  const throttled = useScenarioStore((state) => state.throttled);
+  const latestEvent = useScenarioStore((state) => state.latestEvent);
+  const togglePause = useScenarioStore((state) => state.togglePause);
+  const stop = useScenarioStore((state) => state.stop);
+  const active = activeScenarioId ? scenarioById.get(activeScenarioId) : null;
+
+  if (!active) {
+    return null;
+  }
+
+  const lastConsumedId = consumedIds.at(-1);
+  const lastConsumedName = lastConsumedId ? bodiesById.get(lastConsumedId)?.name ?? lastConsumedId : null;
+  const tickerMessage = latestEvent
+    ? `${formatScenarioEventDetail(latestEvent.detail)} · T+ ${formatScenarioElapsed(latestEvent.simSeconds)}`
+    : lastConsumedName
+      ? `${lastConsumedName} was consumed. ${consumedIds.length} world${consumedIds.length === 1 ? "" : "s"} lost so far.`
+    : fragmentCapHit > 0
+      ? `Debris limit reached. Excess material is being coalesced into the largest shards.`
+      : throttled
+        ? "Playback timing is throttled. Lower the scenario speed for accurate event timing."
+        : status === "paused"
+          ? `Scenario paused at T+ ${formatScenarioElapsed(elapsed)}.`
+          : active.tagline;
+
+  return (
+    <section className="scenario-watch-hud" aria-label={`${active.name} watch controls`}>
+      <div className="scenario-watch-heading">
+        <span className="scenario-watch-live">
+          <span className="doomsday-live-dot" aria-hidden /> Live scenario
+        </span>
+        <strong>{active.name}</strong>
+        <span className="doomsday-clock">
+          T+ {formatScenarioElapsed(elapsed)} · {status === "paused" ? "paused" : "running"}
+        </span>
+      </div>
+      <p className="scenario-event-ticker" role="status" aria-live="polite" aria-atomic="true">
+        {tickerMessage}
+      </p>
+      <div className="scenario-fidelity-summary" aria-label="Scenario fidelity">
+        {active.fidelity.map((badge) => (
+          <span key={`${badge.tier}-${badge.label}`} className={`scenario-fidelity-badge ${badge.tier}`} title={badge.detail}>
+            {badge.label}
+          </span>
+        ))}
+      </div>
+      <div className="scenario-watch-actions">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={togglePause}
+          aria-label={status === "paused" ? "Resume scenario" : "Pause scenario"}
+          title={status === "paused" ? "Resume scenario" : "Pause scenario"}
+        >
+          {status === "paused" ? <Play size={15} /> : <Pause size={15} />}
+        </button>
+        <button
+          type="button"
+          className="scenario-watch-settings"
+          onClick={onOpenControls}
+          aria-label={`Open ${active.name} scenario controls`}
+        >
+          <SlidersHorizontal size={14} aria-hidden /> Tune
+        </button>
+        <button type="button" className="icon-button" onClick={stop} aria-label="Exit scenario" title="Exit and restore view">
+          <X size={15} />
+        </button>
+      </div>
+    </section>
   );
 };
 
 export const ScenarioPanel = () => {
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
+  const openSheet = useUiStore((state) => state.openSheet);
   const toggleSheet = useUiStore((state) => state.toggleSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
   const inspectorPresented = useUiStore((state) => state.inspectorPresented);
   const doomsdayPanelOpen = useUiStore((state) => state.doomsdayPanelOpen);
+  const openDoomsdayPanel = useUiStore((state) => state.openDoomsdayPanel);
   const toggleDoomsdayPanel = useUiStore((state) => state.toggleDoomsdayPanel);
   const closeDoomsdayPanel = useUiStore((state) => state.closeDoomsdayPanel);
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
   const scenarioStatus = useScenarioStore((state) => state.status);
+  const startScenario = useScenarioStore((state) => state.start);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
+  const previousScenarioRef = useRef<string | null>(activeScenarioId);
 
   // Desktop: keep the two left-column panels mutually exclusive (mirrors how mobile's
   // single activeSheet does it). Opening the rocket panel closes Doomsday; the Doomsday
@@ -250,6 +352,23 @@ export const ScenarioPanel = () => {
       closeDoomsdayPanel();
     }
   }, [closeDoomsdayPanel, doomsdayPanelOpen, isMobile, rocketPanelOpen]);
+
+  // Starting or replacing a scenario hands the viewport to a compact watch HUD. Collapse
+  // the setup surface once, while still letting the user explicitly reopen it to tune the
+  // sandbox without fighting an effect that closes it on every runtime update.
+  useEffect(() => {
+    const previousScenarioId = previousScenarioRef.current;
+    previousScenarioRef.current = activeScenarioId;
+    if (!activeScenarioId || activeScenarioId === previousScenarioId) {
+      return;
+    }
+
+    if (isMobile) {
+      closeSheet();
+    } else {
+      closeDoomsdayPanel();
+    }
+  }, [activeScenarioId, closeDoomsdayPanel, closeSheet, isMobile]);
 
   const launchLabel = (
     <>
@@ -268,26 +387,30 @@ export const ScenarioPanel = () => {
         {/* Raise the dock above the inspector peek bar when a body is selected so the
             Doomsday chip and the peek bar don't overlap in the bottom-left corner. */}
         <div className={`doomsday-dock${inspectorPresented ? " raised" : ""}`}>
-          <button
-            type="button"
-            className={`doomsday-launch${activeScenarioId ? " live" : ""}`}
-            onClick={() => toggleSheet("scenario")}
-            aria-haspopup="dialog"
-            aria-label={launchAriaLabel}
-            aria-expanded={activeSheet === "scenario"}
-            aria-controls={activeSheet === "scenario" ? "doomsday-sheet" : undefined}
-          >
-            {launchLabel}
-          </button>
+          {activeScenarioId ? (
+            <ScenarioWatchHud onOpenControls={() => openSheet("scenario")} />
+          ) : (
+            <button
+              type="button"
+              className="doomsday-launch"
+              onClick={() => toggleSheet("scenario")}
+              aria-haspopup="dialog"
+              aria-label={launchAriaLabel}
+              aria-expanded={activeSheet === "scenario"}
+              aria-controls={activeSheet === "scenario" ? "doomsday-sheet" : undefined}
+            >
+              {launchLabel}
+            </button>
+          )}
         </div>
         <BottomSheet
           open={activeSheet === "scenario"}
           onClose={closeSheet}
           id="doomsday-sheet"
           label="Doomsday scenarios"
-          title="Doomsday"
+          title={activeScenarioName ?? "Doomsday"}
         >
-          <ScenarioControls />
+          <ScenarioControls onStart={startScenario} />
         </BottomSheet>
       </>
     );
@@ -305,19 +428,23 @@ export const ScenarioPanel = () => {
     <div className={`doomsday-dock${rocketPanelOpen ? " rocket-open" : ""}`}>
       {doomsdayPanelOpen && (
         <section id="doomsday-panel-region" className="doomsday-panel" aria-label="Doomsday scenarios">
-          <ScenarioControls />
+          <ScenarioControls onStart={startScenario} />
         </section>
       )}
-      <button
-        type="button"
-        className={`doomsday-launch${activeScenarioId ? " live" : ""}`}
-        onClick={handleToggle}
-        aria-label={launchAriaLabel}
-        aria-expanded={doomsdayPanelOpen}
-        aria-controls="doomsday-panel-region"
-      >
-        {launchLabel}
-      </button>
+      {activeScenarioId ? (
+        <ScenarioWatchHud onOpenControls={openDoomsdayPanel} />
+      ) : (
+        <button
+          type="button"
+          className="doomsday-launch"
+          onClick={handleToggle}
+          aria-label={launchAriaLabel}
+          aria-expanded={doomsdayPanelOpen}
+          aria-controls="doomsday-panel-region"
+        >
+          {launchLabel}
+        </button>
+      )}
     </div>
   );
 };

@@ -33,16 +33,17 @@ const checkVec = (tag: string, v: readonly number[]) => {
 // ---- 1. Flight model edge cases ----------------------------------------
 console.log("== flight model ==");
 for (const p of rocketCatalog) {
-  for (const t of [-100, 0, 1, p.burnDurationSeconds, p.burnDurationSeconds * 2, 1e12]) {
+  const curve = p.directCurve;
+  for (const t of [-100, 0, 1, curve.burnDurationSeconds, curve.burnDurationSeconds * 2, 1e12]) {
     const s = sampleFlight(p, t);
     if (!finite(s.speedKmS) || !finite(s.distanceTraveledKm)) note(`flight ${p.id} t=${t}: NaN ${JSON.stringify(s)}`);
     if (s.distanceTraveledKm < 0) note(`flight ${p.id} t=${t}: negative distance ${s.distanceTraveledKm}`);
     if (s.speedKmS < 0) note(`flight ${p.id} t=${t}: negative speed ${s.speedKmS}`);
-    if (s.speedKmS > p.maxSpeedKmS + 1e-6) note(`flight ${p.id} t=${t}: speed ${s.speedKmS} exceeds max ${p.maxSpeedKmS}`);
+    if (s.speedKmS > curve.maxSpeedKmS + 1e-6) note(`flight ${p.id} t=${t}: speed ${s.speedKmS} exceeds max ${curve.maxSpeedKmS}`);
     for (const launchMode of rocketLaunchModes) {
       const offset = directSpeedOffsetForLaunchMode(launchMode.id);
       const offsetSample = sampleFlight(p, t, { speedOffsetKmS: offset });
-      if (offsetSample.speedKmS > p.maxSpeedKmS + offset + 1e-6) {
+      if (offsetSample.speedKmS > curve.maxSpeedKmS + offset + 1e-6) {
         note(`flight ${p.id}/${launchMode.id} t=${t}: speed ${offsetSample.speedKmS} exceeds offset max`);
       }
       if (offsetSample.distanceTraveledKm < s.distanceTraveledKm - 1e-6) {
@@ -51,7 +52,7 @@ for (const p of rocketCatalog) {
     }
   }
   let prev = -1;
-  for (let t = 0; t <= p.burnDurationSeconds * 2 + 1; t += Math.max(1, p.burnDurationSeconds / 50)) {
+  for (let t = 0; t <= curve.burnDurationSeconds * 2 + 1; t += Math.max(1, curve.burnDurationSeconds / 50)) {
     const d = sampleFlight(p, t).distanceTraveledKm;
     if (d < prev - 1e-6) note(`flight ${p.id}: distance not monotonic at t=${t}`);
     prev = d;
@@ -137,7 +138,7 @@ console.log("== behavioural probes ==");
     note(`DIRECT: distanceTraveled grows after arrival (${(arr.distanceTraveledKm/AU).toFixed(1)} -> ${(later.distanceTraveledKm/AU).toFixed(1)} AU) while parked at target`);
 }
 
-// 4b. Launch modes: LEO affects direct/free-flight speed, but transfer baseline stays orbital.
+// 4b. Launch modes alter the initial vector state, not the selected craft's speed budget.
 {
   const sv = rocketsById.get("saturn-v")!;
   const mars = rocketDestinations.find((d) => d.id === "mars")!;
@@ -146,11 +147,11 @@ console.log("== behavioural probes ==");
   const directLeo = computeRocketView(sv, NOW, NOW + DAY, "compressed", mars, "direct", "low-earth-orbit");
   const freeEarth = computeRocketView(sv, NOW, NOW + DAY, "compressed", free, "direct", "earth-departure");
   const freeLeo = computeRocketView(sv, NOW, NOW + DAY, "compressed", free, "direct", "low-earth-orbit");
-  const transferEarth = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "transfer", "earth-departure");
-  const transferLeo = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "transfer", "low-earth-orbit");
+  const transferEarth = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "hohmann", "earth-departure");
+  const transferLeo = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "hohmann", "low-earth-orbit");
   console.log(`  LEO direct/free speed delta=${(directLeo.speedKmS - directEarth.speedKmS).toFixed(1)}/${(freeLeo.speedKmS - freeEarth.speedKmS).toFixed(1)} km/s`);
-  if (directLeo.speedKmS <= directEarth.speedKmS + 7.7) note("LEO direct speed did not include expected offset");
-  if (freeLeo.speedKmS <= freeEarth.speedKmS + 7.7) note("LEO free-flight speed did not include expected offset");
+  if (Math.abs(directLeo.speedKmS - directEarth.speedKmS) > 1e-9) note("LEO should not add orbital speed to the selected craft's direct-mode speed budget");
+  if (Math.abs(freeLeo.speedKmS - freeEarth.speedKmS) > 1e-9) note("LEO should not add orbital speed to the selected craft's free-flight speed budget");
   if (Math.abs(transferLeo.speedKmS - transferEarth.speedKmS) > 1e-6) note("LEO should not alter transfer average speed baseline");
 }
 
@@ -158,8 +159,8 @@ console.log("== behavioural probes ==");
 {
   const sv = rocketsById.get("saturn-v")!;
   const mars = rocketDestinations.find((d) => d.id === "mars")!;
-  const v1 = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "transfer");
-  const v2 = computeRocketView(sv, NOW, NOW + 200 * DAY, "compressed", mars, "transfer");
+  const v1 = computeRocketView(sv, NOW, NOW + 10 * DAY, "compressed", mars, "hohmann");
+  const v2 = computeRocketView(sv, NOW, NOW + 200 * DAY, "compressed", mars, "hohmann");
   console.log(`  transfer speed @10d=${v1.speedKmS.toFixed(2)} @200d=${v2.speedKmS.toFixed(2)} (constant=${Math.abs(v1.speedKmS-v2.speedKmS) < 1e-6})`);
 }
 
@@ -178,6 +179,43 @@ console.log("== behavioural probes ==");
   const a = computeRocketView(sv, NOW, NOW + 50 * DAY, "compressed", mars, "direct");
   const b = computeRocketView(sv, NOW, NOW + 50 * DAY, "compressed", mars, "direct");
   if (JSON.stringify(a.scenePosition) !== JSON.stringify(b.scenePosition)) note(`direct view non-deterministic for same inputs`);
+}
+
+// 4f. A physical intercept must distinguish an uncaptured flyby from an
+// explicitly modeled impulsive capture.
+{
+  const sv = rocketsById.get("saturn-v")!;
+  const mars = rocketDestinations.find((d) => d.id === "mars")!;
+  const marsBody = bodiesById.get("mars")!;
+  const lambert = estimateTransfer(marsBody, bodiesById, NOW, sv, "lambert")!;
+  const afterEncounterMs = lambert.arrivalDateMs + DAY;
+  const flyby = computeRocketView(
+    sv,
+    NOW,
+    afterEncounterMs,
+    "compressed",
+    mars,
+    "lambert",
+    "low-earth-orbit",
+    "flyby",
+  );
+  const capture = computeRocketView(
+    sv,
+    NOW,
+    afterEncounterMs,
+    "compressed",
+    mars,
+    "lambert",
+    "low-earth-orbit",
+    "capture",
+  );
+  if (flyby.status !== "flyby") note(`Lambert flyby should continue uncaptured, got ${flyby.status}`);
+  if (!flyby.transfer || flyby.transfer.continuationScenePoints.length < 2) note("Lambert flyby should render a propagated post-encounter trail");
+  if (flyby.destination?.distanceToTargetKm === 0) note("Lambert flyby should separate from the destination after encounter");
+  if (flyby.transfer?.captureApplied) note("Flyby must not apply the arrival burn");
+  if (capture.status !== "arrived") note(`Lambert capture should attach after a valid burn, got ${capture.status}`);
+  if (!capture.transfer?.captureApplied) note("Capture should apply the displayed arrival burn at a valid intercept");
+  if (capture.destination?.distanceToTargetKm !== 0) note("Captured mission should remain attached to the destination");
 }
 
 console.log("\n==== PROBLEMS (" + problems.length + ") ====");

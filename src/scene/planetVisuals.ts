@@ -2,8 +2,11 @@ import {
   CanvasTexture,
   ClampToEdgeWrapping,
   LinearFilter,
+  LinearMipmapLinearFilter,
   NoColorSpace,
+  RepeatWrapping,
   SRGBColorSpace,
+  type Texture,
 } from "three";
 import type { CelestialBody } from "../simulation/orbitalElements";
 
@@ -157,6 +160,21 @@ const speckle = (x: number, y: number, seed: number) => {
 
 const bodySeed = (id: string) =>
   id.split("").reduce((seed, char, index) => seed + char.charCodeAt(0) * (index + 11), 17);
+
+export const configurePlanetTexture = (
+  texture: Texture,
+  maxAnisotropy: number,
+  repeatHorizontally = true,
+) => {
+  texture.anisotropy = Math.max(1, Math.min(maxAnisotropy, 8));
+  texture.generateMipmaps = true;
+  texture.minFilter = LinearMipmapLinearFilter;
+  texture.magFilter = LinearFilter;
+  texture.wrapS = repeatHorizontally ? RepeatWrapping : ClampToEdgeWrapping;
+  texture.wrapT = ClampToEdgeWrapping;
+  texture.needsUpdate = true;
+  return texture;
+};
 
 const valueNoise = (x: number, y: number, seed: number) => {
   const x0 = Math.floor(x);
@@ -398,12 +416,7 @@ export const createSurfaceTexture = (body: CelestialBody) => {
   context.putImageData(image, 0, 0);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 4;
-  texture.generateMipmaps = false;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.wrapS = ClampToEdgeWrapping;
-  texture.wrapT = ClampToEdgeWrapping;
+  configurePlanetTexture(texture, 4);
   return texture;
 };
 
@@ -425,7 +438,9 @@ export const createBodyBumpTexture = (body: CelestialBody) => {
     return undefined;
   }
 
-  const seed = bodySeed(`${body.id}-relief`);
+  // Match the surface generator's seed so fallback albedo and relief describe
+  // the same terrain instead of unrelated noise fields.
+  const seed = bodySeed(body.id);
   const craters = createCraterSet(seed, craterCountFor(profile, body));
   const image = context.createImageData(width, height);
 
@@ -446,12 +461,106 @@ export const createBodyBumpTexture = (body: CelestialBody) => {
   context.putImageData(image, 0, 0);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = NoColorSpace;
-  texture.anisotropy = 4;
-  texture.generateMipmaps = false;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.wrapS = ClampToEdgeWrapping;
-  texture.wrapT = ClampToEdgeWrapping;
+  configurePlanetTexture(texture, 4);
+  return texture;
+};
+
+export const createBodyRoughnessTexture = (body: CelestialBody) => {
+  const profile = getVisualProfile(body);
+  if (!profile.bumpScale || body.type === "star") {
+    return undefined;
+  }
+
+  const canvas = document.createElement("canvas");
+  const width = body.type === "moon" ? 256 : 384;
+  const height = width / 2;
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    return undefined;
+  }
+
+  const seed = bodySeed(body.id);
+  const craters = createCraterSet(seed, craterCountFor(profile, body));
+  const image = context.createImageData(width, height);
+
+  for (let y = 0; y < height; y += 1) {
+    const v = y / height;
+    for (let x = 0; x < width; x += 1) {
+      const u = x / width;
+      const terrain = terrainHeight(profile, u, v, seed, craters);
+      const microVariation = fbm(u * 18, v * 9, seed + 205.4, 3);
+      let roughness = clamp(0.76 + (terrain - 0.5) * 0.22 + (microVariation - 0.5) * 0.1, 0.5, 1);
+
+      if (profile.textureKind === "earth") {
+        const land = smoothstep(0.015, 0.08, earthLandSignal(u, v, seed));
+        const polar = smoothstep(0.78, 0.93, Math.abs(v - 0.5) * 2);
+        roughness = clamp(0.32 + land * 0.58 + polar * 0.22, 0.28, 0.96);
+      }
+
+      const value = Math.round(roughness * 255);
+      const index = (y * width + x) * 4;
+      image.data[index] = value;
+      image.data[index + 1] = value;
+      image.data[index + 2] = value;
+      image.data[index + 3] = 255;
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = NoColorSpace;
+  configurePlanetTexture(texture, 4);
+  return texture;
+};
+
+export const createImageDerivedRoughnessTexture = (
+  body: CelestialBody,
+  sourceImage: CanvasImageSource,
+) => {
+  // Of the bundled photographic maps, Earth is the one where color carries a
+  // strong, useful material signal: blue ocean is glossy while land and ice are
+  // diffuse. Other worlds keep their calibrated scalar roughness rather than
+  // inventing a material map from unrelated albedo brightness.
+  if (body.id !== "earth") {
+    return undefined;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 256;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) {
+    return undefined;
+  }
+
+  try {
+    context.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+  } catch {
+    return undefined;
+  }
+
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  for (let index = 0; index < image.data.length; index += 4) {
+    const red = image.data[index];
+    const green = image.data[index + 1];
+    const blue = image.data[index + 2];
+    const blueLead = (blue - Math.max(red, green)) / 255;
+    const luminance = (red * 0.2126 + green * 0.7152 + blue * 0.0722) / 255;
+    const water = smoothstep(0.015, 0.22, blueLead) * (1 - smoothstep(0.72, 0.94, luminance));
+    const roughness = clamp(0.92 - water * 0.64, 0.28, 0.96);
+    const value = Math.round(roughness * 255);
+    image.data[index] = value;
+    image.data[index + 1] = value;
+    image.data[index + 2] = value;
+    image.data[index + 3] = 255;
+  }
+
+  context.putImageData(image, 0, 0);
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = NoColorSpace;
+  configurePlanetTexture(texture, 4);
   return texture;
 };
 
@@ -499,11 +608,7 @@ export const createCloudTexture = (body: CelestialBody) => {
   context.putImageData(image, 0, 0);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.generateMipmaps = false;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.wrapS = ClampToEdgeWrapping;
-  texture.wrapT = ClampToEdgeWrapping;
+  configurePlanetTexture(texture, 4);
   return texture;
 };
 
@@ -549,9 +654,7 @@ export const createRingTexture = (body: CelestialBody, innerToOuterRatio: number
   context.putImageData(image, 0, 0);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.anisotropy = 4;
-  texture.wrapS = ClampToEdgeWrapping;
-  texture.wrapT = ClampToEdgeWrapping;
+  configurePlanetTexture(texture, 4, false);
   return texture;
 };
 

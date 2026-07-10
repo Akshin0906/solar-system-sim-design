@@ -253,7 +253,6 @@ export const isThrottled = () => current?.state.throttled ?? false;
 export const getFragmentCapHit = () => current?.state.fragmentCapHit ?? 0;
 export const getLiveFragmentCount = () =>
   current ? current.state.bodies.reduce((n, sb) => n + (sb.alive && sb.kind === "fragment" ? 1 : 0), 0) : 0;
-export const getEventCount = () => current?.state.events.length ?? 0;
 export const getLatestEvent = () => {
   const events = current?.state.events;
   return events && events.length > 0 ? events[events.length - 1] : null;

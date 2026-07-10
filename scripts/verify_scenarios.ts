@@ -239,12 +239,12 @@ check("rogue lighter than the Sun is absorbed; no planet reported consumed", () 
   assert.equal(state.newlyConsumed.length, 0, "a consumed rogue must not appear in the destroyed-planet list");
 });
 
-// --- 6. Red giant: swell engulfs inner planets in radial order --------------
-check("red giant swells and engulfs the inner planets in radial order", () => {
+// --- 6. Red giant: mass loss expands surviving orbits -----------------------
+check("red giant couples photosphere growth to solar mass loss", () => {
   const state = seedIntegrator(bodies, bodiesById, J2000_MS);
   const scenario = scenarioById.get("red-giant");
   assert.ok(scenario?.drive, "red-giant scenario must define a drive() hook");
-  const params = { swellYears: 2, finalRadiusAu: 1.1 };
+  const params = { swellYears: 2, finalRadiusAu: 1.1, finalMassSolar: 0.668 };
   const firstConsumedAt: Record<string, number> = {};
   const totalSteps = Math.round((2.2 * 365.256 * DAY_SECONDS) / FIXED_STEP_SECONDS);
   for (let i = 0; i < totalSteps; i += 1) {
@@ -255,15 +255,17 @@ check("red giant swells and engulfs the inner planets in radial order", () => {
     }
   }
   assert.equal(state.byId.get("sun")!.alive, true, "Sun survives as the giant");
-  for (const id of ["mercury", "venus", "earth"]) {
+  for (const id of ["mercury", "venus"]) {
     assert.ok(firstConsumedAt[id] !== undefined, `${id} should be engulfed`);
   }
   assert.ok(firstConsumedAt.mercury < firstConsumedAt.venus, "Mercury engulfed before Venus");
-  assert.ok(firstConsumedAt.venus < firstConsumedAt.earth, "Venus engulfed before Earth");
-  // Mars (1.52 AU) is beyond the 1.1 AU final radius and must be spared.
+  // With the published 0.668 M-sun tip-RGB default, Earth's orbit expands far
+  // enough to escape a 1.1 AU photosphere in this no-tides educational model.
+  assert.equal(firstConsumedAt.earth, undefined, "Earth should move outside a 1.1 AU giant as solar mass falls");
   assert.equal(firstConsumedAt.mars, undefined, "Mars must survive a 1.1 AU giant");
   const finalKm = 1.1 * AU_KM;
   assert.ok(Math.abs(state.byId.get("sun")!.radiusKm - finalKm) / finalKm < 0.02, "Sun reached its final radius");
+  assert.ok(Math.abs(state.byId.get("sun")!.muKm3S2 / SUN_MU - 0.668) < 1e-9, "Sun reached its retained-mass setting");
 });
 
 // --- Debris helpers ----------------------------------------------------------

@@ -68,6 +68,8 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const selectedId = useSelectionStore((state) => state.selectedId);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const selectBody = useSelectionStore((state) => state.selectBody);
+  const goToBody = useSelectionStore((state) => state.goToBody);
+  const followBody = useSelectionStore((state) => state.followBody);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
   const isPaused = useTimeStore((state) => state.isPaused);
   const togglePaused = useTimeStore((state) => state.togglePaused);
@@ -85,6 +87,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
   const openSheet = useUiStore((state) => state.openSheet);
   const openDoomsdayPanel = useUiStore((state) => state.openDoomsdayPanel);
+  const restoreRecommendedView = useUiStore((state) => state.restoreRecommendedView);
   const activeScenarioName = activeScenarioId ? scenarioById.get(activeScenarioId)?.name : undefined;
 
   useFocusTrap(containerRef, open, onClose, restoreFocusRef);
@@ -138,6 +141,15 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         },
       },
       {
+        id: "restore-recommended-view",
+        group: "Actions",
+        title: "Restore recommended view",
+        subtitle: "Return to the Earth overview with useful labels and orbit guides",
+        keywords: "restore reset recover recommended default home view show labels orbits",
+        icon: <TimerReset size={16} />,
+        action: () => restoreRecommendedView(isMobile),
+      },
+      {
         id: "doomsday",
         group: "Actions",
         title: "Doomsday scenarios",
@@ -162,7 +174,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera focus selected body",
         icon: <Crosshair size={16} />,
         active: cameraMode === "focus",
-        action: () => setCameraMode("focus"),
+        action: () => goToBody(selectedId),
       },
       {
         id: "camera-follow",
@@ -172,7 +184,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera follow selected body track",
         icon: <LocateFixed size={16} />,
         active: cameraMode === "follow",
-        action: () => setCameraMode("follow"),
+        action: () => followBody(selectedId),
       },
       {
         id: "camera-overview",
@@ -291,18 +303,21 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: `${body.name} ${body.type} ${body.parentId ?? ""}`,
         icon: <CircleDot size={16} />,
         active: body.id === selectedId,
-        action: () => selectBody(body.id),
+        action: () => goToBody(body.id),
       })),
     ],
     [
       cameraMode,
       activeScenarioId,
       activeScenarioName,
+      followBody,
+      goToBody,
       isMobile,
       isPaused,
       jumpToNow,
       openDoomsdayPanel,
       openSheet,
+      restoreRecommendedView,
       selectBody,
       selectedId,
       setCameraMode,

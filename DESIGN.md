@@ -1,10 +1,16 @@
 # Solar System Simulation Design Doc
 
+> Status note (2026-07-10): this document records the original MVP design and sequencing.
+> The implemented app now also includes educational rockets, live Doomsday scenarios,
+> scientific provenance, authored experiences, observer/photo modes, and shareable views.
+> See `DATA_SOURCES.md`, `ROCKETS.md`, and `QA_CHECKLIST.md` for current behavior.
+
 ## Purpose
 
 Build a clean, minimal, Apple-style 3D web app that opens directly into an interactive solar system simulation. The first version should prioritize a beautiful, fluid, accurate-feeling solar system with approximate orbital mechanics, real orbital periods/speeds, visible orbital rings, moons, belts/clouds, and time controls.
 
-Rocket launches are intentionally excluded from the MVP, but the architecture should reserve a clear extension point for existing and futuristic rockets in a later phase.
+Rocket launches were intentionally excluded from the original MVP; the later educational
+rocket extension now ships without replacing the solar-system core.
 
 ## User Decisions
 
@@ -33,7 +39,7 @@ Rocket launches are intentionally excluded from the MVP, but the architecture sh
 5. Keep the interface minimal: a focused simulation surface with contextual controls.
 6. Establish clean architecture so rockets, missions, ephemeris data, and more rigorous physics can be added later.
 
-## Non-Goals For MVP
+## Original MVP Non-Goals (Historical)
 
 - No rocket launching.
 - No mission planning.
@@ -83,8 +89,8 @@ flowchart TD
   M --> N["Orbital Mechanics Utilities"]
   N --> O["Position Solver"]
 
-  P["Future Rocket Module"] -. later .-> B
-  P -. later .-> D
+  P["Post-MVP Rocket Module"] -. extension .-> B
+  P -. extension .-> D
 ```
 
 ## Folder Structure
@@ -475,9 +481,11 @@ Target:
 - Use a service worker only if implementing PWA install/offline caching.
 - No runtime API dependency in MVP.
 
-## Future Rocket Architecture
+## Post-MVP Rocket Architecture (Now Shipped In Educational Form)
 
-Rockets are not part of MVP, but reserve the concept now.
+Rockets were not part of the original MVP. The following proposal is retained as design
+history; the shipped evidence-separated Hohmann/Lambert implementation is documented in
+`ROCKETS.md`.
 
 Future module:
 
@@ -578,11 +586,12 @@ The MVP is successful when:
 - Asteroid and Kuiper belts are visible as elegant procedural clouds.
 - The UI feels minimal and polished rather than busy.
 - The app works offline after assets are installed locally.
-- Rocket support can be added later without rewriting the simulation core.
+- The rocket extension remains isolated from celestial-body state and does not rewrite
+  the simulation core.
 
 ## Implementation Notes For Next Agent
 
-- Do not start with rockets. Build the solar system first.
+- Original sequencing: build the solar system before the post-MVP rocket extension.
 - Keep orbital data editable and separate from rendering code.
 - Keep all scale transforms centralized.
 - Keep camera behavior centralized.

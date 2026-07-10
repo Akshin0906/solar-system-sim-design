@@ -7,7 +7,11 @@ import { destinationsById, rocketDestinations } from "../src/features/rockets/de
 import { rocketsById } from "../src/features/rockets/rocketCatalog";
 import { computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
-import { rocketLaunchModes } from "../src/features/rockets/missionOptions";
+import {
+  missionModesForDestination,
+  resolveMissionModeForDestination,
+  rocketLaunchModes,
+} from "../src/features/rockets/missionOptions";
 import { getSceneLabelledIds } from "../src/scene/sceneLabels";
 import {
   MIN_CAMERA_NEAR,
@@ -15,11 +19,22 @@ import {
   fitDistanceForRadius,
 } from "../src/scene/cameraFraming";
 import { getBodyLabelScale } from "../src/scene/labelScaling";
-import { isOrbitModelExtrapolated } from "../src/simulation/timeStore";
+import { isOrbitModelExtrapolated, useTimeStore } from "../src/simulation/timeStore";
+import { useScaleStore } from "../src/simulation/scaleStore";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 import { rankSearchItems } from "../src/ui/searchRanking";
 import { useUiStore } from "../src/ui/uiStore";
-import { useSelectionStore } from "../src/simulation/selectionStore";
+import {
+  getLiveCameraPose,
+  useSelectionStore,
+  type CameraPose,
+} from "../src/simulation/selectionStore";
+import {
+  createSharedViewUrl,
+  decodeSharedViewState,
+  encodeSharedViewState,
+  type SharedViewState,
+} from "../src/features/share/viewState";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -299,6 +314,12 @@ const assertRocketDestinationCatalog = () => {
 
   assert.equal(destinationsById.get("moon")?.bodyId, "moon");
   assert.equal(estimateTransfer(bodiesById.get("titan")!, bodiesById, CHECK_DATE.getTime()), null);
+  assert.equal(resolveMissionModeForDestination("lambert", "moon"), "hohmann");
+  assert.equal(
+    missionModesForDestination("moon").some((mode) => mode.id === "lambert"),
+    false,
+    "the Earth-centered lunar model must not advertise an unsupported Lambert mode",
+  );
   assert.deepEqual(
     nonEarthMoonDestinations.map((destination) => destination.id),
     [],
@@ -324,7 +345,7 @@ const assertPreLaunchRocketDistance = () => {
     beforeLaunchMs,
     "compressed",
     marsDestination,
-    "transfer",
+    "hohmann",
   );
 
   for (const view of [freeView, directView, transferView]) {
@@ -352,14 +373,18 @@ const assertRocketLaunchModes = () => {
 
   const freeEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", freeDestination, "direct", "earth-departure");
   const freeLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", freeDestination, "direct", "low-earth-orbit");
+  const freeSurface = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", freeDestination, "direct", "surface");
   const directEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "direct", "earth-departure");
   const directLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "direct", "low-earth-orbit");
-  const transferEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "transfer", "earth-departure");
-  const transferLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "transfer", "low-earth-orbit");
+  const directSurface = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "direct", "surface");
+  const transferEarth = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "hohmann", "earth-departure");
+  const transferLeo = computeRocketView(profile, launchDateMs, afterLaunchMs, "compressed", marsDestination, "hohmann", "low-earth-orbit");
 
   assert.equal(freeLeo.launchMode, "low-earth-orbit");
-  assert(freeLeo.speedKmS > freeEarth.speedKmS + 7.7, "LEO should raise free-flight speed readout");
-  assert(directLeo.speedKmS > directEarth.speedKmS + 7.7, "LEO should raise direct-aim speed readout");
+  assert.equal(freeLeo.speedKmS, freeEarth.speedKmS, "LEO must not add parking-orbit speed as free-flight cruise speed");
+  assert.equal(freeSurface.speedKmS, freeEarth.speedKmS, "surface and Earth-departure free flight use the same craft profile speed");
+  assert.equal(directLeo.speedKmS, directEarth.speedKmS, "LEO must not add parking-orbit speed as direct-aim cruise speed");
+  assert.equal(directSurface.speedKmS, directEarth.speedKmS, "surface and Earth-departure direct aim use the same craft profile speed");
   assert.equal(
     transferLeo.speedKmS,
     transferEarth.speedKmS,
@@ -438,9 +463,11 @@ const assertTransferEstimateUsesAppCode = () => {
   const marsTransferDays = marsTransfer.transferTimeSeconds / DAY_SECONDS;
   assert(marsTransferDays > 250 && marsTransferDays < 270, `unexpected Mars transfer days ${marsTransferDays}`);
   assert(jupiterTransfer.transferTimeSeconds > marsTransfer.transferTimeSeconds);
-  assert(marsTransfer.departureDeltaVKmS > 2.8 && marsTransfer.departureDeltaVKmS < 3.1);
+  assert(marsTransfer.departureVInfinityKmS > 2.5 && marsTransfer.departureVInfinityKmS < 4.5);
+  assert(marsTransfer.parkingOrbitInjectionDeltaVKmS !== null);
+  assert(marsTransfer.parkingOrbitInjectionDeltaVKmS > 3.2 && marsTransfer.parkingOrbitInjectionDeltaVKmS < 4.1);
   assert(marsTransfer.arrivalDeltaVKmS !== null);
-  assert(marsTransfer.arrivalDeltaVKmS > 2.5 && marsTransfer.arrivalDeltaVKmS < 2.8);
+  assert(marsTransfer.arrivalDeltaVKmS > 1.5 && marsTransfer.arrivalDeltaVKmS < 3.0);
 
   const saturnMarsTransfer = estimateTransfer(mars, bodiesById, launchDateMs, saturnV);
   const saturnJupiterTransfer = estimateTransfer(jupiter, bodiesById, launchDateMs, saturnV);
@@ -458,14 +485,15 @@ const assertTransferEstimateUsesAppCode = () => {
     jupiterTransfer.transferTimeSeconds,
     "Saturn V Jupiter transfers should not get continuous-cruise speed added",
   );
-  assert(
-    fusionMarsTransfer.transferTimeSeconds < saturnMarsTransfer.transferTimeSeconds,
-    "sustained propulsion profiles should produce shorter transfer times",
+  assert.equal(
+    fusionMarsTransfer.transferTimeSeconds,
+    saturnMarsTransfer.transferTimeSeconds,
+    "vehicle identity must not silently reshape a two-body conic",
   );
-  assert.notEqual(
+  assert.equal(
     fusionMarsTransfer.arrivalDateMs,
     saturnMarsTransfer.arrivalDateMs,
-    "profile-adjusted transfer intercept dates should vary by rocket profile",
+    "the same trajectory model and epoch must produce the same intercept date for every vehicle label",
   );
 };
 
@@ -640,7 +668,198 @@ const assertRepeatedBodySelectionIsObservable = () => {
     selectionRevision: baseline.selectionRevision,
     cameraMode: baseline.cameraMode,
     rocketTarget: baseline.rocketTarget,
+    cameraRestoreRevision: baseline.cameraRestoreRevision,
+    cameraRestoreRequest: baseline.cameraRestoreRequest,
+    viewSessions: baseline.viewSessions,
   });
+};
+
+const assertExplicitNavigationAndViewSessions = () => {
+  const baseline = useSelectionStore.getState();
+  useSelectionStore.setState({
+    selectedId: "earth",
+    selectionRevision: 10,
+    cameraMode: "outer",
+    rocketTarget: null,
+    cameraRestoreRequest: null,
+    viewSessions: {},
+  });
+
+  useSelectionStore.getState().selectBody("mars");
+  assert.equal(useSelectionStore.getState().selectedId, "mars");
+  assert.equal(useSelectionStore.getState().cameraMode, "outer", "select should not move a deliberately composed camera");
+
+  useSelectionStore.getState().goToBody("titan");
+  assert.equal(useSelectionStore.getState().selectedId, "titan");
+  assert.equal(useSelectionStore.getState().cameraMode, "focus", "go-to should frame the requested body");
+
+  const composedPose: CameraPose = { position: [12, 9, 7], target: [1, 2, 3], up: [0, 1, 0] };
+  const rocketPose: CameraPose = { position: [6, 5, 4], target: [3, 4, 5], up: [0, 1, 0] };
+  const scenarioPose: CameraPose = { position: [2, 3, 4], target: [0, 0, 0], up: [0, 1, 0] };
+  useSelectionStore.getState().reportCameraPose(composedPose);
+  useSelectionStore.getState().beginViewSession("rocket");
+  useSelectionStore.getState().followRocket([3, 4, 5]);
+  useSelectionStore.getState().reportCameraPose(rocketPose);
+  useSelectionStore.getState().beginViewSession("scenario");
+  useSelectionStore.getState().selectBody("sun");
+  useSelectionStore.getState().setCameraMode("inner");
+  useSelectionStore.getState().reportCameraPose(scenarioPose);
+  useSelectionStore.getState().restoreViewSession("scenario");
+  assert.equal(useSelectionStore.getState().cameraMode, "rocket-follow", "scenario exit should restore a nested rocket watch");
+  assert.deepEqual(useSelectionStore.getState().rocketTarget?.position, [3, 4, 5]);
+  assert.deepEqual(getLiveCameraPose(), rocketPose, "inner view exit should restore the actual outer camera pose");
+  assert.equal(useSelectionStore.getState().cameraRestoreRequest?.expectedMode, "rocket-follow");
+  useSelectionStore.getState().restoreViewSession("rocket");
+  assert.equal(useSelectionStore.getState().selectedId, "titan");
+  assert.equal(useSelectionStore.getState().cameraMode, "focus", "rocket exit should restore the pre-launch body view");
+  assert.deepEqual(getLiveCameraPose(), composedPose, "outer view exit should restore the composed camera pose");
+  assert.equal(useSelectionStore.getState().cameraRestoreRequest?.expectedMode, "focus");
+
+  useSelectionStore.setState({
+    selectedId: baseline.selectedId,
+    selectionRevision: baseline.selectionRevision,
+    cameraMode: baseline.cameraMode,
+    rocketTarget: baseline.rocketTarget,
+    cameraRestoreRevision: baseline.cameraRestoreRevision,
+    cameraRestoreRequest: baseline.cameraRestoreRequest,
+    viewSessions: baseline.viewSessions,
+  });
+};
+
+const assertRecommendedViewRecovery = () => {
+  const selectionBaseline = useSelectionStore.getState();
+  const scaleBaseline = useScaleStore.getState();
+  useScaleStore.setState({
+    mode: "readable",
+    labelDensity: "off",
+    showGrid: false,
+    showOrbits: false,
+    showTrails: false,
+  });
+  useSelectionStore.setState({ selectedId: "eris", cameraMode: "free", rocketTarget: null, viewSessions: {} });
+  useUiStore.getState().restoreRecommendedView(false);
+
+  const recoveredScale = useScaleStore.getState();
+  assert.equal(recoveredScale.mode, "compressed");
+  assert.equal(recoveredScale.labelDensity, "standard");
+  assert.equal(recoveredScale.showOrbits, true);
+  assert.equal(useSelectionStore.getState().selectedId, "earth");
+  assert.equal(useSelectionStore.getState().cameraMode, "overview");
+
+  useScaleStore.setState({
+    mode: scaleBaseline.mode,
+    labelDensity: scaleBaseline.labelDensity,
+    showGrid: scaleBaseline.showGrid,
+    showOrbits: scaleBaseline.showOrbits,
+    showTrails: scaleBaseline.showTrails,
+  });
+  useSelectionStore.setState({
+    selectedId: selectionBaseline.selectedId,
+    selectionRevision: selectionBaseline.selectionRevision,
+    cameraMode: selectionBaseline.cameraMode,
+    rocketTarget: selectionBaseline.rocketTarget,
+    cameraRestoreRevision: selectionBaseline.cameraRestoreRevision,
+    cameraRestoreRequest: selectionBaseline.cameraRestoreRequest,
+    viewSessions: selectionBaseline.viewSessions,
+  });
+};
+
+const assertRocketWatchRestoresClock = () => {
+  const timeBaseline = useTimeStore.getState();
+  const selectionBaseline = useSelectionStore.getState();
+  useTimeStore.setState({
+    direction: -1,
+    isPaused: true,
+    preset: "custom",
+    simulationDateMs: Date.parse("2024-01-01T00:00:00.000Z"),
+    timeScale: 321,
+    transportLocked: false,
+  });
+  useSelectionStore.setState({ selectedId: "saturn", cameraMode: "saturn-system", rocketTarget: null, viewSessions: {} });
+  useUiStore.getState().beginRocketWatch();
+  assert.equal(useTimeStore.getState().isPaused, false, "launch should play a paused mission clock");
+  useTimeStore.setState({
+    direction: 1,
+    simulationDateMs: Date.parse("2025-01-01T00:00:00.000Z"),
+    timeScale: 99,
+  });
+  useSelectionStore.getState().followRocket([6, 7, 8]);
+  useUiStore.getState().endRocketWatch();
+  assert.equal(useTimeStore.getState().isPaused, true);
+  assert.equal(useTimeStore.getState().direction, -1);
+  assert.equal(useTimeStore.getState().simulationDateMs, Date.parse("2024-01-01T00:00:00.000Z"));
+  assert.equal(useSelectionStore.getState().selectedId, "saturn");
+  assert.equal(useSelectionStore.getState().cameraMode, "saturn-system");
+
+  useTimeStore.setState({
+    direction: timeBaseline.direction,
+    isPaused: timeBaseline.isPaused,
+    preset: timeBaseline.preset,
+    simulationDateMs: timeBaseline.simulationDateMs,
+    timeScale: timeBaseline.timeScale,
+    transportLocked: timeBaseline.transportLocked,
+  });
+  useSelectionStore.setState({
+    selectedId: selectionBaseline.selectedId,
+    selectionRevision: selectionBaseline.selectionRevision,
+    cameraMode: selectionBaseline.cameraMode,
+    rocketTarget: selectionBaseline.rocketTarget,
+    cameraRestoreRevision: selectionBaseline.cameraRestoreRevision,
+    cameraRestoreRequest: selectionBaseline.cameraRestoreRequest,
+    viewSessions: selectionBaseline.viewSessions,
+  });
+};
+
+const assertShareableViewState = () => {
+  const shared: SharedViewState = {
+    bodyId: "saturn",
+    cameraMode: "saturn-system",
+    scaleMode: "readable",
+    simulationDateMs: Date.parse("2026-07-10T00:00:00.000Z"),
+    isPaused: true,
+    direction: -1,
+    timeScale: 3_600,
+    labelDensity: "minimal",
+    showGrid: false,
+    showOrbits: true,
+    showTrails: true,
+    cameraPose: null,
+  };
+  const encoded = encodeSharedViewState(shared);
+  assert.deepEqual(decodeSharedViewState(encoded), shared, "share links should round-trip the visible view contract");
+  const url = new URL(createSharedViewUrl("https://example.test/sim?stale=1#old", shared));
+  assert.equal(url.pathname, "/sim");
+  assert.equal(url.searchParams.get("body"), "saturn");
+  assert.equal(url.searchParams.get("camera"), "saturn-system");
+  assert.equal(url.hash, "");
+
+  const composed: SharedViewState = {
+    ...shared,
+    cameraMode: "free",
+    cameraPose: {
+      position: [24, 18, 36],
+      target: [1, 2, 3],
+      up: [0, 1, 0],
+    },
+  };
+  assert.deepEqual(
+    decodeSharedViewState(encodeSharedViewState(composed)),
+    composed,
+    "free-look share links should preserve the composed camera position and target",
+  );
+
+  const invalid = decodeSharedViewState("view=1&body=not-a-body&camera=rocket-follow&scale=unknown");
+  assert(invalid);
+  assert.notEqual(invalid.bodyId, "not-a-body");
+  assert.notEqual(invalid.cameraMode, "rocket-follow");
+  const unsafePose = decodeSharedViewState("view=1&camera=free&cp=10001,0,0&ct=0,0,0&cu=0,1,0");
+  assert.equal(unsafePose?.cameraPose, null, "share links should reject absurd camera coordinates");
+  const zeroUp = decodeSharedViewState("view=1&camera=free&cp=1,0,0&ct=0,0,0&cu=0,0,0");
+  assert.equal(zeroUp?.cameraPose, null, "share links should reject a zero camera-up vector");
+  const coincident = decodeSharedViewState("view=1&camera=free&cp=1,2,3&ct=1,2,3&cu=0,1,0");
+  assert.equal(coincident?.cameraPose, null, "share links should reject coincident camera and target positions");
+  const normalized = decodeSharedViewState("view=1&camera=free&cp=1,0,0&ct=0,0,0&cu=0,2,0");
+  assert.deepEqual(normalized?.cameraPose?.up, [0, 1, 0], "share links should normalize a valid camera-up vector");
 };
 
 assertBodyDataInvariants();
@@ -657,5 +876,9 @@ assertRuntimeUiMathHelpers();
 assertSearchRanking();
 assertTransientUiMutualExclusion();
 assertRepeatedBodySelectionIsObservable();
+assertExplicitNavigationAndViewSessions();
+assertRecommendedViewRecovery();
+assertRocketWatchRestoresClock();
+assertShareableViewState();
 
 console.log("App logic checks passed");

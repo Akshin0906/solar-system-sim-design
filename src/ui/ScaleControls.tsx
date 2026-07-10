@@ -1,4 +1,4 @@
-import { Eye, Orbit, Route, Tags } from "lucide-react";
+import { Eye, Orbit, RotateCcw, Route, Tags } from "lucide-react";
 import { SCALE_MODES, type LabelDensity, type ScaleMode } from "../simulation/units";
 import { useScaleStore } from "../simulation/scaleStore";
 import { type CameraMode, useSelectionStore } from "../simulation/selectionStore";
@@ -6,6 +6,7 @@ import { BottomSheet } from "./BottomSheet";
 import { InstrumentSelect } from "./InstrumentSelect";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
+import { ViewShareActions } from "../features/share/ViewShareControls";
 
 const labelOptions: Array<{ id: LabelDensity; label: string }> = [
   { id: "off", label: "Off" },
@@ -40,6 +41,7 @@ const cameraModeFallbackLabel: Partial<Record<CameraMode, string>> = {
   focus: "Focused body",
   follow: "Following body",
   moons: "Moon system",
+  observer: "Terminator observer",
   "rocket-follow": "Following rocket",
 };
 
@@ -60,6 +62,7 @@ export const ScaleControls = () => {
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
+  const restoreRecommendedView = useUiStore((state) => state.restoreRecommendedView);
   const cameraPresetValue = cameraPresetIds.has(cameraMode) ? (cameraMode as CameraPresetId) : "custom";
   const cameraOptions = [
     ...(cameraPresetValue === "custom"
@@ -141,6 +144,15 @@ export const ScaleControls = () => {
         >
           <Route size={16} />
         </button>
+        <button
+          className="icon-button restore-view-button"
+          type="button"
+          onClick={() => restoreRecommendedView(isMobile)}
+          title="Restore recommended view"
+          aria-label="Restore recommended view"
+        >
+          <RotateCcw size={15} aria-hidden />
+        </button>
         {cameraMode === "free" && (
           <span className="free-look-pill" role="status" title="Free look">
             Free
@@ -191,6 +203,11 @@ export const ScaleControls = () => {
         </label>
       </div>
       <p className="scale-note">{SCALE_MODES.find((item) => item.id === mode)?.note}</p>
+      {isMobile && (
+        <div className="mobile-view-share" aria-label="Photo and sharing">
+          <ViewShareActions labelled />
+        </div>
+      )}
     </>
   );
 

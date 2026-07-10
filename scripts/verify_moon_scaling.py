@@ -24,7 +24,7 @@ PLANET_ORBIT_RE = re.compile(
 MOON_RE = re.compile(
     r'moon\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)",\s*('
     + NUMBER
-    + r"),\s*("
+    + r'),\s*"[^"]+",\s*{\s*semiMajorAxisKm:\s*('
     + NUMBER
     + r")",
 )

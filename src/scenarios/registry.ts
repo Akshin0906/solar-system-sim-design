@@ -15,16 +15,17 @@ const SUN_RADIUS_KM = 696_340;
 export const INTERLOPER_ID = "interloper";
 
 // Interloper presets. `massSolar` is the characteristic mass for the class (the Mass
-// slider scales it); `captureRadiusKm` is the integrator collision radius where infalling
-// matter is swallowed. `render` picks who draws it: "custom" hands it to the Interloper
-// overlay (event horizon + accretion, or a glowing star); "marker" leaves it to the
+// slider scales it); `interactionRadiusKm` is an explicitly stylized collision/capture
+// sphere used by the coarse fixed-step integrator. `eventHorizonRadiusKm` is the real
+// Schwarzschild radius used only by the visual. `render` picks who draws it: "custom"
+// hands it to the Interloper overlay (event horizon + accretion, or a glowing star); "marker" leaves it to the
 // generic ScenarioLayer. The compact types have a capture radius far inside their Roche
 // limit, so planets tidally shred into a stream before being swallowed; the star's Roche
 // limit sits inside its surface, so it engulfs planets whole instead.
 export const INTERLOPER_TYPES = [
-  { value: 0, label: "Black hole", massSolar: 8, captureRadiusKm: 120_000, color: "#05050a", render: "custom" as const },
-  { value: 1, label: "Rogue star", massSolar: 0.8, captureRadiusKm: 620_000, color: "#ffd49a", render: "custom" as const },
-  { value: 2, label: "Rogue planet", massSolar: 0.02, captureRadiusKm: 75_000, color: "#6f5d92", render: "marker" as const },
+  { value: 0, label: "Black hole", massSolar: 8, eventHorizonRadiusKm: 23.626, interactionRadiusKm: 120_000, color: "#05050a", render: "custom" as const },
+  { value: 1, label: "Rogue star", massSolar: 0.8, eventHorizonRadiusKm: null, interactionRadiusKm: 620_000, color: "#ffd49a", render: "custom" as const },
+  { value: 2, label: "Rogue planet", massSolar: 0.02, eventHorizonRadiusKm: null, interactionRadiusKm: 75_000, color: "#6f5d92", render: "marker" as const },
 ];
 
 export const interloperType = (index: number) =>
@@ -79,13 +80,19 @@ export const SCENARIOS: DoomsdayScenario[] = [
     science: {
       realTimescale: "≈5 billion years from now — the swell itself unfolds over roughly a billion years.",
       summary:
-        "As the Sun exhausts its core hydrogen it inflates toward ~200× its radius and its surface cools to a deep orange-red. The expanding photosphere reaches out past the inner planets.",
+        "As the Sun exhausts its core hydrogen it inflates toward ~200× its radius, cools to a deep orange-red, and sheds mass. We weaken its gravity as it grows, so surviving planetary orbits expand instead of staying frozen in place.",
       watch:
-        "Mercury and Venus are swallowed first; whether Earth survives is genuinely uncertain. Push 'Final size' past 1 AU to engulf Earth, or keep it lower to spare it.",
+        "Mercury and Venus are swallowed first; whether Earth survives is genuinely uncertain. Change final size and retained mass to explore the competition between the moving photosphere, orbital expansion, and planetary encounters.",
     },
+    fidelity: [
+      { tier: "integrated", label: "N-body planets", detail: "Planet motion responds to the changing solar mass and mutual gravity." },
+      { tier: "guided", label: "Accelerated stellar evolution", detail: "Radius and mass loss are compressed into a watchable scenario timescale." },
+      { tier: "visual", label: "Readable scale", detail: "The photosphere is rendered for comprehension in non-real scale modes." },
+    ],
     params: [
       { key: "swellYears", label: "Swell time", min: 2, max: 30, step: 1, default: 6, unit: "yr", help: "Scenario-time for the Sun to reach full size." },
       { key: "finalRadiusAu", label: "Final size", min: 0.4, max: 1.5, step: 0.05, default: 1.1, unit: "AU", help: "How far the surface expands. Past 1 AU it reaches Earth's orbit." },
+      { key: "finalMassSolar", label: "Retained mass", min: 0.55, max: 1, step: 0.01, default: 0.668, unit: "M☉", help: "Solar mass remaining at maximum size. The default follows a published tip-of-red-giant estimate; lower mass lets surviving orbits expand farther." },
     ],
     defaultTimeScaleDaysPerSec: 250,
     // Grow the Sun's physical radius along an accelerating curve. The integrator's
@@ -101,19 +108,25 @@ export const SCENARIOS: DoomsdayScenario[] = [
       const progress = Math.min(state.elapsedSimSeconds / swellSeconds, 1);
       const eased = Math.pow(progress, 1.6); // slow subgiant start, accelerating ascent
       sun.radiusKm = SUN_RADIUS_KM + (finalKm - SUN_RADIUS_KM) * eased;
+      const finalMassFraction = Math.max(0.01, Math.min(params.finalMassSolar ?? 0.668, 1));
+      sun.muKm3S2 = SUN_MU * (1 - (1 - finalMassFraction) * eased);
     },
   },
   {
     id: "freefall",
     name: "Free N-body drift",
-    tagline: "The real, mutually gravitating solar system — no catastrophe, just honest gravity.",
+    tagline: "The major planets handed from ephemeris orbits to a live N-body integrator.",
     science: {
       realTimescale: "Always on — these perturbations play out over millions of years in reality.",
       summary:
-        "Hands the Sun and eight planets to a live Newtonian integrator seeded with their true masses and J2000 velocities. Nothing is scripted; every motion is real gravity.",
+        "Hands the Sun and eight planets to a live Newtonian integrator seeded from the app's dated ephemeris state and published gravitational parameters. After the handoff, no trajectory is scripted.",
       watch:
-        "The Sun traces a small loop around the system's barycentre as Jupiter tugs on it. Planetary orbits hold steady over short spans — proof the handoff from the Kepler solver is exact.",
+        "The Sun traces a small loop around the system's barycentre as Jupiter tugs on it. Planetary orbits should remain stable over short spans; visible drift is a useful numerical-integrator check, not a claim of exact long-term ephemerides.",
     },
+    fidelity: [
+      { tier: "integrated", label: "Planetary N-body", detail: "Sun and planets are advanced by the live Newtonian integrator." },
+      { tier: "visual", label: "Moon systems simplified", detail: "Moon-system rendering is not part of the planetary integration claim." },
+    ],
     params: [],
     defaultTimeScaleDaysPerSec: 30,
   },
@@ -128,6 +141,11 @@ export const SCENARIOS: DoomsdayScenario[] = [
       watch:
         "Track the giant planets as the intruder sweeps through — some are slingshotted onto wild ellipses, others escape the Sun entirely. Raise the mass for total chaos.",
     },
+    fidelity: [
+      { tier: "integrated", label: "N-body flyby", detail: "The interloper and planets mutually gravitate after the injected initial state." },
+      { tier: "stylized", label: "Collision heuristic", detail: "Mergers and fragmentation use conserving educational heuristics." },
+      { tier: "visual", label: "Readable markers", detail: "Small and compact bodies are enlarged on screen." },
+    ],
     params: [
       { key: "massSolar", label: "Intruder mass", min: 0.05, max: 2, step: 0.05, default: 0.4, unit: "M☉" },
       { key: "speedKmS", label: "Approach speed", min: 2, max: 60, step: 1, default: 18, unit: "km/s" },
@@ -165,6 +183,12 @@ export const SCENARIOS: DoomsdayScenario[] = [
       watch:
         "Drop the miss distance below ~0.5 AU to send a world inside the Roche limit and watch it unravel into a stream. A black hole shreds; a rogue star (its Roche limit buried inside its surface) swallows planets whole instead. Some survivors are flung out of the system entirely.",
     },
+    fidelity: [
+      { tier: "integrated", label: "N-body gravity", detail: "The compact object's mass participates in the live integrator." },
+      { tier: "stylized", label: "Capture sphere", detail: "A labelled 120,000 km interaction sphere keeps capture resolvable; it is not the event horizon." },
+      { tier: "visual", label: "Event horizon enlarged", detail: "The physical Schwarzschild radius is used as metadata but enlarged outside Real mode so it remains visible." },
+      { tier: "stylized", label: "Debris heuristic", detail: "Tidal streams and accretion visuals conserve mass but are not relativistic hydrodynamics." },
+    ],
     params: [
       {
         key: "interloperType",
@@ -194,7 +218,8 @@ export const SCENARIOS: DoomsdayScenario[] = [
         posKm: [32 * AU_KM, 0, miss],
         velKmS: [-speed, 0, 0],
         muKm3S2: massSolar * SUN_MU,
-        radiusKm: type.captureRadiusKm,
+        // This is the labelled coarse interaction sphere, not the event horizon.
+        radiusKm: type.interactionRadiusKm,
         color: type.color,
         alive: true,
         renderHint: type.render,
@@ -235,10 +260,15 @@ export const SCENARIOS: DoomsdayScenario[] = [
       realTimescale:
         "City-killer impacts happen every few centuries; a Chicxulub-scale (~10 km) impactor that ended the dinosaurs lands roughly every 100 million years.",
       summary:
-        "Aims an impactor at a target planet and lets it strike at real impact speed. A small fast body excavates a crater and throws ejecta; a large enough one (raise the size) exceeds the planet's binding energy and shatters it into debris.",
+        "Guides an impactor into a target at the chosen relative speed. Contact conserves mass and momentum, while crater ejecta and catastrophic disruption use bounded educational heuristics rather than a material-strength solver.",
       watch:
         "A ~10 km impactor is the dinosaur-killer — devastating, but the planet survives. Push the size into the hundreds of km to fracture the world entirely. Comets are lower-density but faster, and trail a tail blown back from the Sun.",
     },
+    fidelity: [
+      { tier: "guided", label: "Guided intercept", detail: "The impactor is steered to guarantee contact at the chosen speed and angle." },
+      { tier: "integrated", label: "Conserving contact", detail: "The contact response conserves mass and momentum." },
+      { tier: "stylized", label: "Crater and debris heuristic", detail: "Ejecta and disruption thresholds are watchable educational approximations." },
+    ],
     params: [
       {
         key: "target",
@@ -263,7 +293,7 @@ export const SCENARIOS: DoomsdayScenario[] = [
           { value: 1, label: "Comet" },
         ],
       },
-      { key: "sizeKm", label: "Impactor size", min: 5, max: 3000, step: 5, default: 60, unit: "km", help: "Radius. ~10 km is Chicxulub-scale; hundreds of km can shatter a planet." },
+      { key: "sizeKm", label: "Impactor diameter", min: 5, max: 3000, step: 5, default: 60, unit: "km", help: "Diameter. Chicxulub is commonly described as roughly 10 km across; hundreds of km can drive a giant impact." },
       { key: "speedKmS", label: "Impact speed", min: 5, max: 72, step: 1, default: 28, unit: "km/s" },
       { key: "impactAngleDeg", label: "Impact angle", min: 10, max: 90, step: 5, default: 45, unit: "°", help: "90° is a head-on radial strike; lower angles graze in along the orbit." },
     ],
@@ -276,7 +306,7 @@ export const SCENARIOS: DoomsdayScenario[] = [
       }
       enableDebris(state, DEFAULT_FRAGMENT_CAP);
       const isComet = (params.impactorType ?? 0) === 1;
-      const radiusKm = Math.max(params.sizeKm ?? 60, 1);
+      const radiusKm = Math.max((params.sizeKm ?? 60) / 2, 0.5);
       const speed = params.speedKmS ?? 28;
       const angle = ((params.impactAngleDeg ?? 45) * Math.PI) / 180;
       // Approach-from direction in the orbital plane: 90° = radially outward (head-on),
@@ -318,8 +348,8 @@ export const SCENARIOS: DoomsdayScenario[] = [
     },
     // Targeted intercept: hold the impactor on a converging course toward the planet at the
     // chosen impact speed (its frame), so the demonstration reliably lands the strike. Only
-    // the impactor's aim is steered — every other body's gravity stays fully real, and the
-    // impact itself (crater / shatter / ejecta) is honest Newtonian physics. Because a small,
+    // the impactor's aim is steered — every other body's gravity stays integrated, and the
+    // impact response conserves mass and momentum while using a bounded fragmentation heuristic. Because a small,
     // fast impactor would tunnel through a tiny planet between fixed steps, the drive resolves
     // the contact itself the step before it would arrive.
     drive: ({ state, params, bodiesById }, dtSeconds) => {
@@ -364,6 +394,11 @@ export const SCENARIOS: DoomsdayScenario[] = [
       watch:
         "Keep the closing speed low (~6–12 km/s) to merge into a glowing molten world ringed by debris, then watch shards fall back or settle into a disk. Crank it past ~16 km/s to fracture both worlds outright.",
     },
+    fidelity: [
+      { tier: "guided", label: "Guided encounter", detail: "The incoming world is steered onto the selected target." },
+      { tier: "integrated", label: "Conserving contact", detail: "The merge or disruption response conserves mass and momentum." },
+      { tier: "stylized", label: "Fragmentation heuristic", detail: "Molten remnants, debris rings, and re-accretion are educational approximations." },
+    ],
     params: [
       { key: "mover", label: "Incoming world", default: 3, options: PLANET_OPTIONS },
       { key: "target", label: "Struck world", default: 2, options: PLANET_OPTIONS },
@@ -376,7 +411,8 @@ export const SCENARIOS: DoomsdayScenario[] = [
     },
     // Nudge the incoming world onto a converging course with the struck world at the chosen
     // closing speed, and resolve the collision the step before it would tunnel through. Only
-    // the mover's course is steered; the collision (merge+ring / shatter) is honest physics.
+    // the mover's course is steered; the collision conserves mass and momentum but uses a
+    // stylized merge/fragment response.
     drive: ({ state, params }, dtSeconds) => {
       const moverId = planetId(params.mover ?? 3);
       const targetId = planetId(params.target ?? 2);

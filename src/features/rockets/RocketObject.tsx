@@ -4,7 +4,7 @@ import { AdditiveBlending, DoubleSide, Quaternion, Shape, Vector3 } from "three"
 import { useSelectionStore } from "../../simulation/selectionStore";
 import { SCENE_HTML_Z_INDEX_RANGE } from "../../ui/htmlLayering";
 import type { RocketProfile } from "./rocketCatalog";
-import { getCachedRocketView, useActiveRocketView } from "./useRocketView";
+import { useActiveRocketView } from "./useRocketView";
 
 // Renders the active rocket (and its destination cues) in the 3D scene.
 //
@@ -86,12 +86,13 @@ const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
 };
 
 export const RocketObject = () => {
-  const { activeLaunchMode, activeMissionMode, destination, launchDateMs, mode, profile, view } = useActiveRocketView();
+  const { launchDateMs, mode, profile, view } = useActiveRocketView();
   const cameraMode = useSelectionStore((state) => state.cameraMode);
   const updateRocketTarget = useSelectionStore((state) => state.updateRocketTarget);
   const rocketScenePosition = view?.scenePosition ?? null;
   const transfer = view?.transfer ?? null;
   const transferArcScenePoints = transfer?.arcScenePoints ?? null;
+  const continuationScenePoints = transfer?.continuationScenePoints ?? null;
   const progressIndex = transferArcScenePoints
     ? Math.max(
         1,
@@ -102,34 +103,27 @@ export const RocketObject = () => {
       )
     : 0;
 
-  // Orientation is frozen for the whole flight, so it only depends on the launch.
+  // Point the marker along the current trajectory. This matters after a Lambert
+  // encounter, where a flyby direction can differ sharply from the launch tangent.
   const orientation = useMemo(() => {
-    if (!profile || launchDateMs === null) {
+    if (!view) {
       return [0, 0, 0, 1] as const;
     }
-    const launchView = getCachedRocketView(
-      profile,
-      launchDateMs,
-      launchDateMs,
-      mode,
-      destination,
-      activeMissionMode,
-      activeLaunchMode,
-    );
-    const dir = new Vector3(...launchView.sceneDirection);
+    const dir = new Vector3(...view.sceneDirection);
     if (dir.lengthSq() === 0) {
       return [0, 0, 0, 1] as const;
     }
     return new Quaternion().setFromUnitVectors(UP, dir).toArray() as [number, number, number, number];
-  }, [profile, launchDateMs, mode, destination, activeMissionMode, activeLaunchMode]);
+  }, [view]);
 
   const completedTransferPoints = useMemo(() => {
     if (!transferArcScenePoints || !rocketScenePosition) {
       return [];
     }
 
-    return [...transferArcScenePoints.slice(0, progressIndex + 1), rocketScenePosition];
-  }, [progressIndex, rocketScenePosition, transferArcScenePoints]);
+    const completed = transferArcScenePoints.slice(0, progressIndex + 1);
+    return (transfer?.progress ?? 0) < 0.999_999 ? [...completed, rocketScenePosition] : completed;
+  }, [progressIndex, rocketScenePosition, transfer?.progress, transferArcScenePoints]);
 
   useEffect(() => {
     if (cameraMode === "rocket-follow" && rocketScenePosition) {
@@ -167,6 +161,16 @@ export const RocketObject = () => {
             opacity={0.78}
             raycast={noopRaycast}
           />
+          {continuationScenePoints && continuationScenePoints.length > 1 && (
+            <Line
+              points={continuationScenePoints}
+              color={accent}
+              lineWidth={1.5}
+              transparent
+              opacity={0.78}
+              raycast={noopRaycast}
+            />
+          )}
           <mesh position={view.launchScenePosition} raycast={noopRaycast}>
             <sphereGeometry args={[0.055 * markerScale, 12, 12]} />
             <meshBasicMaterial color={accent} transparent opacity={0.78} depthWrite={false} />

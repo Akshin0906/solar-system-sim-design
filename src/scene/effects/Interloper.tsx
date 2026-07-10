@@ -19,8 +19,8 @@ const noopRaycast = () => null;
 
 // Readable event-horizon size per scale mode. In "real" mode the true Schwarzschild radius
 // is a sub-pixel speck, so honour it but floor to a faint dot; elsewhere use a legible size.
-const horizonSceneRadius = (captureRadiusKm: number, mode: ScaleMode) =>
-  mode === "real" ? Math.max(scaleDistanceFromSun(captureRadiusKm, mode), 0.012) : 0.2;
+const horizonSceneRadius = (eventHorizonRadiusKm: number, mode: ScaleMode) =>
+  mode === "real" ? Math.max(scaleDistanceFromSun(eventHorizonRadiusKm, mode), 0.004) : 0.12;
 const starSceneRadius = (mode: ScaleMode) => (mode === "real" ? 0.05 : 0.85);
 
 // Accretion-disk shader: a rotating, sheared annulus that runs hot-blue at the inner edge
@@ -85,6 +85,7 @@ const RIM_FRAG = /* glsl */ `
 //   rogue planet → nothing here (the generic ScenarioLayer draws its marker)
 export const Interloper = ({ mode }: { mode: ScaleMode }) => {
   const typeIndex = useScenarioStore((state) => state.params.interloperType ?? 0);
+  const massMultiplier = useScenarioStore((state) => state.params.massMult ?? 1);
   const instanceId = useScenarioStore((state) => state.instanceId);
   const type = interloperType(typeIndex);
   const camera = useThree((state) => state.camera);
@@ -284,7 +285,7 @@ export const Interloper = ({ mode }: { mode: ScaleMode }) => {
   }
 
   // Black hole.
-  const r = horizonSceneRadius(type.captureRadiusKm, mode);
+  const r = horizonSceneRadius((type.eventHorizonRadiusKm ?? 1) * massMultiplier, mode);
   return (
     <group ref={groupRef}>
       {/* Event horizon: opaque, writes depth so it occludes the disk behind it and stars. */}

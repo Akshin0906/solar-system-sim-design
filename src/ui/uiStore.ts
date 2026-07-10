@@ -1,4 +1,10 @@
 import { create } from "zustand";
+import { useRocketStore } from "../features/rockets/rocketStore";
+import { useExperienceStore } from "../features/experiences/experienceStore";
+import { useScenarioStore } from "../scenarios/scenarioStore";
+import { useScaleStore } from "../simulation/scaleStore";
+import { useSelectionStore } from "../simulation/selectionStore";
+import { useTimeStore } from "../simulation/timeStore";
 
 // Which bottom sheet is currently expanded on phones. Only one full sheet is ever
 // open at a time, so this is a single value rather than a set of booleans — opening
@@ -32,6 +38,51 @@ type UiState = {
   openDoomsdayPanel: () => void;
   closeDoomsdayPanel: () => void;
   toggleDoomsdayPanel: () => void;
+  beginRocketWatch: () => void;
+  endRocketWatch: () => void;
+  restoreRecommendedView: (isMobile?: boolean) => void;
+};
+
+type RocketClockSnapshot = Pick<
+  ReturnType<typeof useTimeStore.getState>,
+  "direction" | "isPaused" | "preset" | "simulationDateMs" | "timeScale"
+>;
+
+let rocketClockSnapshot: RocketClockSnapshot | null = null;
+
+const beginRocketWatch = () => {
+  // Rocket watch owns the camera and playback clock. End a guided tour first so
+  // the rocket session snapshots the user's restored view, not a Director stop.
+  useExperienceStore.getState().stop();
+  const time = useTimeStore.getState();
+  if (!rocketClockSnapshot) {
+    rocketClockSnapshot = {
+      direction: time.direction,
+      isPaused: time.isPaused,
+      preset: time.preset,
+      simulationDateMs: time.simulationDateMs,
+      timeScale: time.timeScale,
+    };
+    useSelectionStore.getState().beginViewSession("rocket");
+  }
+
+  if (!time.transportLocked) {
+    time.setPaused(false);
+  }
+};
+
+const endRocketWatch = () => {
+  if (useTimeStore.getState().transportLocked) {
+    return;
+  }
+
+  if (rocketClockSnapshot) {
+    useTimeStore.setState({ ...rocketClockSnapshot });
+  }
+  // Restore the date before the view: body-relative presets and observer mode
+  // derive their canonical framing from positions at the restored instant.
+  useSelectionStore.getState().restoreViewSession("rocket");
+  rocketClockSnapshot = null;
 };
 
 export const useUiStore = create<UiState>((set) => ({
@@ -86,4 +137,37 @@ export const useUiStore = create<UiState>((set) => ({
   openDoomsdayPanel: () => set({ doomsdayPanelOpen: true }),
   closeDoomsdayPanel: () => set({ doomsdayPanelOpen: false }),
   toggleDoomsdayPanel: () => set((state) => ({ doomsdayPanelOpen: !state.doomsdayPanelOpen })),
+  beginRocketWatch,
+  endRocketWatch,
+  restoreRecommendedView: (isMobile) => {
+    useExperienceStore.getState().stop();
+    if (useScenarioStore.getState().activeScenarioId) {
+      useScenarioStore.getState().stop();
+    }
+    if (useRocketStore.getState().activeRocketId) {
+      useRocketStore.getState().clear();
+    }
+    endRocketWatch();
+
+    const mobile =
+      isMobile ??
+      (typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 900px), (pointer: coarse)").matches);
+    const scale = useScaleStore.getState();
+    scale.setMode("compressed");
+    scale.setLabelDensity(mobile ? "minimal" : "standard");
+    scale.setShowGrid(false);
+    scale.setShowOrbits(true);
+    scale.setShowTrails(false);
+    useSelectionStore.getState().resetRecommendedView();
+
+    set({
+      activeSheet: "none",
+      searchOpen: false,
+      helpOpen: false,
+      inspectorPresented: false,
+      doomsdayPanelOpen: false,
+    });
+  },
 }));

@@ -1,6 +1,6 @@
 import { Canvas, invalidate } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { X } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
 import { bodiesById } from "../data";
 import { scenarioById } from "../scenarios/registry";
@@ -12,8 +12,12 @@ import { ScenarioPanel } from "../ui/ScenarioPanel";
 import { TimeControls } from "../ui/TimeControls";
 import { TopBar } from "../ui/TopBar";
 import { BottomSheet } from "../ui/BottomSheet";
-import { RocketLauncherPanel } from "../features/rockets/RocketLauncherPanel";
+import { ExperiencePanel } from "../ui/ExperiencePanel";
+import { RocketLauncherPanel, RocketWatchHud } from "../features/rockets/RocketLauncherPanel";
+import { useRocketStore } from "../features/rockets/rocketStore";
+import { useExperienceStore } from "../features/experiences/experienceStore";
 import { useScenarioStore } from "../scenarios/scenarioStore";
+import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { formatTimeScale } from "../simulation/units";
@@ -21,6 +25,9 @@ import { readBooleanPreference, writeBooleanPreference } from "../ui/safeStorage
 import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useUiStore } from "../ui/uiStore";
 import { useIsMobile, useReducedMotion } from "../ui/useMediaQuery";
+import { PhotoModeExit } from "../features/share/ViewShareControls";
+import { usePhotoModeStore } from "../features/share/photoModeStore";
+import { applySharedViewFromLocation } from "../features/share/viewState";
 
 const isEditableTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) {
@@ -153,7 +160,12 @@ const KeyboardShortcuts = () => {
       const editable = isEditableTarget(event.target);
 
       if (event.key === "Escape") {
+        if (usePhotoModeStore.getState().active) {
+          usePhotoModeStore.getState().setActive(false);
+          return;
+        }
         const { closeSearch, closeSheet } = useUiStore.getState();
+        useExperienceStore.getState().stop();
         closeSearch();
         closeSheet();
         return;
@@ -281,12 +293,37 @@ const DiscoverabilityCue = ({ isMobile }: { isMobile: boolean }) => {
       <span>
         {isMobile
           ? "Tap a planet · use Search · try rockets and doomsday"
-          : "Click a planet · press / to search · try rockets and doomsday"}
+          : "Click to inspect · double-click to go there · press / to search"}
       </span>
       <button type="button" onClick={dismiss} aria-label="Dismiss hint">
         <X size={12} />
       </button>
     </div>
+  );
+};
+
+const LowInformationRecovery = ({ isMobile }: { isMobile: boolean }) => {
+  const labelDensity = useScaleStore((state) => state.labelDensity);
+  const showGrid = useScaleStore((state) => state.showGrid);
+  const showOrbits = useScaleStore((state) => state.showOrbits);
+  const showTrails = useScaleStore((state) => state.showTrails);
+  const restoreRecommendedView = useUiStore((state) => state.restoreRecommendedView);
+  const lowInformation = labelDensity === "off" && !showGrid && !showOrbits && !showTrails;
+
+  if (!lowInformation) {
+    return null;
+  }
+
+  return (
+    <aside className="low-information-recovery" aria-label="View recovery">
+      <span>
+        <strong>Need your bearings?</strong>
+        Labels and every guide are hidden.
+      </span>
+      <button type="button" onClick={() => restoreRecommendedView(isMobile)}>
+        <RotateCcw size={14} aria-hidden /> Restore view
+      </button>
+    </aside>
   );
 };
 
@@ -296,10 +333,15 @@ export const App = () => {
   const [sceneError, setSceneError] = useState(false);
   const [sceneRevision, setSceneRevision] = useState(0);
   const restoreTimerRef = useRef<number | null>(null);
+  const sharedViewAppliedRef = useRef(false);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
+  const openSheet = useUiStore((state) => state.openSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
+  const activeRocketId = useRocketStore((state) => state.activeRocketId);
+  const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
   const reducedMotion = useReducedMotion();
+  const photoMode = usePhotoModeStore((state) => state.active);
   // Captured at first render (useMediaQuery reads matchMedia synchronously) so the
   // mount-only auto-pause below reflects the initial OS preference, not later toggles.
   const initialReducedMotionRef = useRef(reducedMotion);
@@ -312,6 +354,10 @@ export const App = () => {
 
   useEffect(() => {
     document.getElementById("prehydrate-splash")?.remove();
+    if (!sharedViewAppliedRef.current) {
+      sharedViewAppliedRef.current = true;
+      applySharedViewFromLocation();
+    }
   }, []);
 
   useEffect(() => {
@@ -395,7 +441,7 @@ export const App = () => {
         </main>
       )}
     >
-    <main className="app-shell">
+    <main className={`app-shell${photoMode ? " photo-mode" : ""}`}>
       <a className="skip-link" href="#main-controls">
         Skip to controls
       </a>
@@ -493,6 +539,8 @@ export const App = () => {
         <div id="main-controls" className="ui-layer" tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
           <TopBar />
           <DiscoverabilityCue isMobile={isMobile} />
+          <LowInformationRecovery isMobile={isMobile} />
+          <ExperiencePanel />
           <ScaleControls />
           <ObjectInspector />
           {isMobile ? (
@@ -508,8 +556,12 @@ export const App = () => {
           ) : (
             <RocketLauncherPanel />
           )}
+          {isMobile && activeRocketId && activeSheet !== "rocket" && !scenarioActive && (
+            <RocketWatchHud onOpenControls={() => openSheet("rocket")} />
+          )}
           <ScenarioPanel />
           <TimeControls />
+          <PhotoModeExit />
         </div>
       )}
       {webglRestoring && <WebGlFallback restoring onRetry={() => undefined} />}

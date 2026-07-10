@@ -9,6 +9,7 @@ import { HelpPopover } from "./HelpPopover";
 import { commandKey } from "./shortcuts";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
+import { ViewShareActions } from "../features/share/ViewShareControls";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -69,6 +70,7 @@ export const TopBar = () => {
         <SimClock />
       </div>
       <div className="top-actions">
+        {!isMobile && <ViewShareActions />}
         <button
           ref={searchButtonRef}
           className={`icon-button tooltip-trigger ${searchOpen ? "active" : ""}`}

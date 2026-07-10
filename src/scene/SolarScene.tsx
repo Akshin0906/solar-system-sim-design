@@ -5,7 +5,7 @@ import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
-import { computeScenePositions } from "../simulation/units";
+import { computeScenePositions, getBodySceneRadius } from "../simulation/units";
 import { BeltCloud } from "./BeltCloud";
 import { BodyMesh } from "./BodyMesh";
 import { CameraRig } from "./CameraRig";
@@ -27,10 +27,14 @@ import { MoltenRemnant } from "./effects/MoltenRemnant";
 import type { ScenePositions } from "./scenePositions";
 import { useScenarioStore } from "../scenarios/scenarioStore";
 import { getSceneLabelledIds } from "./sceneLabels";
+import { getAnalyticOccluders, getFocusedSystemParentId } from "./eclipseShadows";
+import { AdaptiveExposure } from "./AdaptiveExposure";
+import { AdaptiveQuality } from "./AdaptiveQuality";
 import {
   drainConsumed,
   getElapsedSimSeconds,
   getFragmentCapHit,
+  getLatestEvent,
   getLiveFragmentCount,
   startRuntime,
   stepRuntime,
@@ -59,6 +63,7 @@ export const SolarScene = () => {
   // background), so latch it until the next ~8 Hz store report instead of allowing a
   // normal frame to clear the signal before React sees it.
   const throttledReportRef = useRef(false);
+  const reportedEventRef = useRef<ReturnType<typeof getLatestEvent>>(null);
 
   // When a live catastrophe consumes the body the camera is on, hand the camera to a
   // surviving world instead of snapping abruptly back to the origin. Prefer a large, stable
@@ -104,6 +109,22 @@ export const SolarScene = () => {
   const isMoonContext = Boolean(
     moonFocusParentId && (presetMoonParentId || cameraMode === "moons" || selectedBody?.type === "moon"),
   );
+  const focusedSystemParentId = presetMoonParentId ?? getFocusedSystemParentId(selectedBody, childBodiesByParentId);
+  const eclipseOccludersById = useMemo(() => {
+    const occluders = new Map<string, ReturnType<typeof getAnalyticOccluders>>();
+    bodies.forEach((body) => {
+      const bodyOccluders = getAnalyticOccluders(
+        body,
+        focusedSystemParentId,
+        bodiesById,
+        childBodiesByParentId,
+      );
+      if (bodyOccluders.length > 0) {
+        occluders.set(body.id, bodyOccluders);
+      }
+    });
+    return occluders;
+  }, [focusedSystemParentId]);
 
   const emphasisById = useMemo(() => {
     const emphasis = new Map<string, BodyEmphasis>();
@@ -144,12 +165,12 @@ export const SolarScene = () => {
   const trailBodies = useMemo(() => {
     // Motion trails are sampled from the Kepler orbit, which no longer describes the
     // path once a scenario hands bodies to the live integrator — so suppress them.
-    if (!showTrails || activeScenarioId) {
+    if (!showTrails || activeScenarioId || cameraMode === "observer") {
       return [];
     }
 
     return bodies.filter((body) => body.orbit);
-  }, [showTrails, activeScenarioId]);
+  }, [showTrails, activeScenarioId, cameraMode]);
 
   // While the red-giant scenario runs, its overlay (RedGiantStar) renders the swelling
   // Sun, so hide the normal Sun mesh to avoid a doubled, undersized disc inside it.
@@ -201,6 +222,7 @@ export const SolarScene = () => {
         scenarioInstanceRef.current = scenario.instanceId;
         elapsedReportRef.current = 0;
         throttledReportRef.current = false;
+        reportedEventRef.current = null;
       }
 
       if (scenario.status === "running") {
@@ -227,6 +249,11 @@ export const SolarScene = () => {
           liveFragmentCount: getLiveFragmentCount(),
           throttled: throttledReportRef.current,
         });
+        const latestEvent = getLatestEvent();
+        if (latestEvent !== reportedEventRef.current) {
+          reportedEventRef.current = latestEvent;
+          useScenarioStore.getState().reportEvent(latestEvent);
+        }
         throttledReportRef.current = false;
       }
       return;
@@ -252,10 +279,12 @@ export const SolarScene = () => {
       <color attach="background" args={["#050609"]} />
       <fog attach="fog" args={["#050609", 240, 980]} />
       <Stars radius={500} depth={90} count={2_300} factor={2.35} saturation={0.28} fade speed={reducedMotion ? 0 : 0.16} />
-      <Lighting />
-      {showGrid && <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />}
-      <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.28 : 1} />
-      {showOrbits &&
+      <AdaptiveQuality />
+      <AdaptiveExposure positionsRef={positionsRef} solarRadius={getBodySceneRadius(bodiesById.get("sun")!, mode)} />
+      <Lighting positionsRef={positionsRef} />
+      {showGrid && cameraMode !== "observer" && <EclipticCues mode={mode} opacityMultiplier={isMoonContext ? 0.22 : 1} />}
+      {cameraMode !== "observer" && <BeltCloud mode={mode} opacityMultiplier={isMoonContext ? 0.28 : 1} />}
+      {showOrbits && cameraMode !== "observer" &&
         renderBodies.map((body) => (
           <OrbitRing
             key={body.id}
@@ -275,6 +304,7 @@ export const SolarScene = () => {
           body={body}
           mode={mode}
           positionsRef={positionsRef}
+          eclipseOccluders={eclipseOccludersById.get(body.id)}
           selected={body.id === selectedId}
           showLabel={labelledIds.has(body.id)}
           labelSuppressed={suppressedLabelIds.has(body.id)}

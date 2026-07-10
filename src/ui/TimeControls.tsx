@@ -1,6 +1,20 @@
-import { AlertTriangle, CalendarClock, Gauge, Pause, Play, RotateCcw, RotateCw, SkipBack, SkipForward } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  Gauge,
+  Pause,
+  Play,
+  RotateCcw,
+  RotateCw,
+  SkipBack,
+  SkipForward,
+  SlidersHorizontal,
+  Skull,
+  X,
+} from "lucide-react";
 import type { CSSProperties } from "react";
 import { DAY_MS, TIME_PRESETS, type TimePresetId } from "../data/constants";
+import { scenarioById } from "../scenarios/registry";
 import { useScenarioStore } from "../scenarios/scenarioStore";
 import {
   MAX_TIME_SCALE,
@@ -14,6 +28,7 @@ import {
 import { formatNowDelta, formatTimeScale } from "../simulation/units";
 import { BottomSheet } from "./BottomSheet";
 import { InstrumentSelect } from "./InstrumentSelect";
+import { formatScenarioElapsed } from "./ScenarioPanel";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 
@@ -106,6 +121,61 @@ const OrbitModelWarning = () => {
   );
 };
 
+const ScenarioOwnedTransport = ({ isMobile }: { isMobile: boolean }) => {
+  const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
+  const status = useScenarioStore((state) => state.status);
+  const elapsed = useScenarioStore((state) => state.elapsedSimSeconds);
+  const togglePause = useScenarioStore((state) => state.togglePause);
+  const stop = useScenarioStore((state) => state.stop);
+  const openSheet = useUiStore((state) => state.openSheet);
+  const openDoomsdayPanel = useUiStore((state) => state.openDoomsdayPanel);
+  const active = activeScenarioId ? scenarioById.get(activeScenarioId) : null;
+
+  if (!active) {
+    return null;
+  }
+
+  const openControls = () => {
+    if (isMobile) {
+      openSheet("scenario");
+    } else {
+      openDoomsdayPanel();
+    }
+  };
+
+  return (
+    <section
+      className={`${isMobile ? "transport-bar" : "time-controls"} scenario-owned-transport`}
+      aria-label="Time controls"
+    >
+      <span className="scenario-transport-mark" aria-hidden>
+        <Skull size={15} />
+      </span>
+      <button
+        className="icon-button transport primary"
+        type="button"
+        onClick={togglePause}
+        aria-label={status === "paused" ? "Resume scenario" : "Pause scenario"}
+      >
+        {status === "paused" ? <Play size={isMobile ? 20 : 18} /> : <Pause size={isMobile ? 20 : 18} />}
+      </button>
+      <button className="scenario-transport-status" type="button" onClick={openControls}>
+        <strong>{active.name}</strong>
+        <span>
+          T+ {formatScenarioElapsed(elapsed)} · {status === "paused" ? "paused" : "running"}
+        </span>
+      </button>
+      <button className="scenario-transport-settings" type="button" onClick={openControls} aria-label="Open scenario controls">
+        <SlidersHorizontal size={14} aria-hidden />
+        <span>{isMobile ? "Tune" : "Scenario controls"}</span>
+      </button>
+      <button className="icon-button transport" type="button" onClick={stop} aria-label="Exit scenario" title="Exit and restore view">
+        <X size={isMobile ? 18 : 16} />
+      </button>
+    </section>
+  );
+};
+
 // Mobile transport chip: surfaces the absolute sim date (otherwise unreachable on a
 // phone without opening the sheet) plus the speed and now-delta.
 const SpeedChip = ({ active, speedLabel, onOpen }: { active: boolean; speedLabel: string; onOpen: () => void }) => {
@@ -148,11 +218,14 @@ export const TimeControls = () => {
   const activeSheet = useUiStore((state) => state.activeSheet);
   const openSheet = useUiStore((state) => state.openSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
-  // A running scenario freezes and locks the J2000 clock (it has its own transport in the
-  // Doomsday panel), so disable this bar while one owns the view rather than leaving dead
-  // controls that silently no-op against the locked clock.
+  // A scenario owns its own T+ timeline. Replace the normal J2000 transport with live,
+  // usable scenario controls instead of leaving a dim row of inert buttons in its place.
   const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
   const speedLabel = formatTimeScale(timeScale);
+
+  if (scenarioActive) {
+    return <ScenarioOwnedTransport isMobile={isMobile} />;
+  }
 
   const presetOptions = [
     ...(preset === "custom"
@@ -208,7 +281,7 @@ export const TimeControls = () => {
   if (isMobile) {
     return (
       <>
-        <section className="transport-bar" aria-label="Time controls" inert={scenarioActive || undefined}>
+        <section className="transport-bar" aria-label="Time controls">
           <button className="icon-button transport" type="button" onClick={() => stepDays(-1)} aria-label="Step backward">
             <SkipBack size={18} />
           </button>
@@ -278,7 +351,7 @@ export const TimeControls = () => {
   }
 
   return (
-    <section className="time-controls" aria-label="Time controls" inert={scenarioActive || undefined}>
+    <section className="time-controls" aria-label="Time controls">
       <button className="icon-button transport" type="button" onClick={() => stepDays(-1)} title="Step backward" aria-label="Step backward">
         <SkipBack size={17} />
       </button>

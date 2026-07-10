@@ -11,7 +11,7 @@ import type { RocketProfile } from "./rocketCatalog";
 // function of elapsed time stays exact and consistent under all of those, with no
 // accumulated drift.
 //
-// Phases, while the engine accelerates at `accelerationMS2` up to `maxSpeedKmS`:
+// Phases, while the illustrative curve accelerates up to its speed cap:
 //   1. accelerate from initialSpeedKmS until the speed cap or the burn ends
 //   2. (if the cap is hit before the burn ends) hold at the cap until burn end
 //   3. coast at the final burn speed forever after
@@ -34,11 +34,12 @@ export const sampleFlight = (
   options: RocketFlightOptions = {},
 ): RocketFlightSample => {
   const t = Math.max(0, elapsedSeconds);
-  const accelKmS2 = (profile.accelerationMS2 ?? 0) / 1_000; // m/s^2 -> km/s^2
+  const curve = profile.directCurve;
+  const accelKmS2 = (curve.accelerationMS2 ?? 0) / 1_000; // m/s^2 -> km/s^2
   const speedOffsetKmS = Math.max(0, options.speedOffsetKmS ?? 0);
-  const v0 = profile.initialSpeedKmS + speedOffsetKmS;
-  const vMax = profile.maxSpeedKmS + speedOffsetKmS;
-  const burn = Math.max(0, profile.burnDurationSeconds);
+  const v0 = curve.initialSpeedKmS + speedOffsetKmS;
+  const vMax = curve.maxSpeedKmS + speedOffsetKmS;
+  const burn = Math.max(0, curve.burnDurationSeconds);
 
   // Time spent accelerating before reaching the speed cap (or never, if accel is 0).
   const timeToCap = accelKmS2 > 0 ? Math.max(0, (vMax - v0) / accelKmS2) : Infinity;

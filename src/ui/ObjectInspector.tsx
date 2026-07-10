@@ -1,13 +1,86 @@
-import { ChevronUp, Crosshair, LocateFixed, Satellite, X } from "lucide-react";
+import { ChevronUp, Crosshair, LocateFixed, Satellite, Telescope, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { estimateOrbitalSpeedKmS, getOrbitRadiusKm } from "../simulation/solveOrbit";
+import { getBodyScientificContract } from "../simulation/scientificContract";
+import type { AccuracyTier, CelestialBody } from "../simulation/orbitalElements";
 import { formatBodyType, formatDistance, formatPeriod, formatRadius } from "../simulation/units";
 import { BottomSheet } from "./BottomSheet";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
+
+const accuracyTierLabel: Record<AccuracyTier, string> = {
+  "authoritative-ephemeris": "Authoritative ephemeris",
+  "ephemeris-snapshot": "Epoch snapshot",
+  "validated-approximation": "Validated approximation",
+  "mean-elements": "Mean elements",
+  illustrative: "Illustrative",
+};
+
+const ScientificTrust = ({ body }: { body: CelestialBody }) => {
+  // Select a primitive validity state so the 30 Hz clock can run without
+  // re-rendering this panel until the date actually crosses a model boundary.
+  const validity = useTimeStore((state) => {
+    const contract = getBodyScientificContract(body, new Date(state.simulationDateMs));
+    return contract.position?.isExtrapolated || contract.orientation?.isExtrapolated
+      ? "extrapolated"
+      : "within-range";
+  });
+  const contract = getBodyScientificContract(body, new Date(useTimeStore.getState().simulationDateMs));
+  const primary = contract.position ?? contract.orientation;
+
+  if (!primary) {
+    return null;
+  }
+
+  return (
+    <section className="scientific-trust" aria-label="Scientific model fidelity">
+      <div className="scientific-trust-summary">
+        <span className={`scientific-tier ${primary.accuracyTier}`}>
+          {accuracyTierLabel[primary.accuracyTier]}
+        </span>
+        {validity === "extrapolated" && <span className="scientific-tier extrapolated">Extrapolated date</span>}
+      </div>
+      <details>
+        <summary>Model & sources</summary>
+        <div className="scientific-trust-details">
+          {contract.position && (
+            <p>
+              <strong>Position:</strong> {contract.position.model}
+              {contract.position.referenceFrame ? ` · ${contract.position.referenceFrame}` : ""}
+              {contract.position.epochTimeScale ? ` · epoch ${contract.position.epochTimeScale}` : ""}
+            </p>
+          )}
+          {contract.orientation && (
+            <p>
+              <strong>Orientation:</strong> {contract.orientation.model}
+              {contract.orientation.synchronousToParent ? " · parent-locked" : ""}
+            </p>
+          )}
+          <p className="scientific-accuracy">{primary.accuracyDescription}</p>
+          {contract.sources.length > 0 && (
+            <ul className="scientific-sources">
+              {contract.sources.map((source) => (
+                <li key={`${source.id}-${source.record ?? ""}`}>
+                  <a href={source.url} target="_blank" rel="noreferrer">
+                    {source.publisher}: {source.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+          {primary.omissions.length > 0 && (
+            <p className="scientific-omissions">
+              <strong>Not modeled:</strong> {primary.omissions.join("; ")}.
+            </p>
+          )}
+        </div>
+      </details>
+    </section>
+  );
+};
 
 export const ObjectInspector = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
@@ -81,6 +154,13 @@ export const ObjectInspector = () => {
           </div>
         )}
       </dl>
+      <ScientificTrust body={body} />
+      {cameraMode === "observer" && (
+        <p className="observer-disclosure">
+          Terminator observer: the camera follows just above the rendered day/night boundary, with the Sun above the
+          horizon and the globe below. In non-real scale modes, the globe and nearby distances remain enlarged.
+        </p>
+      )}
       {moons.length > 0 && (
         <div className="moon-list">
           {moons.slice(0, 6).map((moon) => (
@@ -122,6 +202,17 @@ export const ObjectInspector = () => {
         >
           <Satellite size={15} />
           Moons
+        </button>
+      )}
+      {body.type !== "star" && body.type !== "asteroidBelt" && body.type !== "kuiperBelt" && (
+        <button
+          className={cameraMode === "observer" ? "active" : ""}
+          type="button"
+          onClick={() => setCameraMode("observer")}
+          aria-pressed={cameraMode === "observer"}
+        >
+          <Telescope size={15} />
+          Observe
         </button>
       )}
     </div>

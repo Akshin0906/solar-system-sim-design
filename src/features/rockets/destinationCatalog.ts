@@ -4,8 +4,8 @@
 // never duplicates or mutates planet/moon data. `bodyId: null` means free flight
 // (the original outward-from-Earth behaviour). Add or reorder entries freely.
 //
-// Mission modes decide whether a body uses the straight-line direct model or the
-// approximate transfer preview. See ROCKETS.md.
+// Mission modes decide whether a body uses the guided straight-line model or a
+// propagated Hohmann/Lambert transfer. See ROCKETS.md.
 
 export type RocketDestinationGroup = "Flight" | "Planets" | "Dwarf planets" | "Moons";
 

@@ -1,15 +1,16 @@
 import { OrbitControls } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useRef, type ComponentRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type ComponentRef } from "react";
 import { Vector3 } from "three";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
 import { beltConfigs } from "../data/belts";
-import { useSelectionStore } from "../simulation/selectionStore";
+import { getLiveCameraPose, useSelectionStore, type CameraPose } from "../simulation/selectionStore";
 import { getBodySceneRadius, scaleDistanceFromSun, type ScaleMode } from "../simulation/units";
 import { useReducedMotion } from "../ui/useMediaQuery";
 import {
   CAMERA_FOV_DEG,
   FOCUS_FRAMING_SAFETY,
+  MIN_CAMERA_NEAR,
   cameraNearForTarget,
   boundsForPoints,
   cameraOffset,
@@ -25,6 +26,14 @@ type CameraRigProps = {
 };
 
 const asVector = (value: [number, number, number]) => new Vector3(value[0], value[1], value[2]);
+const asTuple = (value: Vector3): [number, number, number] => [value.x, value.y, value.z];
+const diagnosticTuple = (value: [number, number, number]): [number, number, number] =>
+  value.map((coordinate) => Number(coordinate.toFixed(6))) as [number, number, number];
+const diagnosticPose = (pose: CameraPose): CameraPose => ({
+  position: diagnosticTuple(pose.position),
+  target: diagnosticTuple(pose.target),
+  up: diagnosticTuple(pose.up),
+});
 
 const distanceBetween = (a: Vector3, b: Vector3) => a.distanceTo(b);
 
@@ -35,6 +44,10 @@ const FOCUS_TARGET_DAMPING = 4.677692;
 const FOCUS_POSITION_DAMPING = 3.394221;
 const FOLLOW_TARGET_DAMPING = 10.461203;
 const FOLLOW_POSITION_DAMPING = 6.321631;
+const OBSERVER_SURFACE_MULTIPLIER = 1.04;
+const OBSERVER_LOOK_RADIUS_MULTIPLIER = 40;
+const OBSERVER_MIN_LOOK_DISTANCE = 8;
+const OBSERVER_DOWNWARD_BIAS = 0.25;
 const kuiperBelt = beltConfigs.find((belt) => belt.id === "kuiper-belt");
 
 const systemPresetParentId = (cameraMode: ReturnType<typeof useSelectionStore.getState>["cameraMode"]) =>
@@ -53,12 +66,15 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
   const controlsRef = useRef<ComponentRef<typeof OrbitControls> | null>(null);
   const cameraRangeRef = useRef<{ near: number; far: number } | null>(null);
   const controlsRangeRef = useRef<{ minDistance: number; maxDistance: number } | null>(null);
-  const cameraModeRef = useRef<ReturnType<typeof useSelectionStore.getState>["cameraMode"]>("overview");
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const cameraModeRef = useRef(cameraMode);
   const selectedId = useSelectionStore((state) => state.selectedId);
   const rocketTarget = useSelectionStore((state) => state.rocketTarget);
+  const cameraRestoreRequest = useSelectionStore((state) => state.cameraRestoreRequest);
   const setCameraMode = useSelectionStore((state) => state.setCameraMode);
+  const reportCameraPose = useSelectionStore((state) => state.reportCameraPose);
+  const acknowledgeCameraRestore = useSelectionStore((state) => state.acknowledgeCameraRestore);
   const { camera, gl, invalidate } = useThree();
   const reducedMotion = useReducedMotion();
 
@@ -79,11 +95,98 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
       : controlsTargetBody
         ? getBodySceneRadius(controlsTargetBody, mode)
         : 0;
-  const isFollowMode = cameraMode === "follow" || cameraMode === "rocket-follow";
+  const isFollowMode = cameraMode === "follow" || cameraMode === "observer" || cameraMode === "rocket-follow";
+
+  const publishCameraPose = useCallback(() => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return;
+    }
+    const pose: CameraPose = {
+      position: asTuple(camera.position),
+      target: asTuple(controls.target),
+      up: asTuple(camera.up),
+    };
+    reportCameraPose(pose);
+    // A stable diagnostic surface lets the production E2E suite verify that a
+    // manually composed orbit-camera view survives an authored-mode round trip.
+    gl.domElement.dataset.cameraPose = JSON.stringify(diagnosticPose(pose));
+  }, [camera, gl.domElement, reportCameraPose]);
+
+  const clearControlMomentum = useCallback(() => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return;
+    }
+    const dampingWasEnabled = controls.enableDamping;
+    controls.enableDamping = false;
+    controls.update();
+    controls.enableDamping = dampingWasEnabled;
+  }, []);
+
+  const applyCameraPose = useCallback((pose: CameraPose) => {
+    const controls = controlsRef.current;
+    if (!controls) {
+      return false;
+    }
+    // A tour can take ownership while OrbitControls still has a damped rotation,
+    // pan, or zoom delta queued from the user's last gesture. Consume and clear
+    // those private accumulators before applying the saved pose; otherwise the
+    // restored camera keeps drifting even though its logical mode is already free.
+    clearControlMomentum();
+    camera.position.set(pose.position[0], pose.position[1], pose.position[2]);
+    camera.up.set(pose.up[0], pose.up[1], pose.up[2]);
+    controls.target.set(pose.target[0], pose.target[1], pose.target[2]);
+    camera.updateProjectionMatrix();
+    controls.update();
+    publishCameraPose();
+    invalidate();
+    return true;
+  }, [camera, clearControlMomentum, invalidate, publishCameraPose]);
+
+  useLayoutEffect(() => {
+    if (!cameraRestoreRequest) {
+      return;
+    }
+    if (cameraRestoreRequest.expectedMode !== cameraMode) {
+      acknowledgeCameraRestore(cameraRestoreRequest.revision);
+      return;
+    }
+    if (applyCameraPose(cameraRestoreRequest.pose)) {
+      acknowledgeCameraRestore(cameraRestoreRequest.revision);
+    }
+  }, [acknowledgeCameraRestore, applyCameraPose, cameraMode, cameraRestoreRequest]);
+
+  // `liveCameraPose` is kept outside Three so a Canvas/WebGL remount does not
+  // discard a free-look composition. Pending deep-link/session requests use the
+  // revisioned path above; this mount-only fallback covers a plain scene remount.
+  useLayoutEffect(() => {
+    if (cameraModeRef.current !== "free" || useSelectionStore.getState().cameraRestoreRequest) {
+      return;
+    }
+    const pose = getLiveCameraPose();
+    if (pose) {
+      applyCameraPose(pose);
+    }
+    // Applying this on later free-look transitions would fight the first drag or
+    // wheel event that intentionally entered free mode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
+    publishCameraPose();
+  }, [publishCameraPose]);
+
+  useLayoutEffect(() => {
+    const previousMode = cameraModeRef.current;
     cameraModeRef.current = cameraMode;
-  }, [cameraMode]);
+    if (previousMode !== cameraMode && cameraMode !== "free") {
+      // Automated presets own the next camera move. Discard any inertial tail
+      // from the gesture that handed off control so the authored frame is not
+      // temporarily rotated or panned away from its intended subject.
+      clearControlMomentum();
+    }
+  }, [cameraMode, clearControlMomentum]);
 
   const getDesiredCamera = () => {
     const positions = positionsRef.current;
@@ -104,6 +207,38 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
         target,
         position: target.clone().add(cameraOffset(distance, "focus")),
       };
+    }
+
+    if (cameraMode === "observer" && selectedBody && selectedBody.id !== "sun") {
+      const sunPosition = positions.sun ? asVector(positions.sun) : new Vector3();
+      const sunward = sunPosition.sub(selectedPosition).normalize();
+      if (sunward.lengthSq() > 0) {
+        const sceneUp = new Vector3(0, 1, 0);
+        const terminatorNormal = sceneUp
+          .clone()
+          .addScaledVector(sunward, -sceneUp.dot(sunward))
+          .normalize();
+        if (terminatorNormal.lengthSq() === 0) {
+          terminatorNormal.crossVectors(sunward, new Vector3(0, 0, 1)).normalize();
+        }
+        const observerRadius = visualRadiusForBody(selectedBody, selectedRadius);
+        const position = selectedPosition
+          .clone()
+          .addScaledVector(terminatorNormal, observerRadius * OBSERVER_SURFACE_MULTIPLIER);
+        const lookDistance = Math.max(
+          observerRadius * OBSERVER_LOOK_RADIUS_MULTIPLIER,
+          OBSERVER_MIN_LOOK_DISTANCE,
+        );
+        const viewDirection = sunward
+          .clone()
+          .addScaledVector(terminatorNormal, -OBSERVER_DOWNWARD_BIAS)
+          .normalize();
+        return {
+          target: position.clone().addScaledVector(viewDirection, lookDistance),
+          position,
+          maxDistance: lookDistance * 2,
+        };
+      }
     }
 
     if (cameraMode === "overview") {
@@ -194,6 +329,29 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
       return;
     }
 
+    // Zustand can publish a mode handoff just before R3F swaps this frame
+    // callback's render closure. Never let the departing preset write one final
+    // camera pose over a freshly restored free-look composition.
+    const liveCameraMode = useSelectionStore.getState().cameraMode;
+    if (liveCameraMode !== cameraMode) {
+      invalidate();
+      return;
+    }
+
+    // A shared free-view URL can be applied by the outer App effect before the
+    // Drei controls ref attaches. The layout effect deliberately leaves that
+    // request pending; the first live frame retries it once the controls exist.
+    const pendingRestore = useSelectionStore.getState().cameraRestoreRequest;
+    if (pendingRestore) {
+      if (pendingRestore.expectedMode === cameraMode) {
+        if (applyCameraPose(pendingRestore.pose)) {
+          acknowledgeCameraRestore(pendingRestore.revision);
+        }
+      } else {
+        acknowledgeCameraRestore(pendingRestore.revision);
+      }
+    }
+
     // With frameloop="demand", a settling framing animation has to keep requesting the
     // next frame itself — nothing else will. Once the camera reaches its target pose
     // (or reduced motion snaps it there) we stop, so an idle scene draws nothing.
@@ -223,6 +381,7 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
       cameraMode === "focus" ||
       cameraMode === "follow" ||
       cameraMode === "moons" ||
+      cameraMode === "observer" ||
       Boolean(presetParentId) ||
       cameraMode === "rocket-follow";
     const previousControlRange = controlsRangeRef.current;
@@ -245,7 +404,10 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
     }
 
     const targetDistance = Math.max(camera.position.distanceTo(controls.target), 0.000001);
-    const nextNear = cameraNearForTarget(targetDistance, controlsTargetRadius);
+    const nextNear =
+      cameraMode === "observer"
+        ? Math.max(Math.min(controlsTargetRadius * 0.02, 0.01), MIN_CAMERA_NEAR)
+        : cameraNearForTarget(targetDistance, controlsTargetRadius);
     const nextFar = Math.max(targetDistance * 6, 600);
     const currentRange = cameraRangeRef.current ?? { near: camera.near, far: camera.far };
 
@@ -325,6 +487,8 @@ export const CameraRig = ({ positionsRef, mode }: CameraRigProps) => {
   return (
     <OrbitControls
       ref={controlsRef}
+      onChange={publishCameraPose}
+      regress
       enableDamping={!reducedMotion}
       dampingFactor={reducedMotion ? 0 : 0.055}
       rotateSpeed={0.42}

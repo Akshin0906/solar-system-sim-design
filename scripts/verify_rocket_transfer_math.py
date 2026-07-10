@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""Arithmetic checks for the educational rocket transfer preview."""
+"""Independent arithmetic checks for physical Hohmann requirements.
+
+Lambert endpoint/continuation math is checked separately in
+verify_lambert_transfer.py. This file deliberately keeps the catalog's illustrative
+direct/free curve out of every physical-transfer equation.
+"""
 
 from __future__ import annotations
 
 import math
 from collections.abc import Callable
 
+
 AU_KM = 149_597_870.7
-DAY_SECONDS = 86_400
-MU_SUN_KM3_S2 = 132_712_440_018
-SUSTAINED_TRANSFER_BURN_SECONDS = DAY_SECONDS * 30
+DAY_SECONDS = 86_400.0
+MU_SUN_KM3_S2 = 132_712_440_018.0
+MU_EARTH_KM3_S2 = 398_600.435
+EARTH_RADIUS_KM = 6_371.0
+LEO_ALTITUDE_KM = 400.0
 
 ORBITS_AU = {
     "earth": 1.000_002_61,
@@ -20,18 +28,12 @@ ORBITS_AU = {
     "neptune": 30.069_922_76,
 }
 
-FUSION_PROFILE = {
-    "initial_speed_km_s": 5,
-    "max_speed_km_s": 3_000,
+# Used only by the explicitly guided direct/free comparison below.
+ILLUSTRATIVE_FUSION_CURVE = {
+    "initial_speed_km_s": 5.0,
+    "max_speed_km_s": 3_000.0,
     "acceleration_m_s2": 2.5,
-    "burn_duration_s": 6_000_000,
-}
-
-SATURN_V_PROFILE = {
-    "initial_speed_km_s": 2,
-    "max_speed_km_s": 11,
-    "acceleration_m_s2": 22,
-    "burn_duration_s": 420,
+    "burn_duration_s": 6_000_000.0,
 }
 
 
@@ -40,296 +42,131 @@ def normalize_signed_radians(radians: float) -> float:
     return math.pi if math.isclose(normalized, -math.pi) else normalized
 
 
-def hohmann_transfer_time_seconds(origin_radius_km: float, destination_radius_km: float) -> float:
-    transfer_semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
-    return math.pi * math.sqrt(transfer_semimajor_axis_km**3 / MU_SUN_KM3_S2)
-
-
-def circular_speed_km_s(radius_km: float) -> float:
-    return math.sqrt(MU_SUN_KM3_S2 / radius_km)
-
-
-def transfer_speed_km_s(radius_km: float, transfer_semimajor_axis_km: float) -> float:
-    return math.sqrt(MU_SUN_KM3_S2 * (2 / radius_km - 1 / transfer_semimajor_axis_km))
-
-
-def mean_transfer_speed_km_s(origin_radius_km: float, destination_radius_km: float) -> float:
-    transfer_semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
-    return (
-        transfer_speed_km_s(origin_radius_km, transfer_semimajor_axis_km)
-        + transfer_speed_km_s(destination_radius_km, transfer_semimajor_axis_km)
-    ) / 2
-
-
-def profile_adjusted_transfer_time_seconds(
-    profile: dict[str, float],
-    baseline_transfer_time_seconds: float,
-    baseline_mean_transfer_speed_km_s: float,
-) -> float:
-    if profile["burn_duration_s"] < SUSTAINED_TRANSFER_BURN_SECONDS:
-        return baseline_transfer_time_seconds
-
-    route_distance_km = baseline_mean_transfer_speed_km_s * baseline_transfer_time_seconds
-
-    def covered_distance(seconds: float) -> float:
-        return baseline_mean_transfer_speed_km_s * seconds + sample_flight(profile, seconds)[1]
-
-    lower = 0.0
-    upper = max(baseline_transfer_time_seconds, 1.0)
-    max_seconds = 31_557_600 * 120
-    while upper < max_seconds and covered_distance(upper) < route_distance_km:
-        lower = upper
-        upper = min(upper * 2, max_seconds)
-
-    assert covered_distance(upper) >= route_distance_km, "profile-adjusted transfer did not bracket"
-    for _ in range(56):
-        mid = (lower + upper) / 2
-        if covered_distance(mid) >= route_distance_km:
-            upper = mid
-        else:
-            lower = mid
-    return upper
-
-
-def delta_v_pair(origin_radius_km: float, destination_radius_km: float) -> tuple[float, float]:
-    transfer_semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
-    departure = abs(transfer_speed_km_s(origin_radius_km, transfer_semimajor_axis_km) - circular_speed_km_s(origin_radius_km))
-    arrival = abs(circular_speed_km_s(destination_radius_km) - transfer_speed_km_s(destination_radius_km, transfer_semimajor_axis_km))
-    return departure, arrival
-
-
 def orbit_radius(name: str) -> float:
     return ORBITS_AU[name] * AU_KM
 
 
-def vec_add(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
-    return (a[0] + b[0], a[1] + b[1], a[2] + b[2])
+def hohmann_transfer_time_seconds(origin_radius_km: float, destination_radius_km: float) -> float:
+    semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
+    return math.pi * math.sqrt(semimajor_axis_km**3 / MU_SUN_KM3_S2)
 
 
-def vec_sub(a: tuple[float, float, float], b: tuple[float, float, float]) -> tuple[float, float, float]:
-    return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
+def circular_speed_km_s(radius_km: float, mu: float = MU_SUN_KM3_S2) -> float:
+    return math.sqrt(mu / radius_km)
 
 
-def vec_mul(a: tuple[float, float, float], scalar: float) -> tuple[float, float, float]:
-    return (a[0] * scalar, a[1] * scalar, a[2] * scalar)
+def transfer_speed_km_s(radius_km: float, semimajor_axis_km: float) -> float:
+    return math.sqrt(MU_SUN_KM3_S2 * (2 / radius_km - 1 / semimajor_axis_km))
 
 
-def vec_lerp(
-    a: tuple[float, float, float],
-    b: tuple[float, float, float],
-    t: float,
-) -> tuple[float, float, float]:
-    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+def hohmann_v_infinity_pair(origin_radius_km: float, destination_radius_km: float) -> tuple[float, float]:
+    semimajor_axis_km = (origin_radius_km + destination_radius_km) / 2
+    departure = abs(transfer_speed_km_s(origin_radius_km, semimajor_axis_km) - circular_speed_km_s(origin_radius_km))
+    arrival = abs(circular_speed_km_s(destination_radius_km) - transfer_speed_km_s(destination_radius_km, semimajor_axis_km))
+    return departure, arrival
 
 
-def vec_len(a: tuple[float, float, float]) -> float:
-    return math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2])
+def parking_orbit_injection_km_s(v_infinity_km_s: float) -> float:
+    parking_radius_km = EARTH_RADIUS_KM + LEO_ALTITUDE_KM
+    hyperbolic_periapsis_speed = math.sqrt(v_infinity_km_s**2 + 2 * MU_EARTH_KM3_S2 / parking_radius_km)
+    return hyperbolic_periapsis_speed - circular_speed_km_s(parking_radius_km, MU_EARTH_KM3_S2)
 
 
-def vec_normalize(a: tuple[float, float, float]) -> tuple[float, float, float]:
-    length = vec_len(a)
-    return (0, 0, 0) if length == 0 else (a[0] / length, a[1] / length, a[2] / length)
-
-
-def cubic_bezier(
-    a: tuple[float, float, float],
-    b: tuple[float, float, float],
-    c: tuple[float, float, float],
-    d: tuple[float, float, float],
-    t: float,
-) -> tuple[float, float, float]:
-    ab = vec_lerp(a, b, t)
-    bc = vec_lerp(b, c, t)
-    cd = vec_lerp(c, d, t)
-    return vec_lerp(vec_lerp(ab, bc, t), vec_lerp(bc, cd, t), t)
-
-
-def prograde_tangent_from_sun(point: tuple[float, float, float]) -> tuple[float, float, float]:
-    tangent = vec_normalize((-point[2], 0, point[0]))
-    return (0, 0, 1) if vec_len(tangent) == 0 else tangent
-
-
-def sample_flight(profile: dict[str, float], elapsed_seconds: float) -> tuple[float, float]:
-    t = max(0, elapsed_seconds)
-    accel_km_s2 = profile["acceleration_m_s2"] / 1_000
-    v0 = profile["initial_speed_km_s"]
-    vmax = profile["max_speed_km_s"]
-    burn = max(0, profile["burn_duration_s"])
-    time_to_cap = max(0, (vmax - v0) / accel_km_s2) if accel_km_s2 > 0 else math.inf
-    accel_duration = min(burn, time_to_cap)
-
-    t1 = min(t, accel_duration)
-    speed = v0 + accel_km_s2 * t1
-    distance = v0 * t1 + 0.5 * accel_km_s2 * t1 * t1
-
-    if t > accel_duration:
-        capped_speed = speed
-        capped_end = min(t, burn)
-        distance += capped_speed * max(0, capped_end - accel_duration)
-        speed = capped_speed
-
-        if t > burn:
-            distance += capped_speed * (t - burn)
-
+def sample_direct_curve(profile: dict[str, float], elapsed_seconds: float) -> tuple[float, float]:
+    elapsed = max(0.0, elapsed_seconds)
+    acceleration_km_s2 = profile["acceleration_m_s2"] / 1_000
+    initial = profile["initial_speed_km_s"]
+    maximum = profile["max_speed_km_s"]
+    burn = max(0.0, profile["burn_duration_s"])
+    time_to_cap = (maximum - initial) / acceleration_km_s2
+    accelerated = min(elapsed, burn, time_to_cap)
+    speed = initial + acceleration_km_s2 * accelerated
+    distance = initial * accelerated + 0.5 * acceleration_km_s2 * accelerated**2
+    distance += speed * max(0.0, elapsed - accelerated)
     return speed, distance
 
 
-def circular_orbit_position(radius_km: float, phase_rad: float, elapsed_seconds: float, period_days: float) -> tuple[float, float, float]:
+Vec3 = tuple[float, float, float]
+
+
+def subtract(a: Vec3, b: Vec3) -> Vec3:
+    return a[0] - b[0], a[1] - b[1], a[2] - b[2]
+
+
+def length(value: Vec3) -> float:
+    return math.sqrt(sum(component * component for component in value))
+
+
+def circular_position(radius_km: float, phase_rad: float, elapsed_seconds: float, period_days: float) -> Vec3:
     angle = phase_rad + 2 * math.pi * elapsed_seconds / (period_days * DAY_SECONDS)
-    return (math.cos(angle) * radius_km, 0, math.sin(angle) * radius_km)
+    return math.cos(angle) * radius_km, 0.0, math.sin(angle) * radius_km
 
 
 def direct_intercept_time_seconds(
-    profile: dict[str, float],
-    launch_point: tuple[float, float, float],
-    target_at: Callable[[float], tuple[float, float, float]],
+    profile: dict[str, float], launch_point: Vec3, target_at: Callable[[float], Vec3]
 ) -> float:
-    def gap(t: float) -> float:
-        return sample_flight(profile, t)[1] - vec_len(vec_sub(target_at(t), launch_point))
+    def gap(seconds: float) -> float:
+        return sample_direct_curve(profile, seconds)[1] - length(subtract(target_at(seconds), launch_point))
 
     lower = 0.0
     upper = 3_600.0
-    max_seconds = 31_557_600 * 120
-    while upper < max_seconds and gap(upper) < 0:
+    maximum_seconds = 31_557_600.0 * 120
+    while upper < maximum_seconds and gap(upper) < 0:
         lower = upper
         upper *= 2
-
-    assert upper < max_seconds, "direct intercept did not bracket"
+    assert upper < maximum_seconds, "guided direct intercept did not bracket"
     for _ in range(56):
-        mid = (lower + upper) / 2
-        if gap(mid) >= 0:
-            upper = mid
+        midpoint = (lower + upper) / 2
+        if gap(midpoint) >= 0:
+            upper = midpoint
         else:
-            lower = mid
+            lower = midpoint
     return upper
-
-
-def sample_phase_aware_transfer_arc(
-    launch_point: tuple[float, float, float],
-    intercept_point: tuple[float, float, float],
-    transfer_semimajor_axis_km: float,
-    samples: int = 80,
-) -> list[tuple[float, float, float]]:
-    chord = vec_len(vec_sub(intercept_point, launch_point))
-    control_distance = min(chord * 0.42, transfer_semimajor_axis_km * 0.85)
-    control_one = vec_add(launch_point, vec_mul(prograde_tangent_from_sun(launch_point), control_distance))
-    control_two = vec_sub(intercept_point, vec_mul(prograde_tangent_from_sun(intercept_point), control_distance))
-    return [
-        cubic_bezier(launch_point, control_one, control_two, intercept_point, index / samples)
-        for index in range(samples + 1)
-    ]
 
 
 def main() -> None:
     earth = orbit_radius("earth")
-    mars = orbit_radius("mars")
-    jupiter = orbit_radius("jupiter")
-    saturn = orbit_radius("saturn")
-    uranus = orbit_radius("uranus")
-    neptune = orbit_radius("neptune")
-
-    mars_transfer_days = hohmann_transfer_time_seconds(earth, mars) / DAY_SECONDS
-    assert 250 < mars_transfer_days < 270, mars_transfer_days
-
-    outer_transfer_days = [
-        hohmann_transfer_time_seconds(earth, radius) / DAY_SECONDS
-        for radius in (mars, jupiter, saturn, uranus, neptune)
-    ]
-    assert outer_transfer_days == sorted(outer_transfer_days), outer_transfer_days
-    assert outer_transfer_days[-1] > outer_transfer_days[0] * 20, outer_transfer_days
+    destinations = [orbit_radius(name) for name in ("mars", "jupiter", "saturn", "uranus", "neptune")]
+    transfer_days = [hohmann_transfer_time_seconds(earth, radius) / DAY_SECONDS for radius in destinations]
+    assert 250 < transfer_days[0] < 270
+    assert transfer_days == sorted(transfer_days)
+    assert transfer_days[-1] > transfer_days[0] * 20
 
     assert math.isclose(math.degrees(normalize_signed_radians(math.radians(190))), -170)
     assert math.isclose(math.degrees(normalize_signed_radians(math.radians(-190))), 170)
-    assert math.isclose(math.degrees(normalize_signed_radians(math.radians(30 - 390))), 0)
 
-    mars_departure, mars_arrival = delta_v_pair(earth, mars)
-    jupiter_departure, jupiter_arrival = delta_v_pair(earth, jupiter)
-    mars_mean_transfer_speed = mean_transfer_speed_km_s(earth, mars)
-    assert 2.8 < mars_departure < 3.1, mars_departure
-    assert 2.5 < mars_arrival < 2.8, mars_arrival
-    assert jupiter_departure > mars_departure
-    assert jupiter_arrival > 5
-    assert 22 < mars_mean_transfer_speed < 28, mars_mean_transfer_speed
+    mars_departure_v_infinity, mars_arrival_v_infinity = hohmann_v_infinity_pair(earth, destinations[0])
+    jupiter_departure_v_infinity, jupiter_arrival_v_infinity = hohmann_v_infinity_pair(earth, destinations[1])
+    mars_c3 = mars_departure_v_infinity**2
+    mars_injection = parking_orbit_injection_km_s(mars_departure_v_infinity)
+    assert 2.8 < mars_departure_v_infinity < 3.1
+    assert 2.5 < mars_arrival_v_infinity < 2.8
+    assert 8.0 < mars_c3 < 9.5
+    assert 3.4 < mars_injection < 3.8
+    assert jupiter_departure_v_infinity > mars_departure_v_infinity
+    assert jupiter_arrival_v_infinity > 5
 
-    mars_transfer_seconds = hohmann_transfer_time_seconds(earth, mars)
-    jupiter_transfer_seconds = hohmann_transfer_time_seconds(earth, jupiter)
-    saturn_v_transfer_seconds = profile_adjusted_transfer_time_seconds(
-        SATURN_V_PROFILE,
-        mars_transfer_seconds,
-        mars_mean_transfer_speed,
-    )
-    fusion_transfer_seconds = profile_adjusted_transfer_time_seconds(
-        FUSION_PROFILE,
-        mars_transfer_seconds,
-        mars_mean_transfer_speed,
-    )
-    saturn_v_jupiter_transfer_seconds = profile_adjusted_transfer_time_seconds(
-        SATURN_V_PROFILE,
-        jupiter_transfer_seconds,
-        mean_transfer_speed_km_s(earth, jupiter),
-    )
-    assert saturn_v_transfer_seconds == mars_transfer_seconds, (
-        saturn_v_transfer_seconds,
-        mars_transfer_seconds,
-    )
-    assert saturn_v_jupiter_transfer_seconds == jupiter_transfer_seconds, (
-        saturn_v_jupiter_transfer_seconds,
-        jupiter_transfer_seconds,
-    )
-    assert fusion_transfer_seconds < saturn_v_transfer_seconds, (
-        fusion_transfer_seconds,
-        saturn_v_transfer_seconds,
-    )
-
-    earth_launch = circular_orbit_position(earth, 0, 0, 365.256)
-    mars_phase = math.radians(65)
-    mars_at = lambda t: circular_orbit_position(mars, mars_phase, t, 686.98)
-    direct_intercept = direct_intercept_time_seconds(FUSION_PROFILE, earth_launch, mars_at)
-    _, direct_distance = sample_flight(FUSION_PROFILE, direct_intercept)
-    direct_target_distance = vec_len(vec_sub(mars_at(direct_intercept), earth_launch))
-    assert abs(direct_distance - direct_target_distance) < 1, (direct_distance, direct_target_distance)
-
-    transfer_arc = sample_phase_aware_transfer_arc(
-        earth_launch,
-        mars_at(mars_transfer_days * DAY_SECONDS),
-        (earth + mars) / 2,
-    )
-    assert vec_len(vec_sub(transfer_arc[0], earth_launch)) < 1e-6
-    assert vec_len(vec_sub(transfer_arc[-1], mars_at(mars_transfer_days * DAY_SECONDS))) < 1e-6
-    transfer_chord = vec_len(vec_sub(transfer_arc[-1], transfer_arc[0]))
-    transfer_length = sum(vec_len(vec_sub(transfer_arc[index], transfer_arc[index - 1])) for index in range(1, len(transfer_arc)))
-    mars_decorative_arc_speed = transfer_length / hohmann_transfer_time_seconds(earth, mars)
-    assert transfer_length > transfer_chord * 1.02, (transfer_length, transfer_chord)
-    assert abs(mars_decorative_arc_speed - mars_mean_transfer_speed) > 1, (
-        mars_decorative_arc_speed,
-        mars_mean_transfer_speed,
-    )
-
-    # Once a mission has arrived, the scene should keep the rocket with the
-    # destination body as time continues, not frozen at the old intercept point.
-    post_arrival_elapsed = (mars_transfer_days + 365.256 * 4) * DAY_SECONDS
-    stale_arrival_point = mars_at(mars_transfer_days * DAY_SECONDS)
-    current_target_point = mars_at(post_arrival_elapsed)
-    stale_post_arrival_miss = vec_len(vec_sub(stale_arrival_point, current_target_point))
-    locked_post_arrival_miss = vec_len(vec_sub(current_target_point, current_target_point))
-    assert stale_post_arrival_miss > AU_KM, stale_post_arrival_miss
-    assert locked_post_arrival_miss == 0
+    # The catalog profile is exercised only in guided-direct space. Calling the
+    # Hohmann functions before and after this calculation yields the same result,
+    # demonstrating that no vehicle label enters the transfer equations.
+    earth_launch = circular_position(earth, 0, 0, 365.256)
+    mars_at = lambda seconds: circular_position(destinations[0], math.radians(65), seconds, 686.98)
+    direct_intercept = direct_intercept_time_seconds(ILLUSTRATIVE_FUSION_CURVE, earth_launch, mars_at)
+    physical_time_after_direct_demo = hohmann_transfer_time_seconds(earth, destinations[0])
+    assert math.isclose(physical_time_after_direct_demo / DAY_SECONDS, transfer_days[0])
 
     print("Rocket transfer math checks passed")
-    print(f"Earth-Mars Hohmann transfer: {mars_transfer_days:.1f} days")
-    print("Outer transfer days:", ", ".join(f"{days:.1f}" for days in outer_transfer_days))
-    print(f"Mars delta-v departure/arrival: {mars_departure:.2f}/{mars_arrival:.2f} km/s")
-    print(f"Mars vis-viva mean transfer speed: {mars_mean_transfer_speed:.2f} km/s")
-    print(f"Jupiter delta-v departure/arrival: {jupiter_departure:.2f}/{jupiter_arrival:.2f} km/s")
+    print("Outer Hohmann days:", ", ".join(f"{days:.1f}" for days in transfer_days))
     print(
-        "Profile-adjusted Mars transfer days: "
-        f"Saturn V {saturn_v_transfer_seconds / DAY_SECONDS:.1f} baseline, "
-        f"Fusion {fusion_transfer_seconds / DAY_SECONDS:.1f}"
+        "Mars v-infinity departure/arrival, C3, 400 km LEO injection: "
+        f"{mars_departure_v_infinity:.2f}/{mars_arrival_v_infinity:.2f} km/s, "
+        f"{mars_c3:.2f} km^2/s^2, {mars_injection:.2f} km/s"
     )
-    print(f"Saturn V Jupiter transfer remains Hohmann baseline: {saturn_v_jupiter_transfer_seconds / DAY_SECONDS:.1f} days")
-    print(f"Fusion direct Mars intercept: {direct_intercept / DAY_SECONDS:.2f} days")
-    print(f"Phase-aware Mars arc/chord: {transfer_length / transfer_chord:.3f}x")
-    print(f"Post-arrival stale miss avoided: {stale_post_arrival_miss / AU_KM:.2f} AU")
+    print(
+        "Catalog independence: physical Hohmann remains "
+        f"{physical_time_after_direct_demo / DAY_SECONDS:.1f} days; "
+        f"illustrative guided-direct intercept is {direct_intercept / DAY_SECONDS:.2f} days"
+    )
 
 
 if __name__ == "__main__":

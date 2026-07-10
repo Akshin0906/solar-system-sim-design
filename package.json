@@ -18,7 +18,7 @@
     "verify:rockets": "tsx scripts/stress_rockets.ts",
     "verify:scenarios": "tsx scripts/verify_scenarios.ts",
     "verify:service-worker": "node scripts/verify_service_worker.mjs",
-    "verify:math": "python3 scripts/verify_orbit_math.py && python3 scripts/verify_camera_framing.py && python3 scripts/verify_planet_orbits_against_jpl.py && python3 scripts/verify_minor_body_data.py && python3 scripts/verify_label_scaling.py && python3 scripts/verify_moon_scaling.py && python3 scripts/verify_rocket_transfer_math.py"
+    "verify:math": "python3 scripts/verify_orbit_math.py && python3 scripts/verify_camera_framing.py && python3 scripts/verify_planet_orbits_against_jpl.py && python3 scripts/verify_minor_body_data.py && python3 scripts/verify_ephemeris_fidelity.py && python3 scripts/verify_orientation_models.py && python3 scripts/verify_label_scaling.py && python3 scripts/verify_moon_scaling.py && python3 scripts/verify_rocket_catalog.py && python3 scripts/verify_rocket_transfer_math.py && python3 scripts/verify_lambert_transfer.py && npx tsx scripts/verify_orbital_transfer.ts && python3 scripts/verify_scenario_fidelity.py && python3 scripts/verify_render_quality.py && python3 scripts/verify_authored_experiences.py"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

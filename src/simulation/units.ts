@@ -7,7 +7,11 @@ export type LabelDensity = "off" | "minimal" | "standard" | "full";
 
 export const SCALE_MODES: Array<{ id: ScaleMode; label: string; note: string }> = [
   { id: "real", label: "Real", note: "True distance and true radius" },
-  { id: "readable", label: "Readable", note: "True distance with readable body size" },
+  {
+    id: "readable",
+    label: "Readable",
+    note: "True planet distance · enlarged bodies and expanded moon systems",
+  },
   { id: "compressed", label: "Compact", note: "Recommended compressed distance with readable body size" },
   { id: "overview", label: "Map", note: "System overview scale" },
 ];

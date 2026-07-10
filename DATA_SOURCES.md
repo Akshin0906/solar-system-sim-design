@@ -1,73 +1,162 @@
-# Data Sources
+# Scientific Data Contract
 
-## Major Planet Orbits
+The simulator distinguishes an authoritative ephemeris from an analytical model
+that merely started from authoritative data.  Every rendered body now exposes:
 
-The major planet orbit elements in `src/data/bodies.ts` use NASA/JPL Solar System Dynamics approximate Keplerian elements at J2000 plus JPL's per-century rates:
+- source title, publisher, URL, and source record/kernel/table;
+- model and accuracy tier;
+- epoch and source time scale;
+- orbital reference frame;
+- validation interval and behavior outside it;
+- important omitted effects.
 
-- Source: https://ssd.jpl.nasa.gov/planets/approx_pos.html
-- Table: "Keplerian elements and their rates", Table 1.
-- Validity range: 1800 AD through 2050 AD.
-- Fields used:
-  - semi-major axis `a`
-  - semi-major axis rate `a_dot`
-  - eccentricity `e`
-  - eccentricity rate `e_dot`
-  - inclination `I`
-  - inclination rate `I_dot`
-  - longitude of ascending node `Omega`
-  - longitude of ascending node rate `Omega_dot`
-  - longitude of perihelion `varpi`
-  - longitude of perihelion rate `varpi_dot`
-  - mean longitude `L`
-  - mean longitude rate `L_dot`
+The stable integration surface is `getBodyScientificContract()` in
+`src/simulation/scientificContract.ts`.  An `extrapolated` result is still drawn,
+but must not be presented as validated.
 
-The app stores:
+## Scene inertial frame and time
 
-- `argumentOfPeriapsisDeg = varpi - Omega`
-- `meanAnomalyAtEpochDeg = L - varpi`
-- `elementRatesPerCentury` in the JPL source units where practical.
-- JPL's Table 1 labels Earth's row as `EM Bary`; the app uses it as Earth's visual heliocentric orbit for simplicity.
+Positions use the fixed IAU76/80 ecliptic of J2000 used by JPL Horizons.  Horizons
+defines the ICRF-to-ecliptic rotation with a fixed obliquity of 84,381.448 arcsec.
+Astronomical ecliptic `(X, Y, Z)` is represented in Three.js as `(X, Z, Y)` so the
+ecliptic north direction is scene-up.
 
-At runtime, the app resolves date-specific planet elements with `a = a0 + a_dot * T`, `e = e0 + e_dot * T`, and the corresponding angular rates for `I`, `Omega`, `varpi`, and `L`, where `T` is Julian centuries from J2000. It then derives `argumentOfPeriapsisDeg = varpi - Omega` and `meanAnomalyDeg = L - varpi`.
+- Horizons frame and output definitions:
+  https://ssd.jpl.nasa.gov/horizons/manual.html
+- Frame implementation: `src/simulation/coordinateFrames.ts`
 
-This remains an approximate Keplerian model. It does not use JPL Horizons, DE ephemerides, n-body perturbations, or JPL's longer-range Table 2 outer-planet correction terms. For high-precision positions, use JPL Horizons.
+Planet elements are tagged TT; Horizons and satellite elements are tagged TDB;
+orientation polynomials are tagged TDB.  JavaScript `Date` remains the display and
+transport clock.  The analytical propagator currently treats the ISO encoding as a
+uniform elapsed-day count instead of evaluating leap seconds and the periodic
+TDB−TT term.  This is a disclosed approximation, not an apparent-position model.
 
-## Dwarf Planet Orbits
+## Major planet orbits
 
-The dwarf planet entries in `src/data/bodies.ts` are rounded approximate Kepler elements intended for visual scale and educational comparison:
+The eight major planets use NASA/JPL Solar System Dynamics Table 1 elements at
+J2000 and their linear per-century rates:
 
-- Ceres, Pluto, Eris, Haumea, and Makemake use local rounded values for semi-major axis, period, eccentricity, and inclination.
-- Source context: JPL Small-Body Database / Horizons-class orbital data, summarized locally rather than queried at runtime.
-- Accuracy note: these values are not date-fitted ephemerides and do not include per-century rates. They are suitable for approximate placement and relative motion only.
+- https://ssd.jpl.nasa.gov/planets/approx_pos.html
+- validated interval: 1800-01-01 through 2050-12-31;
+- tier: `validated-approximation`;
+- JPL's stated order-of-magnitude accuracy is represented as 25,000 km;
+- Earth's row is the Earth-Moon barycenter and is used as visual Earth.
 
-Use JPL Horizons or the JPL Small-Body Database for current precision elements:
+The runtime derives argument of periapsis and mean anomaly from the published
+longitude of perihelion and mean longitude.  It does not use a DE integration,
+light time, stellar aberration, or observer-dependent apparent coordinates.
 
-- https://ssd.jpl.nasa.gov/horizons/app.html
-- https://ssd.jpl.nasa.gov/tools/sbdb_lookup.html
+## Dwarf planets
 
-## Major Moon Orbits
+Ceres, Pluto, Eris, Haumea, and Makemake use osculating Horizons elements at
+JD 2460676.5 TDB (2025-01-01 00:00 TDB), centered on the Sun and expressed in the
+IAU76/80 J2000 ecliptic:
 
-The major moon entries in `src/data/moons.ts` use rounded mean elements:
+- source/API: https://ssd.jpl.nasa.gov/horizons/
+- authoring command: `python3 scripts/fetch_horizons_elements.py`
+- tier: `ephemeris-snapshot`.
 
-- Source context: JPL Solar System Dynamics "Planetary Satellite Mean Elements" and public NASA/JPL fact-sheet values.
-- Fields used where available: semi-major axis, eccentricity, inclination, orbital period, node, argument of periapsis, and a visual mean anomaly seed.
-- Accuracy note: these are mean/rounded values for visual layout. The app does not model satellite perturbations, precession, Laplace-plane details, resonances, or local capture dynamics.
+The position matches Horizons at the snapshot, but subsequent motion is a two-body
+Kepler extrapolation.  It does not inherit the validity or uncertainty of the
+underlying Horizons numerical integration.  The offline verifier shows the five
+models remain within 0.04% of heliocentric distance on 2026-07-10; that measured
+check is not a general precision guarantee.
 
-Primary source:
+## Major moon orbits
+
+Orbit shape, source planes, plane poles, and secular precession periods come from
+JPL Planetary Satellite Mean Elements:
 
 - https://ssd.jpl.nasa.gov/sats/elem/
+- Moon: ecliptic frame, DE405/LE405 row;
+- Io, Europa, Ganymede, Callisto: local Laplace planes, JUP365;
+- Enceladus, Rhea, Titan, Iapetus: local Laplace planes, SAT441;
+- Ariel, Umbriel, Titania, Oberon, Miranda: Uranus equatorial frame, URA182;
+- Triton: local Laplace plane, NEP097.
 
-## Planet Texture Maps
+The table's Laplace-plane pole RA/Dec is transformed to ICRF, then into the fixed
+J2000 ecliptic.  Uranian equatorial elements use Uranus's PCK pole at J2000.  The
+node is not treated as an ecliptic node; doing so is the large plane error the new
+frame contract is designed to prevent.
 
-Curated texture assets live in `public/textures/`. They are static public assets loaded at runtime with procedural canvas textures as fallback, so the app remains usable offline or if an image fails to load.
+The public table is a mean-element summary, not an SPK evaluator.  To make phase
+reproducible rather than decorative, `scripts/calibrate_moon_phases.py` projects
+geometric Horizons vectors at J2000 and 2026-07-10 into each published reference
+plane.  It fits the J2000 mean anomaly and effective mean motion while applying the
+table's apsidal/nodal precession periods.  The model is tagged `mean-elements` and
+validated only over that fit interval.  It still omits short-period perturbations,
+resonant/libration terms, and the full source SPK.
 
-- `earth.jpg`: NASA Science 3D Resources "Earth (A)", USGS/NASA/JPL topography-like map.
-- `venus.jpg`: NASA Science 3D Resources "Venus", stitched Magellan radar imagery with gap fill.
-- `mars.jpg`: NASA Science 3D Resources "Mars", Viking imagery processed at USGS.
-- `jupiter.jpg`: NASA Science 3D Resources "Jupiter", Voyager imagery.
-- `saturn.jpg`: NASA Science 3D Resources "Saturn", JPL/Caltech generated planetary map explicitly labeled fictional by NASA.
-- `neptune.jpg`: NASA Science 3D Resources "Neptune", JPL/Caltech generated planetary map explicitly labeled fictional by NASA.
-- `moon.jpg`: NASA SVS CGI Moon Kit `lroc_color_2k.jpg`, based on LRO/LROC and LOLA-derived source data; NASA notes the rendering map is optimized for aesthetics rather than science.
+Offline Horizons-vector checks at the two calibration dates cover an ecliptic
+orbit (Moon), Jovian/Saturnian/Neptunian Laplace planes, and the Uranian equatorial
+frame.  Current-date errors for those representatives are below 1% of orbital
+radius except Triton (~11%), whose perturbed retrograde plane is poorly represented
+by a single secular ellipse.  Use the source SPK/Horizons for precision work.
+
+## Pole and surface orientation
+
+Pole and prime-meridian models use secular coefficients from NAIF's generic
+`pck00011.tpc`, based on the IAU 2015 WGCCRE report:
+
+- kernel: https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc
+- convention: https://naif.jpl.nasa.gov/pub/naif/toolkit_docs/C/req/pck.html
+- implementation: `src/simulation/orientation.ts`.
+
+The model evaluates pole right ascension, pole declination, and signed prime
+meridian angle `W(t)`.  The sign of `W` is the only spin-direction flag; legacy
+rotation durations are positive so Venus, Uranus, and Pluto no longer encode
+retrograde rotation twice.  Regular moons also expose an instantaneous synchronous
+frame whose +X direction faces the parent.  PCK periodic nutation, precession, and
+physical-libration terms are not yet evaluated and are reported as omissions.
+
+## Display scale is not physical geometry
+
+`Real` uses true heliocentric and satellite distances with true radii.  `Readable`
+uses true heliocentric planet distances but enlarged bodies and nonlinearly expanded
+moon systems.  Its user-facing note therefore reads:
+
+> True planet distance · enlarged bodies and expanded moon systems
+
+`Compact` and `Map` compress heliocentric distance as well.  No mode other than
+`Real` should be described as globally true scale.
+
+## Red-giant scenario mass loss
+
+The red-giant scenario's default retained solar mass is `0.668 M☉`: the source
+stellar-evolution model loses `0.332 M☉` by the tip of the red-giant branch.
+
+- K.-P. Schröder and R. C. Smith (2008), *Distant future of the Sun and Earth
+  revisited*, MNRAS 386, 155–163:
+  https://academic.oup.com/mnras/article/386/1/155/977315
+- local arithmetic/model guardrail: `scripts/verify_scenario_fidelity.py`.
+
+For slow isotropic mass loss with negligible external torque, the adiabatic
+two-body limit expands a surviving semimajor axis inversely with retained stellar
+mass.  The default therefore has a reference expansion of `1 / 0.668 = 1.497×`.
+The scenario now reduces the Sun's gravitational parameter during the swell so
+surviving simulated orbits respond to the loss rather than remaining on their
+original fixed ellipses.
+
+That factor is a baseline, not a prediction for every planet.  The scenario
+compresses stellar evolution into a watchable duration and omits detailed stellar
+wind interaction.  Close planets can undergo tides and atmospheric drag, and the
+same source concludes those effects are crucial for Earth's fate.  Encounters,
+engulfment, and multi-body perturbations can also violate the isolated adiabatic
+assumptions.  The scenario is therefore labeled accelerated/guided stellar
+evolution and reports the mass-loss assumption explicitly.
+
+## Planet texture maps
+
+Curated texture assets live in `public/textures/`.  They are static public assets
+with procedural fallback textures so the app remains usable offline.
+
+- `earth.jpg`: NASA Science 3D Resources "Earth (A)".
+- `venus.jpg`: NASA Magellan-derived radar mosaic.
+- `mars.jpg`: Viking imagery processed at USGS.
+- `jupiter.jpg`: Voyager imagery.
+- `saturn.jpg` and `neptune.jpg`: NASA/JPL generated maps; NASA labels them fictional.
+- `moon.jpg`: NASA SVS CGI Moon Kit, optimized for aesthetic rendering rather than
+  scientific measurement.
 
 Sources:
 
@@ -79,18 +168,22 @@ Sources:
 - https://science.nasa.gov/3d-resources/neptune/
 - https://svs.gsfc.nasa.gov/4720/
 
-## Verification
+## Reproduction and verification
 
-Run:
+Networked authoring tools:
+
+```bash
+python3 scripts/fetch_horizons_elements.py
+python3 scripts/fetch_horizons_vectors.py
+python3 scripts/calibrate_moon_phases.py
+```
+
+Offline verification:
 
 ```bash
 npm run verify:math
 ```
 
-This includes:
-
-- basic orbital speed and scale checks,
-- camera-framing checks,
-- comparison of major planet app elements and runtime rates against JPL approximate elements,
-- current-date position checks against JPL's approximate rate formula,
-- focused dwarf planet and major moon data checks for key rounded values.
+The math suite checks source values and complete metadata, major-planet formulas,
+frame transforms and representative Horizons vectors at multiple dates, orientation
+and synchronous-lock invariants, scale behavior, camera framing, and rocket math.
