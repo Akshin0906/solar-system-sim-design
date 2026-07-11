@@ -98,6 +98,9 @@ export const useSceneLabelLayout = ({ bodies, labelledIds, selectedId }: LabelLa
       ".rocket-panel",
       ".doomsday-panel",
       ".doomsday-dock",
+      ".experience-launch",
+      ".experience-mini",
+      ".experience-panel",
       ".help-popover",
       ".search-popover",
     ].flatMap((selector) =>

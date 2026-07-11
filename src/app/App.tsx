@@ -339,6 +339,7 @@ export const App = () => {
   const openSheet = useUiStore((state) => state.openSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
   const activeRocketId = useRocketStore((state) => state.activeRocketId);
+  const guidedExperienceActive = useExperienceStore((state) => state.activeExperienceId !== null);
   const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
   const reducedMotion = useReducedMotion();
   const photoMode = usePhotoModeStore((state) => state.active);
@@ -536,30 +537,39 @@ export const App = () => {
         </section>
       )}
       {!webglUnavailable && (
-        <div id="main-controls" className="ui-layer" tabIndex={-1} data-mobile={isMobile ? "true" : undefined}>
+        <div
+          id="main-controls"
+          className={`ui-layer${guidedExperienceActive ? " guided-experience-active" : ""}`}
+          tabIndex={-1}
+          data-mobile={isMobile ? "true" : undefined}
+        >
           <TopBar />
           <DiscoverabilityCue isMobile={isMobile} />
           <LowInformationRecovery isMobile={isMobile} />
           <ExperiencePanel />
-          <ScaleControls />
-          <ObjectInspector />
-          {isMobile ? (
-            <BottomSheet
-              open={activeSheet === "rocket"}
-              onClose={closeSheet}
-              id="rocket-preview-sheet"
-              label="Rocket preview"
-              title="Rocket preview"
-            >
-              <RocketLauncherPanel forceOpen embedded onClose={closeSheet} />
-            </BottomSheet>
-          ) : (
-            <RocketLauncherPanel />
+          {!guidedExperienceActive && (
+            <>
+              <ScaleControls />
+              <ObjectInspector />
+              {isMobile ? (
+                <BottomSheet
+                  open={activeSheet === "rocket"}
+                  onClose={closeSheet}
+                  id="rocket-preview-sheet"
+                  label="Rocket preview"
+                  title="Rocket preview"
+                >
+                  <RocketLauncherPanel forceOpen embedded onClose={closeSheet} />
+                </BottomSheet>
+              ) : (
+                <RocketLauncherPanel />
+              )}
+              {isMobile && activeRocketId && activeSheet !== "rocket" && !scenarioActive && (
+                <RocketWatchHud onOpenControls={() => openSheet("rocket")} />
+              )}
+              <ScenarioPanel />
+            </>
           )}
-          {isMobile && activeRocketId && activeSheet !== "rocket" && !scenarioActive && (
-            <RocketWatchHud onOpenControls={() => openSheet("rocket")} />
-          )}
-          <ScenarioPanel />
           <TimeControls />
           <PhotoModeExit />
         </div>

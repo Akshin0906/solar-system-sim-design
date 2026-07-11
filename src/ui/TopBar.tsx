@@ -4,6 +4,7 @@ import { bodiesById } from "../data";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { useRocketStore } from "../features/rockets/rocketStore";
+import { useExperienceStore } from "../features/experiences/experienceStore";
 import { SearchCommand } from "./SearchCommand";
 import { HelpPopover } from "./HelpPopover";
 import { commandKey } from "./shortcuts";
@@ -29,6 +30,7 @@ export const TopBar = () => {
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const helpButtonRef = useRef<HTMLButtonElement>(null);
   const selectedId = useSelectionStore((state) => state.selectedId);
+  const guidedExperienceActive = useExperienceStore((state) => state.activeExperienceId !== null);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
   const toggleRocketPanel = useRocketStore((state) => state.togglePanel);
   const isMobile = useIsMobile();
@@ -85,7 +87,7 @@ export const TopBar = () => {
         >
           <Search size={16} aria-hidden />
         </button>
-        {isMobile && (
+        {isMobile && !guidedExperienceActive && (
           <button
             className={`icon-button tooltip-trigger ${viewActive ? "active" : ""}`}
             type="button"
@@ -104,19 +106,21 @@ export const TopBar = () => {
             <SlidersHorizontal size={16} aria-hidden />
           </button>
         )}
-        <button
-          className={`icon-button tooltip-trigger ${rocketActive ? "active" : ""}`}
-          type="button"
-          onClick={handleRocket}
-          data-tooltip="Rocket preview"
-          aria-label="Rocket preview"
-          aria-haspopup={isMobile ? "dialog" : undefined}
-          aria-expanded={rocketActive}
-          aria-controls={rocketActive ? rocketControlId : undefined}
-          aria-pressed={rocketActive}
-        >
-          <Rocket size={16} aria-hidden />
-        </button>
+        {!guidedExperienceActive && (
+          <button
+            className={`icon-button tooltip-trigger ${rocketActive ? "active" : ""}`}
+            type="button"
+            onClick={handleRocket}
+            data-tooltip="Rocket preview"
+            aria-label="Rocket preview"
+            aria-haspopup={isMobile ? "dialog" : undefined}
+            aria-expanded={rocketActive}
+            aria-controls={rocketActive ? rocketControlId : undefined}
+            aria-pressed={rocketActive}
+          >
+            <Rocket size={16} aria-hidden />
+          </button>
+        )}
         <button
           ref={helpButtonRef}
           className={`icon-button tooltip-trigger ${helpOpen ? "active" : ""}`}

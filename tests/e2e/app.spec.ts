@@ -31,6 +31,23 @@ const expectNoOverlap = async (first: Locator, second: Locator, label: string) =
   expect(overlaps, `${label}: ${JSON.stringify(firstBox)} overlaps ${JSON.stringify(secondBox)}`).toBe(false);
 };
 
+const expectInLeftRail = async (page: Page, surface: Locator, label: string) => {
+  const [box, viewport] = await Promise.all([surface.boundingBox(), Promise.resolve(page.viewportSize())]);
+  expect(box, `${label}: guided surface should be visible`).not.toBeNull();
+  expect(viewport, `${label}: viewport should be available`).not.toBeNull();
+
+  if (!box || !viewport) {
+    return;
+  }
+
+  const viewportCenterX = viewport.width / 2;
+  expect(box.x, `${label}: guided surface should be edge anchored`).toBeLessThanOrEqual(32);
+  expect(
+    box.x + box.width,
+    `${label}: guided surface should leave the centered camera target clear`,
+  ).toBeLessThan(viewportCenterX - 24);
+};
+
 const selectTitanFromSearch = async (page: Page) => {
   await page.getByRole("button", { name: "Search objects" }).click();
   const input = page.getByRole("combobox", { name: "Search commands and objects" });
@@ -237,19 +254,45 @@ test.describe("desktop", () => {
     await page.getByRole("button", { name: "Guided experiences" }).click();
     const experience = page.getByRole("region", { name: "Guided experiences" });
     await expect(experience).toBeVisible();
+    await expect(page.locator(".scale-controls")).toBeVisible();
+    await expect(page.locator(".object-inspector")).toBeVisible();
     await experience.getByRole("button", { name: /Scale Revelation/ }).click();
     const scaleWatch = page.getByRole("region", { name: "Scale Revelation watch" });
     await expect(scaleWatch.getByText("Space is mostly absence")).toBeVisible();
+    await expect(page.locator("#main-controls")).toHaveClass(/guided-experience-active/);
+    await expect(page.locator(".scale-controls")).toHaveCount(0);
+    await expect(page.locator(".object-inspector")).toHaveCount(0);
+    await expect(page.locator(".doomsday-dock")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Rocket preview" })).toHaveCount(0);
     await scaleWatch.getByRole("button", { name: "Open guided details" }).click();
     await expect(experience.getByText("Space is mostly absence")).toBeVisible();
-    await expect(page.getByRole("radio", { name: "Real" })).toHaveAttribute("aria-checked", "true");
+    await expect(experience.getByRole("button", { name: "Collapse guided details" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Director active/ })).toHaveCount(0);
+    await expectInLeftRail(page, experience, "Scale Revelation details");
+    await expectNoOverlap(experience, page.locator(".top-bar"), "guided details and top bar");
+    await expectNoOverlap(
+      experience,
+      page.getByRole("region", { name: "Time controls" }),
+      "guided details and time controls",
+    );
+    await expect(experience.getByText("Lens 1 of 4 · Real")).toBeVisible();
 
     await experience.getByRole("button", { name: "Next stop" }).click();
     await expect(experience.getByText("Keep the map, reveal the worlds")).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Earth/Moon");
+    await expect(page.locator(".focus-title strong")).toHaveText("Earth");
     await expect(experience.getByText("Size enlarged")).toBeVisible();
+    await expectNoOverlap(
+      experience,
+      page.locator('[data-body-id="earth"]'),
+      "guided details and the Earth scene label",
+    );
 
     await page.keyboard.press("Escape");
+    await expect(page.locator("#main-controls")).not.toHaveClass(/guided-experience-active/);
+    await expect(page.locator(".scale-controls")).toBeVisible();
+    await expect(page.locator(".object-inspector")).toBeVisible();
+    await expect(page.locator(".doomsday-dock")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rocket preview" })).toBeVisible();
     await expect(page.locator(".focus-title strong")).toHaveText("Titan");
     await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Free look");
     await expect(canvas).toHaveAttribute("data-camera-pose", composedPose!);
@@ -262,7 +305,8 @@ test.describe("desktop", () => {
     await expect(experience.getByText("The shadow line finds Earth")).toBeVisible();
     await expect(experience.getByText("Maximum alignment", { exact: true })).toBeVisible();
     await expect(experience.getByText(/Mean elements/)).toBeVisible();
-    await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Earth/Moon");
+    await expect(page.locator(".focus-title strong")).toHaveText("Earth");
+    await expectInLeftRail(page, experience, "Eclipse Chase details");
 
     await experience.getByRole("button", { name: "Hold maximum" }).click();
     await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
@@ -394,9 +438,19 @@ test.describe("mobile", () => {
     await experience.getByRole("button", { name: /Three Worlds/ }).click();
     const tourWatch = page.getByRole("region", { name: "Three Worlds watch" });
     await expect(tourWatch.getByText("Earth and its companion")).toBeVisible();
+    await expect(page.getByRole("button", { name: "View settings" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Rocket preview" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open Doomsday scenarios" })).toHaveCount(0);
+    await expect(page.locator(".inspector-peek")).toHaveCount(0);
     await expectNoOverlap(tourWatch, transport, "tour watch HUD and mobile transport");
     await tourWatch.getByRole("button", { name: "Open guided details" }).click();
     await expect(experience.getByText("Earth and its companion")).toBeVisible();
     await expectNoOverlap(experience, transport, "active tour and mobile transport");
+
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "View settings" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Rocket preview" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Doomsday scenarios" })).toBeVisible();
+    await expect(page.locator(".inspector-peek")).toHaveCount(0);
   });
 });

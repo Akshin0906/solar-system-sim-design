@@ -483,6 +483,23 @@
   color: #f2cdbf;
 }
 
+/* The Director owns camera, selection, and scale while an experience is active.
+   Replace the competing left-side controls with the narration rail, keeping the
+   center of the scene unobstructed and the top/bottom context controls available. */
+@media (min-width: 901px) and (pointer: fine) {
+  .experience-dock.active {
+    top: max(88px, calc(env(safe-area-inset-top) + 88px));
+    left: max(16px, env(safe-area-inset-left));
+    width: min(390px, calc(50vw - 72px));
+    justify-items: stretch;
+    transform: none;
+  }
+
+  .experience-dock.active .experience-panel {
+    max-height: min(70vh, 620px, calc(100dvh - 174px));
+  }
+}
+
 @media (max-width: 900px), (pointer: coarse) {
   .experience-dock {
     top: max(84px, calc(env(safe-area-inset-top) + 84px));

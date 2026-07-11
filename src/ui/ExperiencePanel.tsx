@@ -185,22 +185,24 @@ export const ExperiencePanel = () => {
 
   return (
     <div className={`experience-dock${activeExperienceId ? " active" : ""}`}>
-      {activeExperienceId && activeStop && !open ? (
-        <section className="experience-mini" aria-label={`${titleForExperience(activeExperienceId)} watch`}>
-          <span className="experience-mini-icon" aria-hidden><Sparkles size={15} /></span>
-          <span className="experience-mini-copy">
-            <strong>{activeStop.title}</strong>
-            <small>{activeStop.watchFor}</small>
-          </span>
-          <span className="experience-mini-actions">
-            <button type="button" onClick={() => setOpen(true)} aria-label="Open guided details">
-              Details
-            </button>
-            <button type="button" onClick={stop} aria-label="Exit guided experience">
-              <X size={14} aria-hidden />
-            </button>
-          </span>
-        </section>
+      {activeExperienceId && activeStop ? (
+        !open && (
+          <section className="experience-mini" aria-label={`${titleForExperience(activeExperienceId)} watch`}>
+            <span className="experience-mini-icon" aria-hidden><Sparkles size={15} /></span>
+            <span className="experience-mini-copy">
+              <strong>{activeStop.title}</strong>
+              <small>{activeStop.watchFor}</small>
+            </span>
+            <span className="experience-mini-actions">
+              <button type="button" onClick={() => setOpen(true)} aria-label="Open guided details">
+                Details
+              </button>
+              <button type="button" onClick={stop} aria-label="Exit guided experience">
+                <X size={14} aria-hidden />
+              </button>
+            </span>
+          </section>
+        )
       ) : (
         <button
           className="experience-launch"
@@ -222,7 +224,11 @@ export const ExperiencePanel = () => {
               <span>Authored mode</span>
               <h2>{titleForExperience(activeExperienceId)}</h2>
             </div>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close guided experiences">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label={activeExperienceId ? "Collapse guided details" : "Close guided experiences"}
+            >
               <X size={16} aria-hidden />
             </button>
           </header>
