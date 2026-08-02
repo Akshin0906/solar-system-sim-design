@@ -1,7 +1,8 @@
 import { Html, Line } from "@react-three/drei";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { AdditiveBlending, DoubleSide, Quaternion, Shape, Vector3 } from "three";
 import { useSelectionStore } from "../../simulation/selectionStore";
+import { useTimeStore } from "../../simulation/timeStore";
 import { SCENE_HTML_Z_INDEX_RANGE } from "../../ui/htmlLayering";
 import type { RocketProfile } from "./rocketCatalog";
 import { useActiveRocketView } from "./useRocketView";
@@ -88,11 +89,24 @@ const isSolarSailProfile = (profile: Pick<RocketProfile, "id" | "name">) => {
 export const RocketObject = () => {
   const { launchDateMs, mode, profile, view } = useActiveRocketView();
   const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const setSelectedId = useSelectionStore((state) => state.setSelectedId);
   const updateRocketTarget = useSelectionStore((state) => state.updateRocketTarget);
+  const arrivalSelectionKeyRef = useRef<string | null>(null);
   const rocketScenePosition = view?.scenePosition ?? null;
   const transfer = view?.transfer ?? null;
   const transferArcScenePoints = transfer?.arcScenePoints ?? null;
   const continuationScenePoints = transfer?.continuationScenePoints ?? null;
+  const rocketFocusRadius =
+    view?.status === "arrived" && rocketScenePosition && view.destination
+      ? Math.max(
+          1.2,
+          Math.hypot(
+            rocketScenePosition[0] - view.destination.destScenePosition[0],
+            rocketScenePosition[1] - view.destination.destScenePosition[1],
+            rocketScenePosition[2] - view.destination.destScenePosition[2],
+          ) * 1.35,
+        )
+      : 1.2;
   const progressIndex = transferArcScenePoints
     ? Math.max(
         1,
@@ -127,9 +141,39 @@ export const RocketObject = () => {
 
   useEffect(() => {
     if (cameraMode === "rocket-follow" && rocketScenePosition) {
-      updateRocketTarget(rocketScenePosition);
+      updateRocketTarget(rocketScenePosition, rocketFocusRadius);
     }
-  }, [cameraMode, rocketScenePosition, updateRocketTarget]);
+  }, [cameraMode, rocketFocusRadius, rocketScenePosition, updateRocketTarget]);
+
+  useEffect(() => {
+    const arrivedBodyId = view?.status === "arrived" ? view.destination?.bodyId : null;
+    if (!arrivedBodyId || launchDateMs === null) {
+      arrivalSelectionKeyRef.current = null;
+      return;
+    }
+
+    const arrivalKey = `${launchDateMs}|${arrivedBodyId}`;
+    if (arrivalSelectionKeyRef.current === arrivalKey) {
+      return;
+    }
+
+    arrivalSelectionKeyRef.current = arrivalKey;
+    if (useSelectionStore.getState().selectedId !== arrivedBodyId) {
+      setSelectedId(arrivedBodyId);
+    }
+  }, [launchDateMs, setSelectedId, view?.destination?.bodyId, view?.status]);
+
+  useEffect(() => {
+    const terminal = view?.status === "arrived" || view?.status === "missed" || view?.status === "flyby";
+    if (!terminal || launchDateMs === null) {
+      return;
+    }
+
+    const time = useTimeStore.getState();
+    if (!time.transportLocked) {
+      time.setPaused(true);
+    }
+  }, [launchDateMs, view?.status]);
 
   if (!profile || launchDateMs === null || !view) {
     return null;
@@ -138,6 +182,7 @@ export const RocketObject = () => {
   const markerScale = mode === "real" || mode === "readable" ? 2.4 : 1;
   const accent = profile.accentColor;
   const solarSail = isSolarSailProfile(profile);
+  const engineActive = view.status === "burn";
   const target = view.destination;
   const highlightRadius = target ? Math.max(target.destSceneRadius * 2.4, 0.3) : 0;
 
@@ -340,52 +385,56 @@ export const RocketObject = () => {
             <coneGeometry args={[0.034, 0.07, 20]} />
             <meshStandardMaterial color={BODY_SHADOW_COLOR} roughness={0.32} metalness={0.42} />
           </mesh>
-          <mesh position={[0, -0.16, 0]} raycast={noopRaycast}>
-            <sphereGeometry args={[0.025, 16, 8]} />
-            <meshBasicMaterial
-              color={ENGINE_CORE_COLOR}
-              transparent
-              opacity={0.82}
-              blending={AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-          <mesh position={[0, -0.25, 0]} raycast={noopRaycast}>
-            <coneGeometry args={[0.055, 0.18, 24, 1, true]} />
-            <meshBasicMaterial
-              color={ENGINE_GLOW_COLOR}
-              transparent
-              opacity={0.28}
-              blending={AdditiveBlending}
-              side={DoubleSide}
-              depthWrite={false}
-            />
-          </mesh>
-          {EXHAUST_TRAILS.map((points, index) => (
-            <Line
-              key={`rocket-exhaust-trail-${index}`}
-              points={points}
-              color={index === 0 ? ENGINE_CORE_COLOR : accent}
-              lineWidth={index === 0 ? 1.35 : 0.8}
-              transparent
-              opacity={index === 0 ? 0.56 : 0.32}
-              raycast={noopRaycast}
-            />
-          ))}
-          <mesh position={[0, -0.22, 0]} raycast={noopRaycast}>
-            <sphereGeometry args={[0.062, 16, 12]} />
-            <meshStandardMaterial
-              color={accent}
-              emissive={accent}
-              emissiveIntensity={0.72}
-              roughness={0.8}
-              metalness={0}
-              transparent
-              opacity={0.18}
-              blending={AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
+          {engineActive && (
+            <>
+              <mesh position={[0, -0.16, 0]} raycast={noopRaycast}>
+                <sphereGeometry args={[0.025, 16, 8]} />
+                <meshBasicMaterial
+                  color={ENGINE_CORE_COLOR}
+                  transparent
+                  opacity={0.82}
+                  blending={AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+              <mesh position={[0, -0.25, 0]} raycast={noopRaycast}>
+                <coneGeometry args={[0.055, 0.18, 24, 1, true]} />
+                <meshBasicMaterial
+                  color={ENGINE_GLOW_COLOR}
+                  transparent
+                  opacity={0.28}
+                  blending={AdditiveBlending}
+                  side={DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+              {EXHAUST_TRAILS.map((points, index) => (
+                <Line
+                  key={`rocket-exhaust-trail-${index}`}
+                  points={points}
+                  color={index === 0 ? ENGINE_CORE_COLOR : accent}
+                  lineWidth={index === 0 ? 1.35 : 0.8}
+                  transparent
+                  opacity={index === 0 ? 0.56 : 0.32}
+                  raycast={noopRaycast}
+                />
+              ))}
+              <mesh position={[0, -0.22, 0]} raycast={noopRaycast}>
+                <sphereGeometry args={[0.062, 16, 12]} />
+                <meshStandardMaterial
+                  color={accent}
+                  emissive={accent}
+                  emissiveIntensity={0.72}
+                  roughness={0.8}
+                  metalness={0}
+                  transparent
+                  opacity={0.18}
+                  blending={AdditiveBlending}
+                  depthWrite={false}
+                />
+              </mesh>
+            </>
+          )}
         </group>
         <Html
           position={[0, 0.28 * markerScale, 0]}

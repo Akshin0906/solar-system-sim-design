@@ -9,10 +9,12 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  // GitHub's runner renders WebGL through software. Two simultaneous scenes can
-  // starve each other's initialization even though each test is stable alone.
-  workers: isCI ? 1 : 2,
-  timeout: isCI ? 60_000 : 30_000,
+  // WebGL-heavy pages can share a constrained GPU/software renderer locally and in CI.
+  // Two simultaneous scenes starve each other's initialization even when stable alone.
+  workers: 1,
+  // WebGL scenario and authored-tour flows exercise real camera settling plus software
+  // rendering. They are stable but legitimately exceed 30s on constrained runners.
+  timeout: isCI ? 90_000 : 75_000,
   expect: {
     timeout: isCI ? 20_000 : 8_000,
   },

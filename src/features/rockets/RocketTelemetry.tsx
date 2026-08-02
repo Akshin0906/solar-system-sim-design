@@ -88,7 +88,7 @@ export const RocketTelemetry = ({
 
       {scenarioActive && (
         <p className="rocket-note">
-          Mission clock is paused while a doomsday scenario runs — exit the scenario to resume the flight.
+          Mission clock is paused while a what-if scenario runs — exit the scenario to resume the flight.
         </p>
       )}
 

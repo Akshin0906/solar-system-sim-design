@@ -1,4 +1,4 @@
-import { Eye, Orbit, RotateCcw, Route, Tags } from "lucide-react";
+import { ChevronDown, Eye, Layers, RotateCcw, Tags } from "lucide-react";
 import { SCALE_MODES, type LabelDensity, type ScaleMode } from "../simulation/units";
 import { useScaleStore } from "../simulation/scaleStore";
 import { type CameraMode, useSelectionStore } from "../simulation/selectionStore";
@@ -64,6 +64,12 @@ export const ScaleControls = () => {
   const closeSheet = useUiStore((state) => state.closeSheet);
   const restoreRecommendedView = useUiStore((state) => state.restoreRecommendedView);
   const cameraPresetValue = cameraPresetIds.has(cameraMode) ? (cameraMode as CameraPresetId) : "custom";
+  const activeLayers = [
+    labelDensity === "off" ? "Labels off" : `${labelOptions.find((item) => item.id === labelDensity)?.label ?? "Labels"} labels`,
+    showGrid ? "Grid" : null,
+    showOrbits ? "Orbits" : null,
+    showTrails ? "Trails" : null,
+  ].filter(Boolean);
   const cameraOptions = [
     ...(cameraPresetValue === "custom"
       ? [
@@ -113,37 +119,16 @@ export const ScaleControls = () => {
           </button>
         ))}
       </div>
-      <div className="view-buttons">
-        <button
-          className={`icon-button ${cameraMode === "overview" ? "active" : ""}`}
-          type="button"
-          onClick={() => setCameraMode("overview")}
-          title="Solar system overview"
-          aria-label="Solar system overview"
-          aria-pressed={cameraMode === "overview"}
-        >
-          <Eye size={16} />
-        </button>
-        <button
-          className={`icon-button ${cameraMode === "inner" ? "active" : ""}`}
-          type="button"
-          onClick={() => setCameraMode("inner")}
-          title="Inner planets"
-          aria-label="Inner planets"
-          aria-pressed={cameraMode === "inner"}
-        >
-          <Orbit size={16} />
-        </button>
-        <button
-          className={`icon-button ${cameraMode === "outer" ? "active" : ""}`}
-          type="button"
-          onClick={() => setCameraMode("outer")}
-          title="Outer planets"
-          aria-label="Outer planets"
-          aria-pressed={cameraMode === "outer"}
-        >
-          <Route size={16} />
-        </button>
+      <div className="camera-control-row">
+        <InstrumentSelect
+          className="compact-select camera-preset-select"
+          value={cameraPresetValue}
+          onChange={selectCameraPreset}
+          ariaLabel="Camera preset"
+          label="Camera"
+          icon={<Eye size={14} aria-hidden />}
+          options={cameraOptions}
+        />
         <button
           className="icon-button restore-view-button"
           type="button"
@@ -153,56 +138,54 @@ export const ScaleControls = () => {
         >
           <RotateCcw size={15} aria-hidden />
         </button>
-        {cameraMode === "free" && (
-          <span className="free-look-pill" role="status" title="Free look">
-            Free
-          </span>
-        )}
-      </div>
-      <InstrumentSelect
-        className="compact-select camera-preset-select"
-        value={cameraPresetValue}
-        onChange={selectCameraPreset}
-        ariaLabel="Camera preset"
-        label="Camera"
-        icon={<Eye size={14} aria-hidden />}
-        options={cameraOptions}
-      />
-      <InstrumentSelect
-        className="compact-select"
-        value={labelDensity}
-        onChange={(value) => setLabelDensity(value as LabelDensity)}
-        ariaLabel="Label density"
-        label="Labels"
-        icon={<Tags size={14} aria-hidden />}
-        options={labelOptions.map((item) => ({
-          value: item.id,
-          label: item.label,
-          description:
-            item.id === "off"
-              ? "Hide every label"
-              : item.id === "minimal"
-                ? "Focused names only"
-                : item.id === "standard"
-                  ? "Major bodies and context"
-                  : "All available labels",
-        }))}
-      />
-      <div className="toggle-row">
-        <label>
-          <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
-          <span>Grid</span>
-        </label>
-        <label>
-          <input type="checkbox" checked={showOrbits} onChange={(event) => setShowOrbits(event.target.checked)} />
-          <span>Orbits</span>
-        </label>
-        <label>
-          <input type="checkbox" checked={showTrails} onChange={(event) => setShowTrails(event.target.checked)} />
-          <span>Trails</span>
-        </label>
       </div>
       <p className="scale-note">{SCALE_MODES.find((item) => item.id === mode)?.note}</p>
+      <details className="view-layer-disclosure">
+        <summary>
+          <span className="view-layer-summary-icon" aria-hidden><Layers size={15} /></span>
+          <span className="view-layer-summary-copy">
+            <strong>Scene layers</strong>
+            <small>{activeLayers.join(" · ")}</small>
+          </span>
+          <ChevronDown className="view-layer-chevron" size={15} aria-hidden />
+        </summary>
+        <div className="view-layer-body">
+          <InstrumentSelect
+            className="compact-select"
+            value={labelDensity}
+            onChange={(value) => setLabelDensity(value as LabelDensity)}
+            ariaLabel="Label density"
+            label="Labels"
+            icon={<Tags size={14} aria-hidden />}
+            options={labelOptions.map((item) => ({
+              value: item.id,
+              label: item.label,
+              description:
+                item.id === "off"
+                  ? "Hide every label"
+                  : item.id === "minimal"
+                    ? "Focused names only"
+                    : item.id === "standard"
+                      ? "Major bodies and context"
+                      : "All available labels",
+            }))}
+          />
+          <div className="toggle-row">
+            <label>
+              <input type="checkbox" checked={showGrid} onChange={(event) => setShowGrid(event.target.checked)} />
+              <span>Grid</span>
+            </label>
+            <label>
+              <input type="checkbox" checked={showOrbits} onChange={(event) => setShowOrbits(event.target.checked)} />
+              <span>Orbits</span>
+            </label>
+            <label>
+              <input type="checkbox" checked={showTrails} onChange={(event) => setShowTrails(event.target.checked)} />
+              <span>Trails</span>
+            </label>
+          </div>
+        </div>
+      </details>
       {isMobile && (
         <div className="mobile-view-share" aria-label="Photo and sharing">
           <ViewShareActions labelled />

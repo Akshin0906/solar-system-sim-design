@@ -2,6 +2,7 @@ import { Camera, Check, Share2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { usePhotoModeStore } from "./photoModeStore";
 import { createSharedViewUrl } from "./viewState";
+import { Tooltip } from "../../ui/Tooltip";
 import "./shareView.css";
 
 export const ViewShareActions = ({ labelled = false }: { labelled?: boolean }) => {
@@ -28,29 +29,42 @@ export const ViewShareActions = ({ labelled = false }: { labelled?: boolean }) =
   };
 
   const shareFeedback = shareStatus === "copied" ? "View link copied" : "View link added to address bar";
+  const photoButton = (
+    <button
+      className={`icon-button view-share-button${labelled ? " labelled" : ""}`}
+      type="button"
+      onClick={togglePhotoMode}
+      aria-label="Enter photo mode"
+    >
+      <Camera size={16} aria-hidden />
+      {labelled && <span>Photo mode</span>}
+    </button>
+  );
+  const shareButton = (
+    <button
+      className={`icon-button view-share-button${labelled ? " labelled" : ""}${shareStatus !== "idle" ? " active" : ""}`}
+      type="button"
+      onClick={copyLink}
+      aria-label={shareStatus === "idle" ? "Copy shareable view link" : shareFeedback}
+    >
+      {shareStatus !== "idle" ? <Check size={16} aria-hidden /> : <Share2 size={16} aria-hidden />}
+      {labelled && <span>{shareStatus === "idle" ? "Copy view link" : shareFeedback}</span>}
+    </button>
+  );
 
   return (
     <>
-      <button
-        className={`icon-button tooltip-trigger view-share-button${labelled ? " labelled" : ""}`}
-        type="button"
-        onClick={togglePhotoMode}
-        data-tooltip="Photo mode"
-        aria-label="Enter photo mode"
-      >
-        <Camera size={16} aria-hidden />
-        {labelled && <span>Photo mode</span>}
-      </button>
-      <button
-        className={`icon-button tooltip-trigger view-share-button${labelled ? " labelled" : ""}${shareStatus !== "idle" ? " active" : ""}`}
-        type="button"
-        onClick={copyLink}
-        data-tooltip={shareStatus === "idle" ? "Copy view link" : shareFeedback}
-        aria-label={shareStatus === "idle" ? "Copy shareable view link" : shareFeedback}
-      >
-        {shareStatus !== "idle" ? <Check size={16} aria-hidden /> : <Share2 size={16} aria-hidden />}
-        {labelled && <span>{shareStatus === "idle" ? "Copy view link" : shareFeedback}</span>}
-      </button>
+      {labelled ? photoButton : <Tooltip label="Photo mode">{photoButton}</Tooltip>}
+      {labelled ? (
+        shareButton
+      ) : (
+        <Tooltip label={shareStatus === "idle" ? "Copy view link" : shareFeedback}>{shareButton}</Tooltip>
+      )}
+      {shareStatus !== "idle" && (
+        <span className="sr-only" role="status" aria-live="polite">
+          {shareFeedback}
+        </span>
+      )}
     </>
   );
 };

@@ -6,16 +6,14 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; base-uri 'self'; connect-src 'self' ws: wss:; font-src 'self' data:; form-action 'none'; frame-src 'none'; img-src 'self' data: blob:; media-src 'self'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:"
+    />
     <meta name="theme-color" content="#090907" />
     <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <link rel="icon" href="%BASE_URL%icons/solar-icon.svg" type="image/svg+xml" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/venus.jpg" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/earth.jpg" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/mars.jpg" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/jupiter.jpg" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/saturn.jpg" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/neptune.jpg" />
-    <link rel="preload" as="image" crossorigin="anonymous" href="%BASE_URL%textures/moon.jpg" />
     <title>Solar System</title>
     <style>
       #prehydrate-splash {

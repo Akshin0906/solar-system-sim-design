@@ -1,4 +1,6 @@
+import { AlertTriangle } from "lucide-react";
 import { bodiesById } from "../../data";
+import { isOrbitModelExtrapolated } from "../../simulation/timeStore";
 import type { RocketDestination } from "./destinationCatalog";
 import type { RocketProfile } from "./rocketCatalog";
 import { formatDeltaV, formatMissionTime, formatPhaseAngle } from "./rocketState";
@@ -92,6 +94,12 @@ export const RocketTransferPreview = ({ destination, launchDateMs, profile, miss
           <dd>{estimate.arrivalMissDistanceKm < 1 ? "<1 km" : `${estimate.arrivalMissDistanceKm.toLocaleString(undefined, { maximumFractionDigits: 0 })} km`}</dd>
         </div>
       </dl>
+      {isOrbitModelExtrapolated(estimate.arrivalDateMs) && (
+        <p className="rocket-note orbit-model-warning" role="status">
+          <AlertTriangle size={13} aria-hidden /> Intercept lies outside the validated 1800–2050 orbit model; destination
+          positions are extrapolated.
+        </p>
+      )}
       <p className="rocket-note">{estimate.notes[0]} Scrub time to hunt for a better launch window.</p>
     </div>
   );

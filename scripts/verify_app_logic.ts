@@ -5,7 +5,7 @@ import type { Vec3 } from "../src/simulation/orbitalElements";
 import { getBodyPositionKm, vectorLength } from "../src/simulation/solveOrbit";
 import { destinationsById, rocketDestinations } from "../src/features/rockets/destinationCatalog";
 import { rocketsById } from "../src/features/rockets/rocketCatalog";
-import { computeRocketView } from "../src/features/rockets/rocketState";
+import { clearRocketCaches, computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
 import {
   missionModesForDestination,
@@ -30,6 +30,7 @@ import {
   type CameraPose,
 } from "../src/simulation/selectionStore";
 import {
+  applySharedViewState,
   createSharedViewUrl,
   decodeSharedViewState,
   encodeSharedViewState,
@@ -414,6 +415,196 @@ const assertDirectRocketArrivalCapsTelemetry = () => {
   );
 };
 
+const assertTransferCachesIsolateTrajectoryModels = () => {
+  const profile = rocketsById.get("saturn-v");
+  const neptune = destinationsById.get("neptune");
+  const launchDateMs = Date.parse("2026-06-14T12:00:00.000Z");
+
+  assert(profile);
+  assert(neptune);
+
+  clearRocketCaches();
+  const hohmann = computeRocketView(
+    profile,
+    launchDateMs,
+    launchDateMs,
+    "compressed",
+    neptune,
+    "hohmann",
+    "low-earth-orbit",
+  );
+  const warmedLambert = computeRocketView(
+    profile,
+    launchDateMs,
+    launchDateMs,
+    "compressed",
+    neptune,
+    "lambert",
+    "low-earth-orbit",
+    "capture",
+  );
+
+  clearRocketCaches();
+  const coldLambert = computeRocketView(
+    profile,
+    launchDateMs,
+    launchDateMs,
+    "compressed",
+    neptune,
+    "lambert",
+    "low-earth-orbit",
+    "capture",
+  );
+  clearRocketCaches();
+
+  assert.equal(hohmann.transfer?.estimate.trajectoryModel, "hohmann");
+  assert.equal(warmedLambert.transfer?.estimate.trajectoryModel, "lambert");
+  assert.equal(coldLambert.transfer?.estimate.trajectoryModel, "lambert");
+  assert.equal(coldLambert.transfer?.estimate.interceptGuaranteed, true);
+  assert.deepEqual(
+    warmedLambert.transfer?.arcScenePoints,
+    coldLambert.transfer?.arcScenePoints,
+    "switching from Hohmann to Lambert must not reuse the Hohmann scene arc",
+  );
+  assert.equal(
+    warmedLambert.destination?.closestApproachKm,
+    coldLambert.destination?.closestApproachKm,
+    "switching from Hohmann to Lambert must not reuse the Hohmann closest approach",
+  );
+};
+
+const assertNeptuneArrivalsRemainVisible = () => {
+  const profile = rocketsById.get("saturn-v");
+  const neptune = destinationsById.get("neptune");
+  const launchDateMs = Date.parse("2026-06-14T12:00:00.000Z");
+  const dayMs = DAY_SECONDS * 1_000;
+
+  assert(profile);
+  assert(neptune);
+
+  clearRocketCaches();
+  const directPlan = computeRocketView(
+    profile,
+    launchDateMs,
+    launchDateMs,
+    "compressed",
+    neptune,
+    "direct",
+    "earth-departure",
+  );
+  assert(directPlan.destination?.etaSeconds);
+  const directArrival = computeRocketView(
+    profile,
+    launchDateMs,
+    launchDateMs + directPlan.destination.etaSeconds * 1_000 + dayMs,
+    "compressed",
+    neptune,
+    "direct",
+    "earth-departure",
+  );
+
+  assert.equal(directArrival.status, "arrived");
+  assert.equal(directArrival.destination?.distanceToTargetKm, 0);
+  assert(directArrival.destination);
+  assert(
+    distanceKm(directArrival.scenePosition, directArrival.destination.destScenePosition) >=
+      directArrival.destination.destSceneRadius * 1.15,
+    "an arrived direct rocket should remain visibly outside Neptune's rendered radius",
+  );
+
+  clearRocketCaches();
+  const lambertPlan = computeRocketView(
+    profile,
+    launchDateMs,
+    launchDateMs,
+    "compressed",
+    neptune,
+    "lambert",
+    "low-earth-orbit",
+    "capture",
+  );
+  assert(lambertPlan.transfer);
+  const lambertCapture = computeRocketView(
+    profile,
+    launchDateMs,
+    lambertPlan.transfer.estimate.arrivalDateMs + dayMs,
+    "compressed",
+    neptune,
+    "lambert",
+    "low-earth-orbit",
+    "capture",
+  );
+  clearRocketCaches();
+
+  assert.equal(lambertCapture.status, "arrived");
+  assert.equal(lambertCapture.transfer?.captureApplied, true);
+  assert.equal(lambertCapture.destination?.distanceToTargetKm, 0);
+  assert(lambertCapture.destination);
+  assert(
+    distanceKm(lambertCapture.scenePosition, lambertCapture.destination.destScenePosition) >=
+      lambertCapture.destination.destSceneRadius * 1.15,
+    "a captured Lambert rocket should remain visibly outside Neptune's rendered radius",
+  );
+};
+
+const assertArrivalsClearRenderedEnvelope = () => {
+  const profile = rocketsById.get("saturn-v");
+  const launchDateMs = Date.parse("2026-06-14T12:00:00.000Z");
+  const dayMs = DAY_SECONDS * 1_000;
+  const bodyLabelLaneMultiplier = 1.45;
+  const rocketGlyphEnvelope = 0.26;
+  const parkingGap = 0.08;
+  const scaleCases = [
+    { label: "Compact Saturn", destinationId: "saturn", mode: "compressed", markerScale: 1, bodyExtentInRadii: 2.72 },
+    { label: "Readable Saturn", destinationId: "saturn", mode: "readable", markerScale: 2.4, bodyExtentInRadii: 2.72 },
+    { label: "Compact Ceres", destinationId: "ceres", mode: "compressed", markerScale: 1, bodyExtentInRadii: 1.12 },
+  ] as const;
+
+  assert(profile);
+
+  for (const { label, destinationId, mode, markerScale, bodyExtentInRadii } of scaleCases) {
+    const destination = destinationsById.get(destinationId);
+    assert(destination);
+    clearRocketCaches();
+    const plan = computeRocketView(
+      profile,
+      launchDateMs,
+      launchDateMs,
+      mode,
+      destination,
+      "direct",
+      "earth-departure",
+    );
+    assert(plan.destination?.etaSeconds);
+    const arrival = computeRocketView(
+      profile,
+      launchDateMs,
+      launchDateMs + plan.destination.etaSeconds * 1_000 + dayMs,
+      mode,
+      destination,
+      "direct",
+      "earth-departure",
+    );
+
+    assert.equal(arrival.status, "arrived");
+    assert(arrival.destination);
+    const bodyAndLabelExtent =
+      arrival.destination.destSceneRadius * bodyExtentInRadii * bodyLabelLaneMultiplier;
+    const minimumCenterSeparation =
+      bodyAndLabelExtent + (rocketGlyphEnvelope + parkingGap) * markerScale;
+    const actualCenterSeparation = distanceKm(
+      arrival.scenePosition,
+      arrival.destination.destScenePosition,
+    );
+    assert(
+      actualCenterSeparation >= minimumCenterSeparation,
+      `${label} arrival should clear the rendered body extent, label lane, and rocket glyph envelope`,
+    );
+  }
+
+  clearRocketCaches();
+};
+
 const assertPlanetOrbitsUseAppCode = () => {
   for (const bodyId of Object.keys(jplApprox) as Array<keyof typeof jplApprox>) {
     const body = bodiesById.get(bodyId);
@@ -767,6 +958,7 @@ const assertRecommendedViewRecovery = () => {
 const assertRocketWatchRestoresClock = () => {
   const timeBaseline = useTimeStore.getState();
   const selectionBaseline = useSelectionStore.getState();
+  const missionDurationSeconds = DAY_SECONDS * 365.256 * 12;
   useTimeStore.setState({
     direction: -1,
     isPaused: true,
@@ -776,8 +968,15 @@ const assertRocketWatchRestoresClock = () => {
     transportLocked: false,
   });
   useSelectionStore.setState({ selectedId: "saturn", cameraMode: "saturn-system", rocketTarget: null, viewSessions: {} });
-  useUiStore.getState().beginRocketWatch();
-  assert.equal(useTimeStore.getState().isPaused, false, "launch should play a paused mission clock");
+  useUiStore.getState().beginRocketWatch(missionDurationSeconds);
+  const watchClock = useTimeStore.getState();
+  const estimatedEncounterPlaybackSeconds = missionDurationSeconds / watchClock.timeScale;
+  assert.equal(watchClock.isPaused, false, "launch should play a paused mission clock");
+  assert.equal(watchClock.direction, 1, "launch should temporarily turn a reversed mission clock forward");
+  assert(
+    estimatedEncounterPlaybackSeconds >= 8 && estimatedEncounterPlaybackSeconds <= 15,
+    `rocket watch should reach the encounter in 8-15 seconds, got ${estimatedEncounterPlaybackSeconds}`,
+  );
   useTimeStore.setState({
     direction: 1,
     simulationDateMs: Date.parse("2025-01-01T00:00:00.000Z"),
@@ -787,6 +986,8 @@ const assertRocketWatchRestoresClock = () => {
   useUiStore.getState().endRocketWatch();
   assert.equal(useTimeStore.getState().isPaused, true);
   assert.equal(useTimeStore.getState().direction, -1);
+  assert.equal(useTimeStore.getState().preset, "custom");
+  assert.equal(useTimeStore.getState().timeScale, 321);
   assert.equal(useTimeStore.getState().simulationDateMs, Date.parse("2024-01-01T00:00:00.000Z"));
   assert.equal(useSelectionStore.getState().selectedId, "saturn");
   assert.equal(useSelectionStore.getState().cameraMode, "saturn-system");
@@ -852,14 +1053,51 @@ const assertShareableViewState = () => {
   assert(invalid);
   assert.notEqual(invalid.bodyId, "not-a-body");
   assert.notEqual(invalid.cameraMode, "rocket-follow");
+  assert.equal(
+    decodeSharedViewState(`view=1&padding=${"x".repeat(2_100)}`),
+    null,
+    "share links should reject oversized query payloads before parsing",
+  );
   const unsafePose = decodeSharedViewState("view=1&camera=free&cp=10001,0,0&ct=0,0,0&cu=0,1,0");
   assert.equal(unsafePose?.cameraPose, null, "share links should reject absurd camera coordinates");
+  assert.equal(unsafePose?.cameraMode, "overview", "an invalid free-look pose should recover to the overview");
+  const unreadableDistance = decodeSharedViewState("view=1&camera=free&cp=1000,1000,1000&ct=0,0,0&cu=0,1,0");
+  assert.equal(unreadableDistance?.cameraPose, null, "share links should reject blank-scene camera distances");
+  assert.equal(unreadableDistance?.cameraMode, "overview", "a blank-scene pose should not leave free look active");
+  const offSystemTarget = decodeSharedViewState("view=1&camera=free&cp=301,301,300&ct=300,300,300&cu=0,1,0");
+  assert.equal(offSystemTarget?.cameraPose, null, "share links should reject off-system camera targets");
   const zeroUp = decodeSharedViewState("view=1&camera=free&cp=1,0,0&ct=0,0,0&cu=0,0,0");
   assert.equal(zeroUp?.cameraPose, null, "share links should reject a zero camera-up vector");
   const coincident = decodeSharedViewState("view=1&camera=free&cp=1,2,3&ct=1,2,3&cu=0,1,0");
   assert.equal(coincident?.cameraPose, null, "share links should reject coincident camera and target positions");
+  const collinearUp = decodeSharedViewState("view=1&camera=free&cp=0,10,0&ct=0,0,0&cu=0,1,0");
+  assert.equal(collinearUp?.cameraPose, null, "share links should reject a degenerate camera-up vector");
   const normalized = decodeSharedViewState("view=1&camera=free&cp=1,0,0&ct=0,0,0&cu=0,2,0");
   assert.deepEqual(normalized?.cameraPose?.up, [0, 1, 0], "share links should normalize a valid camera-up vector");
+
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const persistedWrites: string[] = [];
+  try {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {
+        localStorage: {
+          getItem: () => null,
+          setItem: (_key: string, value: string) => persistedWrites.push(value),
+        },
+      },
+    });
+    applySharedViewState(shared);
+    assert.equal(persistedWrites.length, 0, "opening a shared link must not overwrite saved view preferences");
+    useScaleStore.getState().setShowGrid(true);
+    assert.equal(persistedWrites.length, 1, "an explicit view change should still persist preferences");
+  } finally {
+    if (originalWindow) {
+      Object.defineProperty(globalThis, "window", originalWindow);
+    } else {
+      delete (globalThis as { window?: unknown }).window;
+    }
+  }
 };
 
 assertBodyDataInvariants();
@@ -867,6 +1105,9 @@ assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
 assertRocketLaunchModes();
 assertDirectRocketArrivalCapsTelemetry();
+assertTransferCachesIsolateTrajectoryModels();
+assertNeptuneArrivalsRemainVisible();
+assertArrivalsClearRenderedEnvelope();
 assertPlanetOrbitRatesMatchJpl();
 assertPlanetOrbitsUseAppCode();
 assertTransferEstimateUsesAppCode();

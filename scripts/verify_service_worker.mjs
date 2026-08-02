@@ -15,9 +15,15 @@ const serviceWorkerPath = join(fixtureDir, "service-worker.js");
 const initialManifest = '{"name":"Solar"}\n';
 const changedManifest = '{"name":"Lunar"}\n';
 
-const generate = async () => {
-  await execFileAsync(process.execPath, [generatorPath, "/", fixtureDir]);
+const generate = async (basePath = "/") => {
+  await execFileAsync(process.execPath, [generatorPath, basePath, fixtureDir]);
   return readFile(serviceWorkerPath, "utf8");
+};
+
+const readCachePrefix = (source) => {
+  const match = source.match(/const CACHE_PREFIX = "(solar-system-sim-[a-f0-9]{8}-)";/);
+  assert.ok(match, "generated worker should scope its cache prefix to the deployment base path");
+  return match[1];
 };
 
 const readCacheHash = (source) => {
@@ -41,7 +47,7 @@ try {
   const initialWorker = await generate();
   assert.match(
     initialWorker,
-    /\.filter\(\(key\) => key\.startsWith\(CACHE_PREFIX\) && key !== CACHE_NAME\)/,
+    /if \(key\.startsWith\(CACHE_PREFIX\) && key !== CACHE_NAME\)/,
     "activation should delete only stale caches owned by this app",
   );
   assert.doesNotMatch(
@@ -49,8 +55,31 @@ try {
     /\.filter\(\(key\) => key !== CACHE_NAME\)/,
     "activation must not delete unrelated origin caches",
   );
+  assert.match(
+    initialWorker,
+    /LEGACY_CACHE_PATTERN\.test\(key\)[\s\S]*legacyCache\.match\(`\$\{BASE_PATH\}index\.html`\)[\s\S]*caches\.delete\(key\)/,
+    "legacy migration should delete an unscoped cache only after matching this deployment's shell",
+  );
+  assert.match(
+    initialWorker,
+    /if \(url\.search \|\| !PRECACHE_PATHS\.has\(url\.pathname\)\)/,
+    "runtime caching should ignore query variants and non-build paths",
+  );
+  assert.match(
+    initialWorker,
+    /caches\.open\(CACHE_NAME\)[\s\S]*cache\.match\(event\.request\)/,
+    "runtime lookups should stay inside this deployment's named cache",
+  );
+  assert.match(
+    initialWorker,
+    /fetch\(event\.request\)\.catch\(\(\) =>[\s\S]*caches\.open\(CACHE_NAME\)[\s\S]*cache\.match/,
+    "offline navigation fallback should stay inside this deployment's named cache",
+  );
 
   const initialHash = readCacheHash(initialWorker);
+  const rootPrefix = readCachePrefix(initialWorker);
+  const previewPrefix = readCachePrefix(await generate("/preview/"));
+  assert.notEqual(previewPrefix, rootPrefix, "different base paths must own isolated cache namespaces");
   await writeFile(manifestPath, changedManifest);
   const changedHash = readCacheHash(await generate());
 

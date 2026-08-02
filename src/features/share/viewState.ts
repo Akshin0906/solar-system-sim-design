@@ -1,5 +1,5 @@
 import { bodiesById } from "../../data";
-import { useScaleStore } from "../../simulation/scaleStore";
+import { useScaleStore, withoutPersistingViewPreferences } from "../../simulation/scaleStore";
 import {
   useSelectionStore,
   getLiveCameraPose,
@@ -27,8 +27,16 @@ const CAMERA_MODES: CameraMode[] = [
 ];
 const SCALE_MODES: ScaleMode[] = ["real", "readable", "compressed", "overview"];
 const LABEL_DENSITIES: LabelDensity[] = ["off", "minimal", "standard", "full"];
-const MAX_SHARED_POSE_COORDINATE = 10_000;
+// OrbitControls caps ordinary free-look zoom at 520 scene units. Accepting much larger
+// imported poses made every body sub-pixel-small, while an off-system target could point
+// the camera at literal empty space. Keep shared compositions inside the same useful
+// navigation envelope as an authored view.
+const MAX_SHARED_POSE_COORDINATE = 1_000;
+const MAX_SHARED_VIEW_DISTANCE = 520;
+const MAX_SHARED_TARGET_DISTANCE = 360;
+const MAX_SHARED_UP_ALIGNMENT = 0.999;
 const MIN_SHARED_POSE_VECTOR_LENGTH = 0.000001;
+const MAX_SHARED_QUERY_LENGTH = 2_048;
 
 export type SharedViewState = {
   bodyId: string;
@@ -84,10 +92,22 @@ const validCameraPose = (position: Vec3 | null, target: Vec3 | null, up: Vec3 | 
     position[1] - target[1],
     position[2] - target[2],
   ];
+  const viewDistance = vectorLength(viewOffset);
   const normalizedUp = normalizeVec3(up);
-  return normalizedUp && vectorLength(viewOffset) >= MIN_SHARED_POSE_VECTOR_LENGTH
-    ? { position, target, up: normalizedUp }
-    : null;
+  if (
+    !normalizedUp ||
+    viewDistance < MIN_SHARED_POSE_VECTOR_LENGTH ||
+    viewDistance > MAX_SHARED_VIEW_DISTANCE ||
+    vectorLength(target) > MAX_SHARED_TARGET_DISTANCE
+  ) {
+    return null;
+  }
+
+  const upAlignment = Math.abs(
+    (viewOffset[0] * normalizedUp[0] + viewOffset[1] * normalizedUp[1] + viewOffset[2] * normalizedUp[2]) /
+      viewDistance,
+  );
+  return upAlignment < MAX_SHARED_UP_ALIGNMENT ? { position, target, up: normalizedUp } : null;
 };
 
 export const captureSharedViewState = (): SharedViewState => {
@@ -137,7 +157,11 @@ export const encodeSharedViewState = (state: SharedViewState) => {
 };
 
 export const decodeSharedViewState = (search: string): SharedViewState | null => {
-  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const normalizedSearch = search.startsWith("?") ? search.slice(1) : search;
+  if (normalizedSearch.length > MAX_SHARED_QUERY_LENGTH) {
+    return null;
+  }
+  const params = new URLSearchParams(normalizedSearch);
   if (params.get("view") !== SHARE_VERSION) {
     return null;
   }
@@ -156,10 +180,14 @@ export const decodeSharedViewState = (search: string): SharedViewState | null =>
   const target = decodeVec3(params.get("ct"));
   const up = decodeVec3(params.get("cu"));
   const cameraPose = validCameraPose(position, target, up);
+  // A free-look share is only meaningful with its authored pose. Falling back to the
+  // receiver's previous free camera after rejecting a hostile/off-system pose is
+  // unpredictable and can still present an empty scene, so recover to the overview.
+  const importedCameraMode = resolvedCameraMode === "free" && !cameraPose ? "overview" : resolvedCameraMode;
 
   return {
     bodyId: bodiesById.has(bodyId) ? bodyId : fallback.bodyId,
-    cameraMode: resolvedCameraMode,
+    cameraMode: importedCameraMode,
     scaleMode: scaleMode && SCALE_MODES.includes(scaleMode) ? scaleMode : fallback.scaleMode,
     simulationDateMs: Number.isFinite(simulationDateMs) ? simulationDateMs : fallback.simulationDateMs,
     isPaused: booleanParam(params.get("paused"), fallback.isPaused),
@@ -171,7 +199,7 @@ export const decodeSharedViewState = (search: string): SharedViewState | null =>
     showOrbits: booleanParam(params.get("orbits"), fallback.showOrbits),
     showTrails: booleanParam(params.get("trails"), fallback.showTrails),
     cameraPose:
-      resolvedCameraMode === "free" && cameraPose
+      importedCameraMode === "free" && cameraPose
         ? cameraPose
         : null,
   };
@@ -184,12 +212,14 @@ export const applySharedViewState = (state: SharedViewState) => {
   time.setDirection(state.direction);
   time.setPaused(state.isPaused);
 
-  const scale = useScaleStore.getState();
-  scale.setMode(state.scaleMode);
-  scale.setLabelDensity(state.labelDensity);
-  scale.setShowGrid(state.showGrid);
-  scale.setShowOrbits(state.showOrbits);
-  scale.setShowTrails(state.showTrails);
+  withoutPersistingViewPreferences(() => {
+    const scale = useScaleStore.getState();
+    scale.setMode(state.scaleMode);
+    scale.setLabelDensity(state.labelDensity);
+    scale.setShowGrid(state.showGrid);
+    scale.setShowOrbits(state.showOrbits);
+    scale.setShowTrails(state.showTrails);
+  });
 
   const selection = useSelectionStore.getState();
   selection.selectBody(state.bodyId);

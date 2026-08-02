@@ -68,6 +68,18 @@ const goToBodyFromSearch = async (page: Page, bodyName: string) => {
 test.describe("desktop", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
+  test("offers action-first onboarding without obscuring the simulator", async ({ page }) => {
+    await page.goto("/");
+    const gettingStarted = page.getByRole("complementary", { name: "Start exploring" });
+    await expect(gettingStarted).toBeVisible();
+    await expect(gettingStarted.getByRole("button", { name: "Find a world" })).toBeVisible();
+    await expect(gettingStarted.getByRole("button", { name: "Take a tour" })).toBeVisible();
+    await expect(gettingStarted.getByRole("button", { name: "Plan a mission" })).toBeVisible();
+    await gettingStarted.getByRole("button", { name: "Find a world" }).click();
+    await expect(page.getByRole("dialog", { name: "Search and commands" })).toBeVisible();
+    await expect(gettingStarted).toHaveCount(0);
+  });
+
   test("renders the simulator controls and canvas", async ({ page }) => {
     await openApp(page);
     await expect(page.locator(".top-bar")).toBeVisible();
@@ -82,6 +94,23 @@ test.describe("desktop", () => {
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await expect(page.getByText("Orbit positions extrapolated beyond the validated 1800–2050 model")).toBeVisible();
+  });
+
+  test("keeps icon help hoverable and dismissible", async ({ page }) => {
+    await openApp(page);
+    const search = page.getByRole("button", { name: "Search objects" });
+    await search.focus();
+    const tooltip = page.getByRole("tooltip", { name: /Search objects/ });
+    await expect(tooltip).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(tooltip).toBeHidden();
+    await page.keyboard.press("Tab");
+
+    await search.hover();
+    await expect(tooltip).toBeVisible();
+    await tooltip.hover();
+    await expect(tooltip).toBeVisible();
   });
 
   test("renders the Earth and Saturn hero shaders without console errors", async ({ page }) => {
@@ -110,15 +139,15 @@ test.describe("desktop", () => {
     await expect(rocket).toBeVisible();
     await expectNoOverlap(rocket, page.locator(".scale-controls"), "rocket and view controls");
     await expectNoOverlap(rocket, page.getByRole("region", { name: "Time controls" }), "rocket and time controls");
-    await expectNoOverlap(rocket, page.locator(".doomsday-dock"), "rocket and Doomsday launcher");
+    await expectNoOverlap(rocket, page.locator(".doomsday-dock"), "rocket and what-if launcher");
 
     await page.getByRole("button", { name: "Close rocket panel" }).click();
     await page.setViewportSize({ width: 1280, height: 600 });
-    await page.getByRole("button", { name: "Open Doomsday scenarios" }).click();
+    await page.getByRole("button", { name: "Open what-if scenarios" }).click();
     await expectNoOverlap(
-      page.getByRole("region", { name: "Doomsday scenarios" }),
+      page.getByRole("region", { name: "What-if scenarios" }),
       page.locator(".scale-controls"),
-      "Doomsday and view controls on a short laptop",
+      "what-if lab and view controls on a short laptop",
     );
 
     await page.getByRole("button", { name: "Help and shortcuts" }).click();
@@ -135,17 +164,39 @@ test.describe("desktop", () => {
   });
 
   test("makes physical transfer arrival intent explicit", async ({ page }) => {
-    await openApp(page);
+    await hideDiscoveryHint(page);
+    const missionView = new URLSearchParams({
+      view: "1",
+      body: "earth",
+      camera: "overview",
+      scale: "readable",
+      date: String(Date.parse("2026-06-14T12:00:00.000Z")),
+      paused: "1",
+      dir: "1",
+      speed: "3600",
+      labels: "standard",
+      grid: "0",
+      orbits: "1",
+      trails: "1",
+    });
+    await page.goto(`/?${missionView.toString()}`);
+    await expect(page.locator("#main-controls")).toBeVisible();
     await page.getByRole("button", { name: "Rocket preview" }).click();
     const rocket = page.getByRole("region", { name: "Rocket preview" });
 
     await rocket.getByRole("combobox", { name: "Destination" }).click();
-    await page.getByRole("option", { name: /^Mars/ }).click();
+    await page.getByRole("option", { name: /^Neptune/ }).click();
     await rocket.getByRole("combobox", { name: "Mission mode" }).click();
     await page.getByRole("option", { name: /^Hohmann coast/ }).click();
 
     const arrival = rocket.getByRole("radiogroup", { name: "Arrival outcome" });
     await expect(arrival).toBeVisible();
+    await expect(arrival.getByRole("radio", { name: "Capture" })).toBeDisabled();
+    await expect(rocket.getByText(/Capture unavailable: this trajectory misses Neptune/i)).toBeVisible();
+
+    await rocket.getByRole("combobox", { name: "Mission mode" }).click();
+    await page.getByRole("option", { name: /^Lambert intercept/ }).click();
+    await expect(arrival.getByRole("radio", { name: "Capture" })).toBeEnabled();
     await arrival.getByRole("radio", { name: "Capture" }).click();
     await expect(arrival.getByRole("radio", { name: "Capture" })).toHaveAttribute("aria-checked", "true");
     await expect(rocket.getByText(/applies the displayed idealized arrival burn/i)).toBeVisible();
@@ -220,6 +271,32 @@ test.describe("desktop", () => {
       JSON.stringify({ position: [24, 18, 36], target: [1, 2, 3], up: [0, 1, 0] }),
     );
     await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Free look");
+
+    const hostileView = new URLSearchParams({
+      view: "1",
+      body: "earth",
+      camera: "free",
+      scale: "readable",
+      date: String(Date.parse("2026-07-10T00:00:00.000Z")),
+      paused: "1",
+      dir: "1",
+      speed: "3600",
+      labels: "standard",
+      grid: "0",
+      orbits: "1",
+      trails: "0",
+      cp: "10000,10000,10000",
+      ct: "9999,9999,9999",
+      cu: "0,1,0",
+    });
+    await page.goto(`/?${hostileView.toString()}`);
+    const recoveredCanvas = page.locator("canvas.solar-canvas");
+    await expect(recoveredCanvas).toBeVisible();
+    await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Solar system");
+    await expect(recoveredCanvas).not.toHaveAttribute(
+      "data-camera-pose",
+      JSON.stringify({ position: [10000, 10000, 10000], target: [9999, 9999, 9999], up: [0, 1, 0] }),
+    );
     expect(consoleErrors).toEqual([]);
     expect(pageErrors).toEqual([]);
   });
@@ -321,13 +398,13 @@ test.describe("desktop", () => {
     await selectTitanFromSearch(page);
     await page.getByRole("button", { name: "Pause" }).click();
 
-    await page.getByRole("button", { name: "Open Doomsday scenarios" }).click();
+    await page.getByRole("button", { name: "Open what-if scenarios" }).click();
     await page.getByRole("button", { name: "Sun becomes a red giant" }).click();
 
     const watch = page.getByRole("region", { name: "Sun becomes a red giant watch controls" });
     await expect(watch).toBeVisible();
     await expect(watch.getByText("N-body planets")).toBeVisible();
-    await expect(page.getByRole("region", { name: "Doomsday scenarios" })).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "What-if scenarios" })).toHaveCount(0);
     const scenarioTransport = page.getByRole("region", { name: "Time controls" });
     await expect(scenarioTransport).toContainText("Sun becomes a red giant");
     await expectNoOverlap(watch, scenarioTransport, "scenario watch HUD and scenario transport");
@@ -361,6 +438,7 @@ test.describe("desktop", () => {
     await expect(recovery).toHaveCount(0);
     await expect(page.locator(".focus-title strong")).toHaveText("Earth");
     await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Solar system");
+    await page.locator("details.view-layer-disclosure > summary").click();
     await expect(page.getByRole("checkbox", { name: "Orbits" })).toBeChecked();
   });
 
@@ -394,6 +472,31 @@ test.describe("mobile", () => {
     const viewSheet = page.getByRole("dialog", { name: "View settings" });
     await expect(viewSheet.getByRole("button", { name: "Enter photo mode" })).toBeVisible();
     await expect(viewSheet.getByRole("button", { name: "Copy shareable view link" })).toBeVisible();
+  });
+
+  test("keeps first-run actions usable on a narrow phone", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto("/");
+    await expect(page.locator("#main-controls")).toBeVisible();
+
+    const gettingStarted = page.getByRole("complementary", { name: "Start exploring" });
+    await expect(gettingStarted).toBeVisible();
+    await expectNoOverlap(
+      gettingStarted,
+      page.getByRole("region", { name: "Time controls" }),
+      "first-run actions and narrow-phone transport",
+    );
+    for (const name of ["Find a world", "Take a tour", "Plan a mission"]) {
+      const action = gettingStarted.getByRole("button", { name });
+      await expect(action).toBeVisible();
+      const box = await action.boundingBox();
+      expect(box?.height, `${name} should retain a 44px touch target`).toBeGreaterThanOrEqual(44);
+    }
+
+    const scenarios = page.getByRole("button", { name: "Open what-if scenarios" });
+    await expect(scenarios).toBeHidden();
+    await gettingStarted.getByRole("button", { name: "Dismiss getting started" }).click();
+    await expect(scenarios).toBeVisible();
   });
 
   test("collapses object details to the peek and can reopen them", async ({ page }) => {
@@ -440,7 +543,7 @@ test.describe("mobile", () => {
     await expect(tourWatch.getByText("Earth and its companion")).toBeVisible();
     await expect(page.getByRole("button", { name: "View settings" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Rocket preview" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Open Doomsday scenarios" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Open what-if scenarios" })).toHaveCount(0);
     await expect(page.locator(".inspector-peek")).toHaveCount(0);
     await expectNoOverlap(tourWatch, transport, "tour watch HUD and mobile transport");
     await tourWatch.getByRole("button", { name: "Open guided details" }).click();
@@ -450,7 +553,7 @@ test.describe("mobile", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "View settings" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Rocket preview" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Open Doomsday scenarios" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open what-if scenarios" })).toBeVisible();
     await expect(page.locator(".inspector-peek")).toHaveCount(0);
   });
 });

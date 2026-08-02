@@ -24,6 +24,19 @@ type PersistedView = Pick<ScaleState, "mode" | "labelDensity" | "showGrid" | "sh
 
 const SCALE_MODES: ScaleMode[] = ["real", "readable", "compressed", "overview"];
 const LABEL_DENSITIES: LabelDensity[] = ["off", "minimal", "standard", "full"];
+let persistenceSuppressionDepth = 0;
+
+// Shared links are invitations to inspect somebody else's composition, not consent to
+// replace the visitor's saved defaults. Keep those programmatic imports ephemeral; a
+// later, explicit view-setting change still persists the resulting composition.
+export const withoutPersistingViewPreferences = <T>(apply: () => T): T => {
+  persistenceSuppressionDepth += 1;
+  try {
+    return apply();
+  } finally {
+    persistenceSuppressionDepth -= 1;
+  }
+};
 
 const getInitialDefaults = (): PersistedView => {
   const mobile =
@@ -71,6 +84,10 @@ export const useScaleStore = create<ScaleState>((set) => ({
 
 // Persist the view slice on any change (best-effort; blocked storage is a no-op).
 useScaleStore.subscribe((state) => {
+  if (persistenceSuppressionDepth > 0) {
+    return;
+  }
+
   writeJsonPreference(STORAGE_KEY, {
     mode: state.mode,
     labelDensity: state.labelDensity,

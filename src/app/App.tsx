@@ -1,6 +1,6 @@
 import { Canvas, invalidate } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { RotateCcw, X } from "lucide-react";
+import { Rocket, RotateCcw, Search, Sparkles, X } from "lucide-react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
 import { bodiesById } from "../data";
 import { scenarioById } from "../scenarios/registry";
@@ -20,7 +20,7 @@ import { useScenarioStore } from "../scenarios/scenarioStore";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
-import { formatTimeScale } from "../simulation/units";
+import { SCALE_MODES, formatBodyType, formatTimeScale } from "../simulation/units";
 import { readBooleanPreference, writeBooleanPreference } from "../ui/safeStorage";
 import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useUiStore } from "../ui/uiStore";
@@ -66,11 +66,22 @@ const canCreateWebGlContext = () => {
   }
 
   const canvas = document.createElement("canvas");
+  let context: WebGLRenderingContext | WebGL2RenderingContext | null = null;
 
   try {
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl") ?? canvas.getContext("experimental-webgl"));
+    context =
+      canvas.getContext("webgl2") ??
+      canvas.getContext("webgl") ??
+      (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
+    return Boolean(context);
   } catch {
     return false;
+  } finally {
+    // Drop the backing store. Explicitly invoking WEBGL_lose_context here can stall the
+    // shared GPU process just as the real renderer starts, so this probe is reserved for
+    // an explicit Retry rather than ordinary startup.
+    canvas.width = 0;
+    canvas.height = 0;
   }
 };
 
@@ -267,38 +278,112 @@ const DiscoverabilityCue = ({ isMobile }: { isMobile: boolean }) => {
   const [visible, setVisible] = useState(() => {
     return !readBooleanPreference(DISCOVERY_HINT_KEY);
   });
+  const openSearch = useUiStore((state) => state.openSearch);
+  const openSheet = useUiStore((state) => state.openSheet);
+  const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
+  const startTour = useExperienceStore((state) => state.startTour);
 
   const dismiss = useCallback(() => {
     setVisible(false);
     writeBooleanPreference(DISCOVERY_HINT_KEY, true);
   }, []);
 
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-
-    // Auto-hide only for this session. Persisting an automatic timeout made the hint
-    // disappear forever even when a first-time user never noticed or acted on it.
-    const timer = window.setTimeout(() => setVisible(false), 9_000);
-    return () => window.clearTimeout(timer);
-  }, [visible]);
-
   if (!visible) {
     return null;
   }
 
   return (
-    <div className="discoverability-cue">
-      <span>
-        {isMobile
-          ? "Tap a planet · use Search · try rockets and doomsday"
-          : "Click to inspect · double-click to go there · press / to search"}
+    <aside
+      className="discoverability-cue"
+      aria-label="Start exploring"
+    >
+      <span className="discovery-copy">
+        <small>New here?</small>
+        <strong>Choose a first move</strong>
       </span>
-      <button type="button" onClick={dismiss} aria-label="Dismiss hint">
+      <span className="discovery-actions">
+        <button
+          className="discovery-action"
+          type="button"
+          onClick={() => {
+            dismiss();
+            openSearch();
+          }}
+        >
+          <Search size={14} aria-hidden /> Find a world
+        </button>
+        <button
+          className="discovery-action"
+          type="button"
+          onClick={() => {
+            dismiss();
+            startTour("three-worlds");
+          }}
+        >
+          <Sparkles size={14} aria-hidden /> Take a tour
+        </button>
+        <button
+          className="discovery-action"
+          type="button"
+          onClick={() => {
+            dismiss();
+            if (isMobile) {
+              openSheet("rocket");
+            } else {
+              setRocketPanelOpen(true);
+            }
+          }}
+        >
+          <Rocket size={14} aria-hidden /> Plan a mission
+        </button>
+      </span>
+      <button className="discovery-close" type="button" onClick={dismiss} aria-label="Dismiss getting started">
         <X size={12} />
       </button>
-    </div>
+    </aside>
+  );
+};
+
+const cameraModeDescription: Record<ReturnType<typeof useSelectionStore.getState>["cameraMode"], string> = {
+  free: "free-look camera",
+  focus: "focused camera",
+  follow: "body-follow camera",
+  overview: "whole-system overview",
+  inner: "inner-planets view",
+  outer: "outer-planets view",
+  "earth-moon": "Earth and Moon system view",
+  "jupiter-system": "Jupiter system view",
+  "saturn-system": "Saturn system view",
+  "kuiper-belt": "Kuiper belt view",
+  moons: "moon-system view",
+  observer: "terminator observer view",
+  "rocket-follow": "rocket-follow camera",
+};
+
+const SceneAccessibleDescription = () => {
+  const selectedId = useSelectionStore((state) => state.selectedId);
+  const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const mode = useScaleStore((state) => state.mode);
+  const labelDensity = useScaleStore((state) => state.labelDensity);
+  const showGrid = useScaleStore((state) => state.showGrid);
+  const showOrbits = useScaleStore((state) => state.showOrbits);
+  const showTrails = useScaleStore((state) => state.showTrails);
+  const selected = bodiesById.get(selectedId);
+  const scale = SCALE_MODES.find((item) => item.id === mode);
+  const guides = [
+    labelDensity === "off" ? null : `${labelDensity} labels`,
+    showGrid ? "ecliptic grid" : null,
+    showOrbits ? "orbit paths" : null,
+    showTrails ? "motion trails" : null,
+  ].filter(Boolean);
+
+  return (
+    <p id="solar-scene-description" className="sr-only">
+      Current scene: {cameraModeDescription[cameraMode]}, with {selected?.name ?? "the solar system"} selected
+      {selected ? ` (${formatBodyType(selected.type)})` : ""}. {scale?.label ?? "Current"} scale lens: {scale?.note ?? "custom scale"}.
+      {guides.length > 0 ? ` Visible guides: ${guides.join(", ")}.` : " All scene guides are hidden."} Use Search objects to
+      browse the scene without relying on the canvas.
+    </p>
   );
 };
 
@@ -328,7 +413,10 @@ const LowInformationRecovery = ({ isMobile }: { isMobile: boolean }) => {
 };
 
 export const App = () => {
-  const [webglUnavailable, setWebglUnavailable] = useState(() => !canCreateWebGlContext());
+  // Start optimistically and let WebGLRenderer be the capability check. Creating and
+  // tearing down a separate probe context immediately before it caused severe startup
+  // stalls in software-rendered/mobile Chromium; Retry still uses the explicit probe.
+  const [webglUnavailable, setWebglUnavailable] = useState(false);
   const [webglRestoring, setWebglRestoring] = useState(false);
   const [sceneError, setSceneError] = useState(false);
   const [sceneRevision, setSceneRevision] = useState(0);
@@ -449,6 +537,7 @@ export const App = () => {
       <TimeDriver />
       <KeyboardShortcuts />
       <SimulationLiveRegion />
+      <SceneAccessibleDescription />
       {webglUnavailable ? (
         <WebGlFallback onRetry={() => setWebglUnavailable(!canCreateWebGlContext())} />
       ) : (
@@ -472,6 +561,7 @@ export const App = () => {
             gl.domElement.classList.add("solar-canvas");
             gl.domElement.setAttribute("role", "img");
             gl.domElement.setAttribute("aria-label", "Interactive 3D solar system simulation");
+            gl.domElement.setAttribute("aria-describedby", "solar-scene-description");
             // Attach the context-loss listeners at most once per canvas element. onCreated
             // can run again for the same element (e.g. a Retry/remount cycle), and these
             // listeners are never removed, so an unguarded add would stack duplicates that

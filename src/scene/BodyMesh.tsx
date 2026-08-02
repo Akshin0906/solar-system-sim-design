@@ -44,8 +44,7 @@ import {
 } from "./planetVisuals";
 import type { ScenePositionsRef } from "./scenePositions";
 import {
-  createSphereLodGeometries,
-  disposeSphereLodGeometries,
+  getSharedSphereLodGeometries,
   projectedSphereRadiusPx,
   resolveSphereLod,
   combinedRenderQuality,
@@ -189,6 +188,12 @@ const createImpostorDiscTexture = () => {
   return texture;
 };
 
+let sharedImpostorDiscTexture: Texture | undefined;
+const getSharedImpostorDiscTexture = () => {
+  sharedImpostorDiscTexture ??= createImpostorDiscTexture();
+  return sharedImpostorDiscTexture;
+};
+
 const configureOptionalTexture = (
   texture: Texture | undefined,
   maxAnisotropy: number,
@@ -199,17 +204,21 @@ const solarProgramCacheKey = () => SOLAR_LIT_PROGRAM_KEY;
 
 type BodyImageTextureState = {
   texture?: Texture;
-  status: "unavailable" | "loading" | "loaded" | "failed";
+  status: "deferred" | "unavailable" | "loading" | "loaded" | "failed";
 };
 
-const useBodyImageTexture = (url: string | undefined, maxAnisotropy: number) => {
+const useBodyImageTexture = (url: string | undefined, maxAnisotropy: number, enabled: boolean) => {
   const [state, setState] = useState<BodyImageTextureState>(() => ({
-    status: url ? "loading" : "unavailable",
+    status: url ? (enabled ? "loading" : "deferred") : "unavailable",
   }));
 
   useEffect(() => {
     if (!url) {
       setState({ status: "unavailable" });
+      return undefined;
+    }
+    if (!enabled) {
+      setState({ status: "deferred" });
       return undefined;
     }
 
@@ -240,15 +249,87 @@ const useBodyImageTexture = (url: string | undefined, maxAnisotropy: number) => 
       disposed = true;
       loadedTexture.dispose();
     };
-  }, [maxAnisotropy, url]);
+  }, [enabled, maxAnisotropy, url]);
 
   return state;
 };
 
-const useIdleTexture = (factory: () => Texture | undefined, dependencies: readonly unknown[]) => {
+type IdleTextureJob = {
+  cancelled: boolean;
+  run: () => void;
+};
+
+const idleTextureJobs: IdleTextureJob[] = [];
+let idleTextureCallbackId: number | undefined;
+let idleTextureFallbackId: number | undefined;
+
+// Procedural maps are deliberately hydrated one at a time. Scheduling every body's
+// surface/material jobs with the same forced timeout caused them all to expire together,
+// turning the "idle" work into a long main-thread freeze just after startup.
+const scheduleNextIdleTextureJob = () => {
+  if (
+    typeof window === "undefined" ||
+    idleTextureJobs.length === 0 ||
+    idleTextureCallbackId !== undefined ||
+    idleTextureFallbackId !== undefined
+  ) {
+    return;
+  }
+
+  const runOne = (deadline?: IdleDeadline) => {
+    idleTextureCallbackId = undefined;
+    idleTextureFallbackId = undefined;
+
+    // A callback can arrive at the end of an idle slice. Yield instead of starting a
+    // monolithic pixel loop with virtually no budget left.
+    if (deadline && !deadline.didTimeout && deadline.timeRemaining() < 4) {
+      scheduleNextIdleTextureJob();
+      return;
+    }
+
+    let nextJob = idleTextureJobs.shift();
+    while (nextJob?.cancelled) {
+      nextJob = idleTextureJobs.shift();
+    }
+
+    try {
+      nextJob?.run();
+    } finally {
+      scheduleNextIdleTextureJob();
+    }
+  };
+
+  if ("requestIdleCallback" in window && typeof window.requestIdleCallback === "function") {
+    // Do not force a timeout: the scene already renders a calibrated flat material while
+    // maps are pending, so visual refinement must never outrank input responsiveness.
+    idleTextureCallbackId = window.requestIdleCallback(runOne);
+  } else {
+    idleTextureFallbackId = window.setTimeout(() => runOne(), 0);
+  }
+};
+
+const enqueueIdleTextureJob = (run: () => void) => {
+  const job: IdleTextureJob = { cancelled: false, run };
+  idleTextureJobs.push(job);
+  scheduleNextIdleTextureJob();
+  return () => {
+    job.cancelled = true;
+  };
+};
+
+const useIdleTexture = (
+  factory: () => Texture | undefined,
+  dependencies: readonly unknown[],
+  enabled = true,
+) => {
   const [texture, setTexture] = useState<Texture>();
 
   useEffect(() => {
+    if (!enabled) {
+      setTexture(undefined);
+      return undefined;
+    }
+
     let disposed = false;
     let createdTexture: Texture | undefined;
     setTexture(undefined);
@@ -263,24 +344,16 @@ const useIdleTexture = (factory: () => Texture | undefined, dependencies: readon
       setTexture(nextTexture);
     };
 
-    const canRequestIdle =
-      typeof window !== "undefined" &&
-      "requestIdleCallback" in window &&
-      typeof window.requestIdleCallback === "function";
-    const idleId = canRequestIdle ? window.requestIdleCallback(load, { timeout: 700 }) : undefined;
-    const timeoutId = canRequestIdle ? undefined : window.setTimeout(load, 0);
+    const cancelJob = enqueueIdleTextureJob(load);
 
     return () => {
       disposed = true;
-      if (idleId !== undefined && typeof window !== "undefined" && "cancelIdleCallback" in window) {
-        window.cancelIdleCallback(idleId);
-      } else if (timeoutId !== undefined) {
-        window.clearTimeout(timeoutId);
-      }
+      cancelJob();
       createdTexture?.dispose();
     };
     // The dependency list is intentionally supplied by the caller because these
-    // texture factories are body-specific and expensive.
+    // texture factories are body-specific and expensive. Callers also include the
+    // enabled predicate in this list whenever it can change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, dependencies);
 
@@ -316,6 +389,25 @@ export const BodyMesh = memo(({
   const orientationDate = useMemo(() => new Date(), []);
   const lastLabelScaleRef = useRef(-1);
   const currentLodRef = useRef<SphereLodLevel | undefined>(undefined);
+  const cameraMode = useSelectionStore((state) => state.cameraMode);
+  const wideCameraMode =
+    cameraMode === "overview" ||
+    cameraMode === "inner" ||
+    cameraMode === "outer" ||
+    cameraMode === "kuiper-belt";
+  const imageTextureRequestedRef = useRef(selected && !wideCameraMode);
+  if (selected && !wideCameraMode) {
+    // Load bundled source imagery for a body only after it becomes relevant, then retain
+    // it for instant return visits. Overview bodies remain useful calibrated color discs.
+    imageTextureRequestedRef.current = true;
+  }
+  const textureDetailsRequestedRef = useRef(selected && !wideCameraMode);
+  if (selected && !wideCameraMode) {
+    // Generated relief/cloud/ring maps are close-inspection refinements. Once requested,
+    // retain them if selection moves away so a return visit is instant.
+    textureDetailsRequestedRef.current = true;
+  }
+  const hydrateTextureDetails = textureDetailsRequestedRef.current;
   const selectBody = useSelectionStore((state) => state.selectBody);
   const focusBody = useSelectionStore((state) => state.focusBody);
   const maxAnisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy());
@@ -325,27 +417,35 @@ export const BodyMesh = memo(({
   const radius = getBodySceneRadius(body, mode);
   const tiltRad = ((body.physical.axialTiltDeg ?? 0) * Math.PI) / 180;
   const visual = useMemo(() => getVisualProfile(body), [body]);
-  const lodGeometries = useMemo(() => createSphereLodGeometries(body.type === "moon"), [body.type]);
+  const lodGeometries = getSharedSphereLodGeometries(body.type === "moon");
   // Only stars render a corona sprite, so only build (and rasterize) the texture for them
   // — previously every body allocated a 192² CanvasTexture that nothing but the Sun used.
   const coronaTexture = useMemo(() => (body.type === "star" ? createCoronaTexture() : null), [body.type]);
-  const impostorTexture = useMemo(() => (body.type === "star" ? null : createImpostorDiscTexture()), [body.type]);
-  const imageSurface = useBodyImageTexture(body.physical.texture, maxAnisotropy);
+  const impostorTexture = body.type === "star" ? null : getSharedImpostorDiscTexture();
+  const imageSurface = useBodyImageTexture(body.physical.texture, maxAnisotropy, imageTextureRequestedRef.current);
+  const needsProceduralSurface =
+    hydrateTextureDetails && (imageSurface.status === "unavailable" || imageSurface.status === "failed");
   const proceduralSurfaceTexture = useIdleTexture(
-    () =>
-      imageSurface.status === "unavailable" || imageSurface.status === "failed"
-        ? configureOptionalTexture(createSurfaceTexture(body), maxAnisotropy)
-        : undefined,
-    [body, imageSurface.status, maxAnisotropy],
+    () => configureOptionalTexture(createSurfaceTexture(body), maxAnisotropy),
+    [body, imageSurface.status, maxAnisotropy, needsProceduralSurface],
+    needsProceduralSurface,
   );
   const surfaceTexture = imageSurface.texture ?? proceduralSurfaceTexture;
   const useProceduralMaterialChannels = imageSurface.status === "unavailable" || imageSurface.status === "failed";
   const bumpTexture = useIdleTexture(
-    () => useProceduralMaterialChannels ? configureOptionalTexture(createBodyBumpTexture(body), maxAnisotropy) : undefined,
-    [body, maxAnisotropy, useProceduralMaterialChannels],
+    () => configureOptionalTexture(createBodyBumpTexture(body), maxAnisotropy),
+    [body, hydrateTextureDetails, maxAnisotropy, useProceduralMaterialChannels],
+    hydrateTextureDetails && useProceduralMaterialChannels && Boolean(visual.bumpScale),
   );
+  const needsRoughnessTexture =
+    hydrateTextureDetails &&
+    ((body.id === "earth" && Boolean(imageSurface.texture?.image)) ||
+      (useProceduralMaterialChannels && Boolean(visual.bumpScale) && body.type !== "star"));
   const roughnessTexture = useIdleTexture(
     () => {
+      if (!hydrateTextureDetails) {
+        return undefined;
+      }
       if (imageSurface.texture?.image) {
         return configureOptionalTexture(
           createImageDerivedRoughnessTexture(body, imageSurface.texture.image as CanvasImageSource),
@@ -356,11 +456,14 @@ export const BodyMesh = memo(({
         ? configureOptionalTexture(createBodyRoughnessTexture(body), maxAnisotropy)
         : undefined;
     },
-    [body, imageSurface.texture, maxAnisotropy, useProceduralMaterialChannels],
+    [body, hydrateTextureDetails, imageSurface.texture, maxAnisotropy, needsRoughnessTexture, useProceduralMaterialChannels],
+    needsRoughnessTexture,
   );
+  const needsCloudTexture = hydrateTextureDetails && (body.id === "earth" || body.id === "venus");
   const cloudTexture = useIdleTexture(
     () => configureOptionalTexture(createCloudTexture(body), maxAnisotropy),
-    [body, maxAnisotropy],
+    [body, maxAnisotropy, needsCloudTexture],
+    needsCloudTexture,
   );
   const emphasisOpacity = getEmphasisOpacity(emphasis);
   const isTransparent = emphasisOpacity < 1;
@@ -372,11 +475,12 @@ export const BodyMesh = memo(({
   const selectionTubeRadius = Math.max(visualRadius * 0.014, MIN_FIT_RADIUS * 0.04);
   const labelOffset = visualRadius * 1.45;
   const ringConfig = ringConfigById[body.id as keyof typeof ringConfigById];
-  const ringTexture = useMemo(
+  const ringTexture = useIdleTexture(
     () => ringConfig
       ? configureOptionalTexture(createRingTexture(body, ringConfig.innerRadius / ringConfig.outerRadius), maxAnisotropy, false)
       : undefined,
-    [body, maxAnisotropy, ringConfig],
+    [body, hydrateTextureDetails, maxAnisotropy, ringConfig],
+    hydrateTextureDetails && Boolean(ringConfig),
   );
   const solarLightingUniforms = useMemo(() => createSolarLightingUniforms(), []);
   const patchSolarMaterial = useCallback(
@@ -413,10 +517,7 @@ export const BodyMesh = memo(({
     .filter(Boolean)
     .join(" ");
 
-  useEffect(() => () => ringTexture?.dispose(), [ringTexture]);
   useEffect(() => () => coronaTexture?.dispose(), [coronaTexture]);
-  useEffect(() => () => impostorTexture?.dispose(), [impostorTexture]);
-  useEffect(() => () => disposeSphereLodGeometries(lodGeometries), [lodGeometries]);
 
   // The surface material is now kept mounted across async texture loads (stable key, not the
   // texture uuid) to avoid recreating + recompiling it every time a texture resolves. A material
@@ -541,15 +642,20 @@ export const BodyMesh = memo(({
 
       if (nextLod !== currentLodRef.current) {
         currentLodRef.current = nextLod;
-        if (detailRef.current) {
-          detailRef.current.visible = nextLod !== "impostor";
-        }
-        if (impostorRef.current) {
-          impostorRef.current.visible = nextLod === "impostor";
-        }
         if (meshRef.current && nextLod !== "impostor") {
           meshRef.current.geometry = lodGeometries[nextLod];
         }
+      }
+
+      // React can reapply the JSX `visible` defaults when selection, camera mode, or
+      // measured quality changes even if the projected-size LOD itself did not cross a
+      // threshold. Keep visibility authoritative every frame; only the more expensive
+      // geometry swap needs to remain conditional on an actual LOD transition.
+      if (detailRef.current) {
+        detailRef.current.visible = nextLod !== "impostor";
+      }
+      if (impostorRef.current) {
+        impostorRef.current.visible = nextLod === "impostor";
       }
     }
 
@@ -599,7 +705,7 @@ export const BodyMesh = memo(({
         </sprite>
       )}
       {body.type !== "star" && (
-        <sprite ref={impostorRef} visible={false} scale={[renderRadius * 2.1, renderRadius * 2.1, 1]}>
+        <sprite ref={impostorRef} visible={!selected} scale={[renderRadius * 2.1, renderRadius * 2.1, 1]}>
           <spriteMaterial
             map={impostorTexture}
             color={visual.baseColor}
@@ -610,8 +716,8 @@ export const BodyMesh = memo(({
           />
         </sprite>
       )}
-      <group ref={detailRef} rotation={[0, 0, tiltRad]}>
-        <mesh ref={meshRef} geometry={lodGeometries.high} scale={renderRadius}>
+      <group ref={detailRef} rotation={[0, 0, tiltRad]} visible={selected || body.type === "star"}>
+        <mesh ref={meshRef} geometry={selected ? lodGeometries.high : lodGeometries.low} scale={renderRadius}>
           {body.type === "star" ? (
             <meshBasicMaterial
               key="surface-material"

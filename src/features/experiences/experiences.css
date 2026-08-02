@@ -415,17 +415,35 @@
 }
 
 .experience-progress button {
-  width: 22px;
-  height: 4px;
+  position: relative;
+  width: 32px;
+  height: 24px;
   padding: 0;
   border: 0;
   border-radius: 999px;
-  background: rgba(245, 241, 232, 0.18);
+  background: transparent;
   cursor: pointer;
+  transition: width 140ms ease;
+}
+
+.experience-progress button::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 22px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(245, 241, 232, 0.18);
+  content: "";
+  transform: translate(-50%, -50%);
   transition: width 140ms ease, background 140ms ease;
 }
 
 .experience-progress button.active {
+  width: 44px;
+}
+
+.experience-progress button.active::before {
   width: 36px;
   background: var(--cyan);
 }
@@ -527,6 +545,12 @@
   .experience-step-actions button,
   .experience-panel-head > button {
     min-height: 44px;
+  }
+
+  .experience-progress button,
+  .experience-progress button.active {
+    width: 44px;
+    height: 44px;
   }
 
   .experience-panel-head > button {

@@ -30,6 +30,7 @@ const normalizeBasePath = (value) => {
 
 const basePath = normalizeBasePath(process.argv[2]);
 const toPublicPath = (path) => `${basePath}${path}`;
+const cacheScopeHash = createHash("sha256").update(basePath).digest("hex").slice(0, 8);
 
 const walk = async (directory) => {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -74,10 +75,12 @@ const cacheHash = createHash("sha256")
   .digest("hex")
   .slice(0, 12);
 
-const serviceWorker = `const CACHE_PREFIX = "solar-system-sim-";
+const serviceWorker = `const CACHE_PREFIX = "solar-system-sim-${cacheScopeHash}-";
 const CACHE_NAME = CACHE_PREFIX + "${cacheHash}";
+const LEGACY_CACHE_PATTERN = /^solar-system-sim-[a-f0-9]{12}$/;
 const BASE_PATH = ${JSON.stringify(basePath)};
 const PRECACHE_URLS = ${JSON.stringify(precacheUrls, null, 2)};
+const PRECACHE_PATHS = new Set(PRECACHE_URLS);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -94,9 +97,24 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
-          keys
-            .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
-            .map((key) => caches.delete(key)),
+          keys.map(async (key) => {
+            if (key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME) {
+              return caches.delete(key);
+            }
+
+            // Before base-path scoping was introduced, builds used the unscoped
+            // solar-system-sim-<hash> namespace. Remove only a legacy cache that
+            // proves it belongs to this deployment by containing this base's shell;
+            // sibling previews and unrelated caches on the origin remain untouched.
+            if (LEGACY_CACHE_PATTERN.test(key)) {
+              const legacyCache = await caches.open(key);
+              if (await legacyCache.match(\`\${BASE_PATH}index.html\`)) {
+                return caches.delete(key);
+              }
+            }
+
+            return false;
+          }),
         ),
       )
       .then(() => self.clients.claim()),
@@ -115,26 +133,42 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (event.request.mode === "navigate") {
-    event.respondWith(fetch(event.request).catch(() => caches.match(\`\${BASE_PATH}index.html\`)));
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        caches.open(CACHE_NAME).then((cache) => cache.match(\`\${BASE_PATH}index.html\`)),
+      ),
+    );
+    return;
+  }
+
+  // The build already knows every offline asset. Do not turn this worker into an
+  // origin-wide, unbounded cache for future API/private responses or query variants.
+  if (url.search || !PRECACHE_PATHS.has(url.pathname)) {
     return;
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) {
-        return cached;
-      }
-
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type !== "basic") {
-          return response;
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.match(event.request).then((cached) => {
+        if (cached) {
+          return cached;
         }
 
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-        return response;
-      });
-    }),
+        return fetch(event.request).then((response) => {
+          if (!response || response.status !== 200 || response.type !== "basic") {
+            return response;
+          }
+
+          const cacheControl = response.headers.get("Cache-Control") ?? "";
+          if (/no-store/i.test(cacheControl)) {
+            return response;
+          }
+
+          cache.put(event.request, response.clone());
+          return response;
+        });
+      }),
+    ),
   );
 });
 `;

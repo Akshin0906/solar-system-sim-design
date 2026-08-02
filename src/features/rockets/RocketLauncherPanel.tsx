@@ -1,8 +1,11 @@
+import { useEffect, useRef, useState } from "react";
 import { LocateFixed, Rocket, RotateCcw, SlidersHorizontal, X } from "lucide-react";
+import { bodiesById } from "../../data";
 import { useScenarioStore } from "../../scenarios/scenarioStore";
 import { useScaleStore } from "../../simulation/scaleStore";
 import { useSelectionStore } from "../../simulation/selectionStore";
 import { useTimeStore } from "../../simulation/timeStore";
+import { formatDistance } from "../../simulation/units";
 import { InstrumentSelect } from "../../ui/InstrumentSelect";
 import { useUiStore } from "../../ui/uiStore";
 import { destinationGroupOrder, destinationsById, rocketDestinations, type RocketDestination } from "./destinationCatalog";
@@ -26,8 +29,15 @@ import {
 } from "./rocketEvidence";
 import { RocketTelemetry } from "./RocketTelemetry";
 import { RocketTransferPreview } from "./RocketTransferPreview";
+import {
+  formatRocketPlaybackRate,
+  recommendRocketPlayback,
+  transferCaptureAvailable,
+  transferHasPredictedIntercept,
+} from "./rocketPlayback";
 import { missionStatusLabel } from "./rocketState";
 import { useRocketStore } from "./rocketStore";
+import { estimateTransfer } from "./transferModel";
 import { getCachedRocketView, useActiveRocketView } from "./useRocketView";
 
 type RocketLauncherPanelProps = {
@@ -36,17 +46,19 @@ type RocketLauncherPanelProps = {
   onClose?: () => void;
 };
 
+const ROCKET_PLANNING_REFRESH_MS = 500;
+
 const PendingTransferPreview = ({
   destination,
+  launchDateMs,
   missionMode,
   profile,
 }: {
   destination: RocketDestination;
+  launchDateMs: number;
   missionMode: RocketMissionMode;
   profile: RocketProfile;
 }) => {
-  const launchDateMs = useTimeStore((state) => state.simulationDateMs);
-
   return (
     <RocketTransferPreview
       destination={destination}
@@ -122,6 +134,7 @@ const RocketEvidenceSummary = ({ profile }: { profile: RocketProfile }) => (
 // live telemetry. The header and the action buttons stay pinned while the selects
 // and telemetry scroll, so Launch/Reset are always reachable on short viewports.
 export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClose }: RocketLauncherPanelProps) => {
+  const panelBodyRef = useRef<HTMLDivElement>(null);
   const panelOpen = useRocketStore((state) => state.panelOpen);
   const selectedRocketId = useRocketStore((state) => state.selectedRocketId);
   const selectedDestinationId = useRocketStore((state) => state.selectedDestinationId);
@@ -147,16 +160,100 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   const beginRocketWatch = useUiStore((state) => state.beginRocketWatch);
   const endRocketWatch = useUiStore((state) => state.endRocketWatch);
   const scenarioActive = useScenarioStore((state) => state.activeScenarioId !== null);
+  // Transfer planning is much heavier than the live telemetry readout. Sampling the
+  // clock at a fixed wall-clock cadence keeps a year-per-second playback rate from
+  // forcing a full estimate + panel reconciliation on every animation frame.
+  const [sampledPlanningDateMs, setSampledPlanningDateMs] = useState(
+    () => useTimeStore.getState().simulationDateMs,
+  );
+  useEffect(() => {
+    if (!(panelOpen || forceOpen) || activeRocketId) {
+      return;
+    }
 
-  if (!panelOpen && !forceOpen) {
-    return null;
-  }
+    const refreshPlanningDate = () => {
+      const nextDateMs = useTimeStore.getState().simulationDateMs;
+      setSampledPlanningDateMs((currentDateMs) => currentDateMs === nextDateMs ? currentDateMs : nextDateMs);
+    };
+    refreshPlanningDate();
+    const timer = window.setInterval(refreshPlanningDate, ROCKET_PLANNING_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [activeRocketId, forceOpen, panelOpen]);
+  const planningDateMs = activeRocketId
+    ? useTimeStore.getState().simulationDateMs
+    : sampledPlanningDateMs;
 
   const selected = rocketsById.get(selectedRocketId) ?? rocketCatalog[0];
   const selectedDestination = destinationsById.get(selectedDestinationId) ?? rocketDestinations[0];
   const active = activeRocketId ? rocketsById.get(activeRocketId) : undefined;
   const activeDestination = activeDestinationId ? destinationsById.get(activeDestinationId) ?? null : null;
   const effectiveMissionMode = resolveMissionModeForDestination(selectedMissionMode, selectedDestination.bodyId);
+  const selectedBody = selectedDestination.bodyId ? bodiesById.get(selectedDestination.bodyId) : undefined;
+  const selectedTransferEstimate =
+    (panelOpen || forceOpen) && effectiveMissionMode !== "direct" && selectedBody
+      ? estimateTransfer(
+          selectedBody,
+          bodiesById,
+          planningDateMs,
+          selected,
+          selectedBody.type === "moon" || effectiveMissionMode !== "lambert" ? "hohmann" : "lambert",
+        )
+      : null;
+  const predictedIntercept = selectedBody
+    ? transferHasPredictedIntercept(selectedTransferEstimate, selectedBody.physical.radiusKm)
+    : false;
+  const captureAvailable =
+    effectiveMissionMode !== "direct" && selectedBody
+      ? transferCaptureAvailable(selectedTransferEstimate, selectedBody.physical.radiusKm)
+      : false;
+  const effectiveArrivalMode = captureAvailable ? selectedArrivalMode : "flyby";
+  const predictedHohmannMiss =
+    effectiveMissionMode === "hohmann" && selectedTransferEstimate !== null && !predictedIntercept;
+  const directPlanningView =
+    (panelOpen || forceOpen) && effectiveMissionMode === "direct"
+      ? getCachedRocketView(
+          selected,
+          planningDateMs,
+          planningDateMs,
+          useScaleStore.getState().mode,
+          selectedDestination,
+          effectiveMissionMode,
+          selectedLaunchMode,
+          effectiveArrivalMode,
+        )
+      : null;
+  const plannedMissionDurationSeconds =
+    selectedTransferEstimate?.transferTimeSeconds ?? directPlanningView?.destination?.etaSeconds ?? null;
+  const plannedPlayback = recommendRocketPlayback(plannedMissionDurationSeconds);
+
+  useEffect(() => {
+    if (
+      (panelOpen || forceOpen) &&
+      effectiveMissionMode !== "direct" &&
+      selectedArrivalMode === "capture" &&
+      !captureAvailable
+    ) {
+      selectArrivalMode("flyby");
+    }
+  }, [
+    captureAvailable,
+    effectiveMissionMode,
+    forceOpen,
+    panelOpen,
+    selectArrivalMode,
+    selectedArrivalMode,
+  ]);
+
+  useEffect(() => {
+    if (activeRocketId && launchDateMs !== null && panelBodyRef.current) {
+      panelBodyRef.current.scrollTop = 0;
+    }
+  }, [activeRocketId, launchDateMs]);
+
+  if (!panelOpen && !forceOpen) {
+    return null;
+  }
+
   const destinationGroups = destinationGroupOrder
     .map((group) => ({
       group,
@@ -202,6 +299,8 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
       return;
     }
 
+    // The preview is intentionally sampled, but launch intent is not: recompute from
+    // the exact click instant and downgrade an impossible capture to flyby below.
     const launchDate = useTimeStore.getState().simulationDateMs;
     const view = getCachedRocketView(
       selected,
@@ -213,13 +312,20 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
       selectedLaunchMode,
       selectedArrivalMode,
     );
-    beginRocketWatch();
+    const launchArrivalMode =
+      effectiveMissionMode !== "direct" && selectedArrivalMode === "capture" && !view.transfer?.captureAvailable
+        ? "flyby"
+        : selectedArrivalMode;
+    const missionDurationSeconds =
+      view.transfer?.estimate.transferTimeSeconds ?? view.destination?.etaSeconds ?? null;
+    beginRocketWatch(missionDurationSeconds);
+    useTimeStore.getState().setSimulationDateMs(launchDate);
     launch(
       selected.id,
       selectedDestination.id,
       effectiveMissionMode,
       selectedLaunchMode,
-      selectedArrivalMode,
+      launchArrivalMode,
       launchDate,
     );
     followRocket(view.scenePosition);
@@ -260,17 +366,46 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
   };
 
   const selectedMissionLabel = rocketMissionModes.find((option) => option.id === effectiveMissionMode)?.label ?? "Mission";
-  const selectedArrivalOption = rocketArrivalModes.find((option) => option.id === selectedArrivalMode) ?? rocketArrivalModes[0];
+  const selectedArrivalOption = rocketArrivalModes.find((option) => option.id === effectiveArrivalMode) ?? rocketArrivalModes[0];
   const launchLabel = !selectedDestination.bodyId
     ? "Preview free flight"
-    : `Preview ${selectedMissionLabel.toLowerCase()} to ${selectedDestination.label}`;
+    : predictedHohmannMiss
+      ? `Preview predicted miss of ${selectedDestination.label}`
+      : `Preview ${selectedMissionLabel.toLowerCase()} to ${selectedDestination.label}`;
+  const missRecovery = selectedBody?.type === "moon"
+    ? "Scrub to another launch date."
+    : "Choose Lambert intercept or scrub to another launch date.";
+  const captureUnavailableNote = selectedTransferEstimate && !predictedIntercept
+    ? `Capture unavailable: this trajectory misses ${selectedDestination.label} by ${formatDistance(selectedTransferEstimate.arrivalMissDistanceKm)}. ${missRecovery}`
+    : "Capture unavailable because this trajectory has no valid intercept and finite arrival burn.";
   const conceptNote = <p className="rocket-note rocket-concept-note">Educational concept preview, not mission planning.</p>;
   const panelActions = (
     <div className="rocket-panel-actions">
-      <button type="button" className="rocket-launch-button" onClick={handleLaunch} disabled={scenarioActive}>
+      <button
+        type="button"
+        className={`rocket-launch-button${predictedHohmannMiss ? " predicted-miss" : ""}`}
+        onClick={handleLaunch}
+        disabled={scenarioActive}
+      >
         <Rocket size={15} />
-        {scenarioActive ? "Exit scenario to launch" : active ? "Restart preview" : launchLabel}
+        {scenarioActive
+          ? "Exit scenario to launch"
+          : active
+            ? "Restart from current date"
+            : launchLabel}
       </button>
+      {!scenarioActive && predictedHohmannMiss && selectedTransferEstimate && (
+        <p className="rocket-launch-advisory predicted-miss">
+          Current Hohmann window misses by {formatDistance(selectedTransferEstimate.arrivalMissDistanceKm)}. Capture is
+          unavailable; {missRecovery.charAt(0).toLowerCase() + missRecovery.slice(1)}
+        </p>
+      )}
+      {!scenarioActive && plannedPlayback && (
+        <p className="rocket-launch-advisory">
+          Runs forward at {formatRocketPlaybackRate(plannedPlayback)} — about {Math.round(plannedPlayback.estimatedRealSeconds)}s
+          to {predictedHohmannMiss ? "closest approach" : "encounter"}, then pauses. Your clock is restored on exit.
+        </p>
+      )}
       {active && (
         <button
           type="button"
@@ -339,9 +474,11 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
                 key={option.id}
                 type="button"
                 role="radio"
-                aria-checked={selectedArrivalMode === option.id}
+                aria-checked={effectiveArrivalMode === option.id}
                 aria-describedby="rocket-arrival-note"
-                className={selectedArrivalMode === option.id ? "selected" : ""}
+                className={effectiveArrivalMode === option.id ? "selected" : ""}
+                disabled={option.id === "capture" && !captureAvailable}
+                title={option.id === "capture" && !captureAvailable ? captureUnavailableNote : undefined}
                 onClick={() => selectArrivalMode(option.id)}
               >
                 {option.label}
@@ -349,7 +486,7 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
             ))}
           </div>
           <p id="rocket-arrival-note" className="rocket-note">
-            {selectedArrivalOption.note}
+            {!captureAvailable ? captureUnavailableNote : selectedArrivalOption.note}
           </p>
         </div>
       )}
@@ -383,11 +520,16 @@ export const RocketLauncherPanel = ({ forceOpen = false, embedded = false, onClo
       {embedded && conceptNote}
       {embedded && panelActions}
 
-      <div className="rocket-panel-body">
+      <div ref={panelBodyRef} className="rocket-panel-body">
         {!embedded && conceptNote}
 
         {!active && effectiveMissionMode !== "direct" && selectedDestination.bodyId && (
-          <PendingTransferPreview destination={selectedDestination} missionMode={effectiveMissionMode} profile={selected} />
+          <PendingTransferPreview
+            destination={selectedDestination}
+            launchDateMs={planningDateMs}
+            missionMode={effectiveMissionMode}
+            profile={selected}
+          />
         )}
 
         {/* When a rocket is active, telemetry is the priority — show it first so the

@@ -1,4 +1,4 @@
-import { Pause, Play, SlidersHorizontal, Skull, X } from "lucide-react";
+import { FlaskConical, Pause, Play, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { DAY_SECONDS } from "../data/constants";
 import { bodiesById } from "../data";
@@ -120,7 +120,7 @@ export const formatScenarioElapsed = (seconds: number) => {
   return `${(seconds / 3_600).toFixed(1)} h`;
 };
 
-// The Doomsday control surface — the "watch and play" half of the scenario system.
+// The what-if control surface — the "watch and play" half of the scenario system.
 // Reused verbatim in the desktop dock and the mobile bottom sheet.
 const ScenarioControls = ({ onStart }: { onStart: (scenarioId: string) => void }) => {
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
@@ -143,8 +143,8 @@ const ScenarioControls = ({ onStart }: { onStart: (scenarioId: string) => void }
     return (
       <div className="doomsday-controls">
         <p className="doomsday-intro">
-          Hand the solar system to a live gravity simulation and watch it come apart. Pick a scenario — tweak the
-          sliders to go off-script. Exit any time to restore the real system.
+          Run an isolated gravity experiment and explore an extreme event. Adjust its assumptions, then exit at any
+          time to restore the baseline solar system.
         </p>
         <ul className="doomsday-list">
           {SCENARIOS.map((scenario) => (
@@ -372,14 +372,14 @@ export const ScenarioPanel = () => {
 
   const launchLabel = (
     <>
-      <Skull size={14} aria-hidden /> Doomsday
+      <FlaskConical size={14} aria-hidden /> What-if lab
       {activeScenarioId ? <span className="doomsday-live-dot" aria-hidden /> : null}
     </>
   );
   const activeScenarioName = activeScenarioId ? scenarioById.get(activeScenarioId)?.name : undefined;
   const launchAriaLabel = activeScenarioId
-    ? `${activeScenarioName ?? "Doomsday scenario"} is ${scenarioStatus}. Open scenario controls`
-    : "Open Doomsday scenarios";
+    ? `${activeScenarioName ?? "What-if scenario"} is ${scenarioStatus}. Open scenario controls`
+    : "Open what-if scenarios";
 
   if (isMobile) {
     return (
@@ -407,8 +407,8 @@ export const ScenarioPanel = () => {
           open={activeSheet === "scenario"}
           onClose={closeSheet}
           id="doomsday-sheet"
-          label="Doomsday scenarios"
-          title={activeScenarioName ?? "Doomsday"}
+          label="What-if scenarios"
+          title={activeScenarioName ?? "What-if lab"}
         >
           <ScenarioControls onStart={startScenario} />
         </BottomSheet>
@@ -427,7 +427,7 @@ export const ScenarioPanel = () => {
   return (
     <div className={`doomsday-dock${rocketPanelOpen ? " rocket-open" : ""}`}>
       {doomsdayPanelOpen && (
-        <section id="doomsday-panel-region" className="doomsday-panel" aria-label="Doomsday scenarios">
+        <section id="doomsday-panel-region" className="doomsday-panel" aria-label="What-if scenarios">
           <ScenarioControls onStart={startScenario} />
         </section>
       )}

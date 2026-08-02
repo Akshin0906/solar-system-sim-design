@@ -130,6 +130,11 @@ select:focus:not(:focus-visible) {
   inset: 0;
 }
 
+.solar-canvas:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
+}
+
 .ui-layer {
   position: absolute;
   inset: 0;
@@ -204,24 +209,10 @@ select:focus:not(:focus-visible) {
 }
 
 .top-actions,
-.view-buttons,
 .inspector-actions {
   display: flex;
   align-items: center;
   gap: 7px;
-}
-
-.free-look-pill {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 9px;
-  border: 1px solid rgba(217, 173, 105, 0.36);
-  border-radius: 7px;
-  background: rgba(217, 173, 105, 0.12);
-  color: #f3d49a;
-  font-size: 11px;
-  font-weight: 640;
 }
 
 .icon-button {
@@ -265,38 +256,56 @@ select:focus:not(:focus-visible) {
 
 .tooltip-trigger {
   position: relative;
+  display: inline-flex;
 }
 
-.tooltip-trigger::after {
+.tooltip-surface {
   position: absolute;
   left: 50%;
-  top: calc(100% + 9px);
+  top: 100%;
   z-index: 90;
   width: max-content;
   max-width: 220px;
+  padding-top: 9px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -4px);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease,
+    visibility 0s linear 120ms;
+  visibility: hidden;
+}
+
+.tooltip-bubble {
+  display: block;
   padding: 5px 8px;
   border: 1px solid var(--hairline-strong);
   border-radius: 6px;
   background: rgba(14, 14, 12, 0.94);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
   color: rgba(245, 241, 232, 0.9);
-  content: attr(data-tooltip);
   font-size: 11px;
   line-height: 1.2;
-  opacity: 0;
-  pointer-events: none;
   text-align: center;
-  transform: translate(-50%, -4px);
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease;
   white-space: normal;
 }
 
-.tooltip-trigger:hover::after,
-.tooltip-trigger:focus-visible::after {
+.tooltip-trigger[data-tooltip-visible="true"] .tooltip-surface {
   opacity: 1;
+  pointer-events: auto;
   transform: translate(-50%, 0);
+  transition-delay: 0s;
+  visibility: visible;
+}
+
+/* Pointer intent takes precedence over a previously keyboard-focused sibling. This keeps
+   two bubbles from occupying the same top-bar lane while preserving focus itself. */
+.top-actions:has(.tooltip-trigger:hover) .tooltip-trigger:not(:hover) .tooltip-surface {
+  opacity: 0;
+  pointer-events: none;
+  transition: none;
+  visibility: hidden;
 }
 
 .icon-button.subtle {
@@ -534,6 +543,12 @@ kbd {
   gap: 10px;
   padding: 10px;
   border-radius: var(--radius);
+}
+
+.camera-control-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 7px;
 }
 
 .restore-view-button {
@@ -860,6 +875,77 @@ option {
   min-height: 14px;
   margin: 0;
   text-align: center;
+}
+
+.view-layer-disclosure {
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.view-layer-disclosure summary {
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 22px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  color: rgba(245, 241, 232, 0.88);
+  cursor: pointer;
+  list-style: none;
+}
+
+.view-layer-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.view-layer-disclosure summary:hover {
+  background: rgba(245, 241, 232, 0.055);
+}
+
+.view-layer-summary-icon {
+  display: inline-grid;
+  place-items: center;
+  color: var(--cyan);
+}
+
+.view-layer-summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.view-layer-summary-copy strong,
+.view-layer-summary-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.view-layer-summary-copy strong {
+  font-size: 11px;
+  font-weight: 640;
+}
+
+.view-layer-summary-copy small {
+  color: var(--quiet);
+  font-size: 9.5px;
+}
+
+.view-layer-chevron {
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.view-layer-disclosure[open] .view-layer-chevron {
+  transform: rotate(180deg);
+}
+
+.view-layer-body {
+  display: grid;
+  gap: 8px;
+  padding: 0 8px 8px;
 }
 
 .object-inspector {
@@ -1629,12 +1715,13 @@ input[type="range"] {
   position: absolute;
   left: 50%;
   bottom: 86px;
-  display: inline-flex;
+  display: grid;
+  width: min(700px, calc(100vw - 32px));
+  grid-template-columns: max-content minmax(0, 1fr) 28px;
   align-items: center;
-  gap: 8px;
-  max-width: calc(100vw - 32px);
-  min-height: 34px;
-  padding: 6px 8px 6px 12px;
+  gap: 10px;
+  min-height: 50px;
+  padding: 7px 8px 7px 12px;
   pointer-events: auto;
   border: 1px solid rgba(143, 199, 204, 0.28);
   border-radius: var(--radius);
@@ -1645,17 +1732,65 @@ input[type="range"] {
   transform: translateX(-50%);
 }
 
-.discoverability-cue span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
+.discovery-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
 }
 
-.discoverability-cue button {
+.discovery-copy small {
+  color: var(--cyan);
+  font-size: 9.5px;
+  font-weight: 680;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.discovery-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discovery-actions {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.discovery-action {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(245, 241, 232, 0.055);
+  color: rgba(230, 247, 247, 0.9);
+  font-size: 10.5px;
+  font-weight: 620;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.discovery-action:hover,
+.discovery-action:focus-visible {
+  border-color: rgba(143, 199, 204, 0.44);
+  background: rgba(143, 199, 204, 0.13);
+}
+
+.discovery-close {
   display: inline-grid;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex: none;
   place-items: center;
   border: 1px solid transparent;
@@ -1665,8 +1800,8 @@ input[type="range"] {
   cursor: pointer;
 }
 
-.discoverability-cue button:hover,
-.discoverability-cue button:focus-visible {
+.discovery-close:hover,
+.discovery-close:focus-visible {
   border-color: var(--hairline-strong);
   background: rgba(245, 241, 232, 0.08);
 }
@@ -1799,7 +1934,7 @@ input[type="range"] {
 .rocket-panel {
   /* The scale/view stack ends at ~370px at 1280x720; keep this second
      left-rail surface below it and scroll its body in shorter viewports. */
-  --rocket-panel-top: 382px;
+  --rocket-panel-top: 318px;
   position: absolute;
   left: 16px;
   top: var(--rocket-panel-top);
@@ -1811,6 +1946,10 @@ input[type="range"] {
   border-radius: var(--radius);
   max-height: calc(var(--app-viewport-height) - var(--rocket-panel-top) - 16px);
   overflow: hidden;
+}
+
+.scale-controls:has(.view-layer-disclosure[open]) ~ .rocket-panel {
+  --rocket-panel-top: 382px;
 }
 
 .rocket-panel-body {
@@ -2008,6 +2147,14 @@ input[type="range"] {
 .rocket-arrival-segments button:hover {
   border-color: var(--hairline-strong);
   color: rgba(245, 241, 232, 0.9);
+}
+
+.rocket-arrival-segments button:disabled {
+  border-color: var(--hairline);
+  background: rgba(245, 241, 232, 0.025);
+  color: var(--quiet);
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .rocket-arrival-segments button.selected {
@@ -2300,6 +2447,16 @@ input[type="range"] {
   background: rgba(217, 173, 105, 0.26);
 }
 
+.rocket-launch-button.predicted-miss {
+  border-color: rgba(201, 116, 92, 0.58);
+  background: rgba(201, 116, 92, 0.16);
+  color: #f2b29b;
+}
+
+.rocket-launch-button.predicted-miss:hover {
+  background: rgba(201, 116, 92, 0.24);
+}
+
 .rocket-launch-button:disabled {
   border-color: var(--hairline);
   background: rgba(245, 241, 232, 0.04);
@@ -2310,6 +2467,18 @@ input[type="range"] {
 .rocket-launch-button:active,
 .rocket-reset-button:active {
   transform: translateY(1px);
+}
+
+.rocket-launch-advisory {
+  margin: -2px 2px 0;
+  color: var(--quiet);
+  font-size: 10.5px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.rocket-launch-advisory.predicted-miss {
+  color: #e9a88f;
 }
 
 .rocket-reset-button {
@@ -2568,6 +2737,10 @@ input[type="range"] {
     min-height: 44px;
   }
 
+  .view-layer-disclosure summary {
+    min-height: 44px;
+  }
+
   .sheet .icon-button {
     width: 44px;
     height: 44px;
@@ -2585,13 +2758,34 @@ input[type="range"] {
   }
 
   .discoverability-cue {
-    bottom: calc(var(--mobile-control-bottom) + 72px);
-    width: min(340px, calc(100vw - 20px));
+    bottom: calc(var(--mobile-control-bottom) + 142px);
+    width: min(430px, calc(100vw - 20px));
+    grid-template-columns: minmax(0, 1fr) 44px;
+    gap: 7px 8px;
+    padding: 9px;
   }
 
-  .discoverability-cue button {
+  .discovery-actions {
+    grid-column: 1 / -1;
+  }
+
+  .discovery-action,
+  .discovery-close {
+    min-height: 44px;
+  }
+
+  .discovery-close {
     width: 44px;
     height: 44px;
+  }
+
+  /* The first-run tray already offers the primary exploration paths in this band.
+     Temporarily remove the inactive Doomsday launcher so selecting a body cannot lift
+     it into the tray; an active scenario HUD is never hidden by this rule. */
+  .ui-layer:has(.discoverability-cue) .doomsday-launch {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
   }
 
   .doomsday-launch {

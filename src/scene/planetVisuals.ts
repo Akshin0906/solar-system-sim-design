@@ -322,11 +322,33 @@ const ringBandAlpha = (bodyId: string, bandPosition: number, seed: number) => {
   return clamp((0.46 + waves) * cassiniGap * enckeGap, 0.035, 0.78);
 };
 
+// Procedural maps are fallbacks and close-up enhancements, not source imagery. Keep their
+// pixel budgets modest so selecting an untextured world cannot monopolize the UI thread.
+const SURFACE_STAR_WIDTH = 256;
+const SURFACE_STAR_HEIGHT = 128;
+const SURFACE_MOON_WIDTH = 256;
+const SURFACE_MOON_HEIGHT = 128;
+const SURFACE_OTHER_WIDTH = 384;
+const SURFACE_OTHER_HEIGHT = 192;
+const BUMP_MOON_WIDTH = 192;
+const BUMP_MOON_HEIGHT = 96;
+const BUMP_OTHER_WIDTH = 256;
+const BUMP_OTHER_HEIGHT = 128;
+const ROUGHNESS_MOON_WIDTH = 128;
+const ROUGHNESS_MOON_HEIGHT = 64;
+const ROUGHNESS_OTHER_WIDTH = 192;
+const ROUGHNESS_OTHER_HEIGHT = 96;
+const IMAGE_ROUGHNESS_WIDTH = 256;
+const IMAGE_ROUGHNESS_HEIGHT = 128;
+const CLOUD_WIDTH = 384;
+const CLOUD_HEIGHT = 192;
+const RING_SIZE = 256;
+
 export const createSurfaceTexture = (body: CelestialBody) => {
   const profile = getVisualProfile(body);
   const canvas = document.createElement("canvas");
-  const width = body.type === "star" ? 512 : body.type === "moon" ? 512 : 768;
-  const height = body.type === "star" ? 256 : body.type === "moon" ? 256 : 384;
+  const width = body.type === "star" ? SURFACE_STAR_WIDTH : body.type === "moon" ? SURFACE_MOON_WIDTH : SURFACE_OTHER_WIDTH;
+  const height = body.type === "star" ? SURFACE_STAR_HEIGHT : body.type === "moon" ? SURFACE_MOON_HEIGHT : SURFACE_OTHER_HEIGHT;
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
@@ -428,8 +450,8 @@ export const createBodyBumpTexture = (body: CelestialBody) => {
   }
 
   const canvas = document.createElement("canvas");
-  const width = body.type === "moon" ? 384 : 512;
-  const height = body.type === "moon" ? 192 : 256;
+  const width = body.type === "moon" ? BUMP_MOON_WIDTH : BUMP_OTHER_WIDTH;
+  const height = body.type === "moon" ? BUMP_MOON_HEIGHT : BUMP_OTHER_HEIGHT;
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
@@ -472,8 +494,8 @@ export const createBodyRoughnessTexture = (body: CelestialBody) => {
   }
 
   const canvas = document.createElement("canvas");
-  const width = body.type === "moon" ? 256 : 384;
-  const height = width / 2;
+  const width = body.type === "moon" ? ROUGHNESS_MOON_WIDTH : ROUGHNESS_OTHER_WIDTH;
+  const height = body.type === "moon" ? ROUGHNESS_MOON_HEIGHT : ROUGHNESS_OTHER_HEIGHT;
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
@@ -528,8 +550,8 @@ export const createImageDerivedRoughnessTexture = (
   }
 
   const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 256;
+  canvas.width = IMAGE_ROUGHNESS_WIDTH;
+  canvas.height = IMAGE_ROUGHNESS_HEIGHT;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) {
     return undefined;
@@ -570,8 +592,8 @@ export const createCloudTexture = (body: CelestialBody) => {
   }
 
   const canvas = document.createElement("canvas");
-  const width = 768;
-  const height = 384;
+  const width = CLOUD_WIDTH;
+  const height = CLOUD_HEIGHT;
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
@@ -618,7 +640,7 @@ export const createRingTexture = (body: CelestialBody, innerToOuterRatio: number
   }
 
   const canvas = document.createElement("canvas");
-  const size = 512;
+  const size = RING_SIZE;
   canvas.width = size;
   canvas.height = size;
   const context = canvas.getContext("2d");

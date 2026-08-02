@@ -9,7 +9,10 @@ type RenderQualityState = {
 export const clampRenderQuality = (factor: number) => MathUtils.clamp(factor, 0.5, 1);
 
 export const useRenderQualityStore = create<RenderQualityState>((set) => ({
-  measuredFactor: 1,
+  // Start conservatively and let sustained measured throughput earn expensive DPR and
+  // post-processing. Assuming top quality before the first sample can make the first
+  // software-rendered frame so costly that the monitor never gets a chance to adapt.
+  measuredFactor: 0.5,
   setMeasuredFactor: (measuredFactor) => set({ measuredFactor: clampRenderQuality(measuredFactor) }),
 }));
 
@@ -121,6 +124,22 @@ export const createSphereLodGeometries = (compact: boolean): SphereLodGeometrySe
   medium: new SphereGeometry(1, compact ? 26 : 32, compact ? 16 : 20),
   high: new SphereGeometry(1, compact ? 48 : 64, compact ? 30 : 40),
 });
+
+let sharedStandardSphereLods: SphereLodGeometrySet | undefined;
+let sharedCompactSphereLods: SphereLodGeometrySet | undefined;
+
+// Every body's unit sphere has identical vertex data. Sharing the two authored LOD sets
+// avoids constructing and uploading dozens of duplicate high-resolution buffers during
+// the first frame; per-body scale still supplies the visible radius.
+export const getSharedSphereLodGeometries = (compact: boolean): SphereLodGeometrySet => {
+  if (compact) {
+    sharedCompactSphereLods ??= createSphereLodGeometries(true);
+    return sharedCompactSphereLods;
+  }
+
+  sharedStandardSphereLods ??= createSphereLodGeometries(false);
+  return sharedStandardSphereLods;
+};
 
 export const disposeSphereLodGeometries = (geometries: SphereLodGeometrySet) => {
   geometries.low.dispose();

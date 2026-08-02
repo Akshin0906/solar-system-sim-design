@@ -37,6 +37,13 @@ export const PostFx = () => {
   const base = activeScenarioId ? (SCENARIO_BLOOM[activeScenarioId] ?? 1.15) : 0.55;
   const intensity = base * (isMobile ? 0.7 : 1) * (underLoad ? 0.82 : 1);
 
+  // The ordinary scene remains fully readable without cinematic bloom/vignette. Avoid
+  // allocating the offscreen composer until measured throughput proves it is affordable;
+  // active scenarios retain a reduced pass because their luminous effects carry meaning.
+  if (underLoad && !activeScenarioId) {
+    return null;
+  }
+
   return (
     <EffectComposer multisampling={isMobile || underLoad ? 0 : 2}>
       <Bloom

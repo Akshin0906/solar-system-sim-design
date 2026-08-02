@@ -31,7 +31,7 @@ export const AdaptiveQuality = () => {
 
   useEffect(
     () => () => {
-      setMeasuredFactor(1);
+      setMeasuredFactor(0.5);
       setDpr(initialDpr);
     },
     [initialDpr, setDpr, setMeasuredFactor],

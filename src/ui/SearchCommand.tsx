@@ -2,6 +2,7 @@ import {
   CircleDot,
   Crosshair,
   Eye,
+  FlaskConical,
   Grid3X3,
   LocateFixed,
   Orbit,
@@ -10,7 +11,6 @@ import {
   Rocket,
   Route,
   Search,
-  Skull,
   TimerReset,
   X,
 } from "lucide-react";
@@ -109,7 +109,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
           : isPaused
             ? "Play simulation"
             : "Pause simulation",
-        subtitle: activeScenarioId ? "Toggle the active Doomsday scenario" : "Toggle the time transport",
+        subtitle: activeScenarioId ? "Toggle the active what-if scenario" : "Toggle the time transport",
         keywords: "play pause time transport space",
         icon:
           (activeScenarioId ? scenarioStatus === "paused" : isPaused) ? <Play size={16} /> : <Pause size={16} />,
@@ -152,10 +152,10 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
       {
         id: "doomsday",
         group: "Actions",
-        title: "Doomsday scenarios",
-        subtitle: "Run a live catastrophe simulation",
+        title: "What-if lab",
+        subtitle: "Explore extreme gravity experiments",
         keywords: "doomsday scenario catastrophe red giant black hole rogue impact collision destroy apocalypse",
-        icon: <Skull size={16} />,
+        icon: <FlaskConical size={16} />,
         action: () => {
           if (isMobile) {
             openSheet("scenario");
@@ -469,7 +469,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
           aria-controls="command-results"
           aria-activedescendant={visibleItems[safeActiveIndex] ? `command-item-${visibleItems[safeActiveIndex].id}` : undefined}
         />
-        <button className="icon-button subtle" type="button" onClick={onClose} data-tooltip="Close search" aria-label="Close search">
+        <button className="icon-button subtle" type="button" onClick={onClose} aria-label="Close search">
           <X size={15} />
         </button>
       </div>
@@ -495,6 +495,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
                 className={`search-result command-result ${active ? "active" : ""} ${item.active ? "selected" : ""}`.trim()}
                 type="button"
                 role="option"
+                tabIndex={-1}
                 ref={active ? activeItemRef : undefined}
                 aria-selected={active}
                 onMouseEnter={() => setActiveIndex(currentIndex)}
@@ -506,6 +507,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
                 <span className="command-result-copy">
                   <span>{item.title}</span>
                   <small>{item.subtitle}</small>
+                  {item.active && <span className="sr-only">Currently active.</span>}
                 </span>
                 {item.shortcut && <kbd>{item.shortcut}</kbd>}
                 {item.active && <span className="command-active-dot" aria-hidden />}

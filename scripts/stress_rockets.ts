@@ -12,6 +12,11 @@ import {
   rocketMissionModes,
 } from "../src/features/rockets/missionOptions";
 import { computeRocketView } from "../src/features/rockets/rocketState";
+import {
+  recommendRocketPlayback,
+  transferCaptureAvailable,
+  transferHasPredictedIntercept,
+} from "../src/features/rockets/rocketPlayback";
 import { estimateTransfer, sampleTransferArcKm } from "../src/features/rockets/transferModel";
 import { sampleFlight } from "../src/features/rockets/flightModel";
 import type { ScaleMode } from "../src/simulation/units";
@@ -216,6 +221,37 @@ console.log("== behavioural probes ==");
   if (capture.status !== "arrived") note(`Lambert capture should attach after a valid burn, got ${capture.status}`);
   if (!capture.transfer?.captureApplied) note("Capture should apply the displayed arrival burn at a valid intercept");
   if (capture.destination?.distanceToTargetKm !== 0) note("Captured mission should remain attached to the destination");
+}
+
+// 4g. Mission watch should choose a readable playback duration and keep
+// predicted misses distinct from intercepts before launch.
+{
+  const presetPlayback = recommendRocketPlayback(12 * 86_400);
+  const outerPlanetPlayback = recommendRocketPlayback(30.6 * 365.256 * 86_400);
+  if (presetPlayback?.preset !== "day" || Math.abs(presetPlayback.estimatedRealSeconds - 12) > 1e-9) {
+    note(`12-day watch should use the 1 day/sec preset, got ${JSON.stringify(presetPlayback)}`);
+  }
+  if (
+    !outerPlanetPlayback ||
+    outerPlanetPlayback.estimatedRealSeconds < 8 ||
+    outerPlanetPlayback.estimatedRealSeconds > 15
+  ) {
+    note(`outer-planet watch should complete in the comfort window, got ${JSON.stringify(outerPlanetPlayback)}`);
+  }
+
+  const neptune = bodiesById.get("neptune")!;
+  const profile = rocketsById.get("saturn-v")!;
+  const hohmann = estimateTransfer(neptune, bodiesById, NOW, profile, "hohmann")!;
+  const lambert = estimateTransfer(neptune, bodiesById, NOW, profile, "lambert")!;
+  if (transferHasPredictedIntercept(hohmann, neptune.physical.radiusKm)) {
+    note("poor-window Neptune Hohmann should be classified as a predicted miss");
+  }
+  if (transferCaptureAvailable(hohmann, neptune.physical.radiusKm)) {
+    note("capture must be unavailable for a predicted Hohmann miss");
+  }
+  if (!transferCaptureAvailable(lambert, neptune.physical.radiusKm)) {
+    note("capture should remain available for a guaranteed Lambert intercept");
+  }
 }
 
 console.log("\n==== PROBLEMS (" + problems.length + ") ====");

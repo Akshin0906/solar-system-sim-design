@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useRocketStore } from "../features/rockets/rocketStore";
+import { recommendRocketPlayback } from "../features/rockets/rocketPlayback";
 import { useExperienceStore } from "../features/experiences/experienceStore";
 import { useScenarioStore } from "../scenarios/scenarioStore";
 import { useScaleStore } from "../simulation/scaleStore";
@@ -38,7 +39,7 @@ type UiState = {
   openDoomsdayPanel: () => void;
   closeDoomsdayPanel: () => void;
   toggleDoomsdayPanel: () => void;
-  beginRocketWatch: () => void;
+  beginRocketWatch: (missionDurationSeconds?: number | null) => void;
   endRocketWatch: () => void;
   restoreRecommendedView: (isMobile?: boolean) => void;
 };
@@ -50,7 +51,7 @@ type RocketClockSnapshot = Pick<
 
 let rocketClockSnapshot: RocketClockSnapshot | null = null;
 
-const beginRocketWatch = () => {
+const beginRocketWatch = (missionDurationSeconds?: number | null) => {
   // Rocket watch owns the camera and playback clock. End a guided tour first so
   // the rocket session snapshots the user's restored view, not a Director stop.
   useExperienceStore.getState().stop();
@@ -67,6 +68,16 @@ const beginRocketWatch = () => {
   }
 
   if (!time.transportLocked) {
+    // A mission launched while the global clock is reversed otherwise remains
+    // forever before T+0. Rocket watch temporarily owns the clock, including a
+    // duration-aware playback rate; endRocketWatch restores the exact snapshot.
+    time.setDirection(1);
+    const playback = recommendRocketPlayback(missionDurationSeconds);
+    if (playback?.preset) {
+      time.setPreset(playback.preset);
+    } else if (playback) {
+      time.setTimeScale(playback.timeScale);
+    }
     time.setPaused(false);
   }
 };

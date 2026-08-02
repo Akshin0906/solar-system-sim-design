@@ -11,6 +11,7 @@ import { commandKey } from "./shortcuts";
 import { useUiStore } from "./uiStore";
 import { useIsMobile } from "./useMediaQuery";
 import { ViewShareActions } from "../features/share/ViewShareControls";
+import { Tooltip } from "./Tooltip";
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
@@ -73,67 +74,71 @@ export const TopBar = () => {
       </div>
       <div className="top-actions">
         {!isMobile && <ViewShareActions />}
-        <button
-          ref={searchButtonRef}
-          className={`icon-button tooltip-trigger ${searchOpen ? "active" : ""}`}
-          type="button"
-          onClick={toggleSearch}
-          data-tooltip={`Search objects (/ or ${commandKey})`}
-          aria-label="Search objects"
-          aria-haspopup="dialog"
-          aria-expanded={searchOpen}
-          aria-controls={searchOpen ? SEARCH_DIALOG_ID : undefined}
-          aria-pressed={searchOpen}
-        >
-          <Search size={16} aria-hidden />
-        </button>
-        {isMobile && !guidedExperienceActive && (
+        <Tooltip label={`Search objects (/ or ${commandKey})`}>
           <button
-            className={`icon-button tooltip-trigger ${viewActive ? "active" : ""}`}
+            ref={searchButtonRef}
+            className={`icon-button ${searchOpen ? "active" : ""}`}
             type="button"
-            onClick={() => {
-              closeSearch();
-              closeHelp();
-              toggleSheet("view");
-            }}
-            data-tooltip="View settings"
-            aria-label="View settings"
+            onClick={toggleSearch}
+            aria-label="Search objects"
             aria-haspopup="dialog"
-            aria-expanded={viewActive}
-            aria-controls={viewActive ? VIEW_SHEET_ID : undefined}
-            aria-pressed={viewActive}
+            aria-expanded={searchOpen}
+            aria-controls={searchOpen ? SEARCH_DIALOG_ID : undefined}
+            aria-pressed={searchOpen}
           >
-            <SlidersHorizontal size={16} aria-hidden />
+            <Search size={16} aria-hidden />
           </button>
+        </Tooltip>
+        {isMobile && !guidedExperienceActive && (
+          <Tooltip label="View settings">
+            <button
+              className={`icon-button ${viewActive ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                closeSearch();
+                closeHelp();
+                toggleSheet("view");
+              }}
+              aria-label="View settings"
+              aria-haspopup="dialog"
+              aria-expanded={viewActive}
+              aria-controls={viewActive ? VIEW_SHEET_ID : undefined}
+              aria-pressed={viewActive}
+            >
+              <SlidersHorizontal size={16} aria-hidden />
+            </button>
+          </Tooltip>
         )}
         {!guidedExperienceActive && (
-          <button
-            className={`icon-button tooltip-trigger ${rocketActive ? "active" : ""}`}
-            type="button"
-            onClick={handleRocket}
-            data-tooltip="Rocket preview"
-            aria-label="Rocket preview"
-            aria-haspopup={isMobile ? "dialog" : undefined}
-            aria-expanded={rocketActive}
-            aria-controls={rocketActive ? rocketControlId : undefined}
-            aria-pressed={rocketActive}
-          >
-            <Rocket size={16} aria-hidden />
-          </button>
+          <Tooltip label="Rocket preview">
+            <button
+              className={`icon-button ${rocketActive ? "active" : ""}`}
+              type="button"
+              onClick={handleRocket}
+              aria-label="Rocket preview"
+              aria-haspopup={isMobile ? "dialog" : undefined}
+              aria-expanded={rocketActive}
+              aria-controls={rocketActive ? rocketControlId : undefined}
+              aria-pressed={rocketActive}
+            >
+              <Rocket size={16} aria-hidden />
+            </button>
+          </Tooltip>
         )}
-        <button
-          ref={helpButtonRef}
-          className={`icon-button tooltip-trigger ${helpOpen ? "active" : ""}`}
-          type="button"
-          onClick={toggleHelp}
-          data-tooltip="Help and shortcuts"
-          aria-label="Help and shortcuts"
-          aria-haspopup="dialog"
-          aria-expanded={helpOpen}
-          aria-controls={helpOpen ? HELP_POPOVER_ID : undefined}
-        >
-          <CircleHelp size={16} aria-hidden />
-        </button>
+        <Tooltip label="Help and shortcuts">
+          <button
+            ref={helpButtonRef}
+            className={`icon-button ${helpOpen ? "active" : ""}`}
+            type="button"
+            onClick={toggleHelp}
+            aria-label="Help and shortcuts"
+            aria-haspopup="dialog"
+            aria-expanded={helpOpen}
+            aria-controls={helpOpen ? HELP_POPOVER_ID : undefined}
+          >
+            <CircleHelp size={16} aria-hidden />
+          </button>
+        </Tooltip>
       </div>
       <SearchCommand open={searchOpen} onClose={closeSearch} restoreFocusRef={searchButtonRef} />
       <HelpPopover open={helpOpen} onClose={closeHelp} triggerRef={helpButtonRef} />
