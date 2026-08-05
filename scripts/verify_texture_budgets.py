@@ -6,6 +6,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src/scene/planetVisuals.ts").read_text(encoding="utf-8")
+STATIC_TEXTURE_DIR = ROOT / "public/textures"
 CONSTANTS = {
     name: int(value)
     for name, value in re.findall(r"const ([A-Z][A-Z0-9_]+) = ([0-9]+);", SOURCE)
@@ -23,6 +24,8 @@ TEXTURE_PAIRS = {
     "cloud": ("CLOUD_WIDTH", "CLOUD_HEIGHT"),
 }
 MAX_PIXELS_PER_TEXTURE = 384 * 192
+MAX_STATIC_TEXTURE_BYTES = 1_500_000
+MAX_STATIC_TEXTURE_TOTAL_BYTES = 5_000_000
 
 missing = {
     constant
@@ -51,7 +54,31 @@ if over_budget:
         f"Procedural textures exceed {MAX_PIXELS_PER_TEXTURE:,} pixels: {over_budget}"
     )
 
+static_texture_sizes = {
+    path.name: path.stat().st_size
+    for path in STATIC_TEXTURE_DIR.iterdir()
+    if path.is_file()
+}
+oversized_static_textures = {
+    name: size
+    for name, size in static_texture_sizes.items()
+    if size > MAX_STATIC_TEXTURE_BYTES
+}
+if oversized_static_textures:
+    raise AssertionError(
+        f"Static textures exceed {MAX_STATIC_TEXTURE_BYTES:,} bytes each: "
+        f"{oversized_static_textures}"
+    )
+
+static_texture_total = sum(static_texture_sizes.values())
+if static_texture_total > MAX_STATIC_TEXTURE_TOTAL_BYTES:
+    raise AssertionError(
+        f"Static textures total {static_texture_total:,} bytes, above the "
+        f"{MAX_STATIC_TEXTURE_TOTAL_BYTES:,}-byte offline-cache budget"
+    )
+
 print(
     "Procedural texture budgets verified "
-    f"({max(pixel_counts.values()):,} pixels maximum per generated map)."
+    f"({max(pixel_counts.values()):,} pixels maximum per generated map); "
+    f"static textures use {static_texture_total:,} bytes."
 )

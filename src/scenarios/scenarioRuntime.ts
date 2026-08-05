@@ -54,8 +54,6 @@ const EMPTY_STEP_RESULT: ScenarioRuntimeStepResult = {
   throttled: false,
 };
 
-export const runtimeInstanceId = () => current?.instanceId ?? null;
-
 // (Re)seed the integrator for a scenario instance. Called from the frame loop the
 // first time it notices the store's instanceId changed (start, or a param edit).
 export const startRuntime = (

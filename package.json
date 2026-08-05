@@ -2,6 +2,22 @@
   "name": "solar-system-sim-design",
   "version": "0.1.0",
   "private": true,
+  "description": "Interactive 3D solar-system simulator with orbital mechanics, scientific provenance, guided scenarios, and educational mission previews.",
+  "homepage": "https://akshin0906.github.io/solar-system-sim-design/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Akshin0906/solar-system-sim-design.git"
+  },
+  "keywords": [
+    "astronomy",
+    "orbital-mechanics",
+    "react",
+    "react-three-fiber",
+    "simulation",
+    "threejs",
+    "typescript",
+    "webgl"
+  ],
   "type": "module",
   "engines": {
     "node": ">=22"
@@ -10,10 +26,15 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build && node scripts/generate-service-worker.mjs",
     "build:github": "tsc --noEmit && vite build --mode github-pages && node scripts/generate-service-worker.mjs /solar-system-sim-design/",
-    "preview": "vite preview --host 127.0.0.1",
+    "preview": "node scripts/serve-built-app.mjs",
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "tsc --noEmit && npm run typecheck:scripts && npm run typecheck:tests",
     "typecheck:scripts": "tsc -p tsconfig.scripts.json --noEmit",
-    "test": "npm run typecheck:scripts && npm run verify:app && npm run verify:rockets && npm run verify:scenarios && npm run verify:service-worker",
+    "typecheck:tests": "tsc -p tsconfig.tests.json --noEmit",
+    "test": "npm run typecheck && npm run verify:app && npm run verify:rockets && npm run verify:scenarios && npm run verify:service-worker",
     "test:e2e": "playwright test",
+    "check": "npm run lint && npm test && npm run verify:math && npm run build",
+    "check:release": "npm run check && npm run test:e2e",
     "verify:app": "tsx scripts/verify_app_logic.ts",
     "verify:rockets": "tsx scripts/stress_rockets.ts",
     "verify:scenarios": "tsx scripts/verify_scenarios.ts",
@@ -24,21 +45,27 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
     "@react-three/postprocessing": "^3.0.4",
-    "@vitejs/plugin-react": "^6.0.2",
     "lucide-react": "^0.468.0",
     "postprocessing": "^6.39.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.170.0",
-    "typescript": "^5.7.2",
-    "vite": "^8.0.16",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
-    "tsx": "^4.22.4"
+    "@vitejs/plugin-react": "^6.0.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.5.0",
+    "tsx": "^4.22.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vite": "^8.2.0"
   }
 }

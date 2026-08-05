@@ -1,5 +1,24 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+const appPath = process.env.PLAYWRIGHT_APP_PATH ?? "/";
+const appUrl = (params?: URLSearchParams) => `${appPath}${params ? `?${params.toString()}` : ""}`;
+const runtimeProblems = new WeakMap<Page, string[]>();
+
+test.beforeEach(async ({ page }) => {
+  const problems: string[] = [];
+  runtimeProblems.set(page, problems);
+  page.on("console", (message) => {
+    if (message.type() === "error") {
+      problems.push(`console: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => problems.push(`pageerror: ${error.message}`));
+});
+
+test.afterEach(async ({ page }) => {
+  expect(runtimeProblems.get(page) ?? [], "the app should not emit console or page errors").toEqual([]);
+});
+
 const hideDiscoveryHint = async (page: Page) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("solar-system-sim.discoveryHintDismissed", "true");
@@ -8,7 +27,7 @@ const hideDiscoveryHint = async (page: Page) => {
 
 const openApp = async (page: Page) => {
   await hideDiscoveryHint(page);
-  await page.goto("/");
+  await page.goto(appUrl());
   await expect(page.locator("#main-controls")).toBeVisible();
   await expect(page.getByRole("img", { name: "Interactive 3D solar system simulation" })).toBeVisible();
 };
@@ -69,7 +88,7 @@ test.describe("desktop", () => {
   test.use({ viewport: { width: 1280, height: 720 } });
 
   test("offers action-first onboarding without obscuring the simulator", async ({ page }) => {
-    await page.goto("/");
+    await page.goto(appUrl());
     const gettingStarted = page.getByRole("complementary", { name: "Start exploring" });
     await expect(gettingStarted).toBeVisible();
     await expect(gettingStarted.getByRole("button", { name: "Find a world" })).toBeVisible();
@@ -80,7 +99,7 @@ test.describe("desktop", () => {
     await expect(gettingStarted).toHaveCount(0);
   });
 
-  test("renders the simulator controls and canvas", async ({ page }) => {
+  test("@smoke renders the simulator controls and canvas", async ({ page }) => {
     await openApp(page);
     await expect(page.locator(".top-bar")).toBeVisible();
     await expect(page.getByRole("complementary")).toContainText("Earth");
@@ -94,6 +113,29 @@ test.describe("desktop", () => {
       input.dispatchEvent(new Event("change", { bubbles: true }));
     });
     await expect(page.getByText("Orbit positions extrapolated beyond the validated 1800–2050 model")).toBeVisible();
+  });
+
+  test("installs the app shell and reloads while offline", async ({ page, context }) => {
+    await openApp(page);
+    const serviceWorkerReady = await page.evaluate(async () => {
+      if (!("serviceWorker" in navigator)) {
+        return false;
+      }
+      await navigator.serviceWorker.ready;
+      return true;
+    });
+    expect(serviceWorkerReady).toBe(true);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.locator("#main-controls")).toBeVisible();
+    await context.setOffline(true);
+    try {
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await expect(page.locator("#main-controls")).toBeVisible();
+      await expect(page.getByRole("img", { name: "Interactive 3D solar system simulation" })).toBeVisible();
+    } finally {
+      await context.setOffline(false);
+    }
   });
 
   test("keeps icon help hoverable and dismissible", async ({ page }) => {
@@ -179,7 +221,7 @@ test.describe("desktop", () => {
       orbits: "1",
       trails: "1",
     });
-    await page.goto(`/?${missionView.toString()}`);
+    await page.goto(appUrl(missionView));
     await expect(page.locator("#main-controls")).toBeVisible();
     await page.getByRole("button", { name: "Rocket preview" }).click();
     const rocket = page.getByRole("region", { name: "Rocket preview" });
@@ -209,14 +251,6 @@ test.describe("desktop", () => {
   });
 
   test("surfaces model trust, observer view, photo mode, and deep-linked view state", async ({ page }) => {
-    const consoleErrors: string[] = [];
-    const pageErrors: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error") {
-        consoleErrors.push(message.text());
-      }
-    });
-    page.on("pageerror", (error) => pageErrors.push(error.message));
     await hideDiscoveryHint(page);
     const params = new URLSearchParams({
       view: "1",
@@ -232,7 +266,7 @@ test.describe("desktop", () => {
       orbits: "1",
       trails: "0",
     });
-    await page.goto(`/?${params.toString()}`);
+    await page.goto(appUrl(params));
     await expect(page.locator("#main-controls")).toBeVisible();
     await expect(page.locator(".focus-title strong")).toHaveText("Saturn");
     await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Terminator observer");
@@ -265,7 +299,7 @@ test.describe("desktop", () => {
       ct: "1,2,3",
       cu: "0,1,0",
     });
-    await page.goto(`/?${freeView.toString()}`);
+    await page.goto(appUrl(freeView));
     await expect(page.locator("canvas.solar-canvas")).toHaveAttribute(
       "data-camera-pose",
       JSON.stringify({ position: [24, 18, 36], target: [1, 2, 3], up: [0, 1, 0] }),
@@ -289,7 +323,7 @@ test.describe("desktop", () => {
       ct: "9999,9999,9999",
       cu: "0,1,0",
     });
-    await page.goto(`/?${hostileView.toString()}`);
+    await page.goto(appUrl(hostileView));
     const recoveredCanvas = page.locator("canvas.solar-canvas");
     await expect(recoveredCanvas).toBeVisible();
     await expect(page.getByRole("combobox", { name: "Camera preset" })).toContainText("Solar system");
@@ -297,8 +331,6 @@ test.describe("desktop", () => {
       "data-camera-pose",
       JSON.stringify({ position: [10000, 10000, 10000], target: [9999, 9999, 9999], up: [0, 1, 0] }),
     );
-    expect(consoleErrors).toEqual([]);
-    expect(pageErrors).toEqual([]);
   });
 
   test("directs and restores authored scale and eclipse experiences", async ({ page }) => {
@@ -320,7 +352,7 @@ test.describe("desktop", () => {
       ct: "8,0,4",
       cu: "0,1,0",
     });
-    await page.goto(`/?${startingView.toString()}`);
+    await page.goto(appUrl(startingView));
     await expect(page.locator("#main-controls")).toBeVisible();
     const canvas = page.locator("canvas.solar-canvas");
     const composedPose = JSON.stringify({ position: [42, 24, 48], target: [8, 0, 4], up: [0, 1, 0] });
@@ -476,7 +508,7 @@ test.describe("mobile", () => {
 
   test("keeps first-run actions usable on a narrow phone", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 568 });
-    await page.goto("/");
+    await page.goto(appUrl());
     await expect(page.locator("#main-controls")).toBeVisible();
 
     const gettingStarted = page.getByRole("complementary", { name: "Start exploring" });

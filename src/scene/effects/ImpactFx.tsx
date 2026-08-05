@@ -26,7 +26,10 @@ const makeFlashTexture = () => {
   const size = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   g.addColorStop(0, "rgba(255,255,255,1)");
   g.addColorStop(0.25, "rgba(255,255,255,0.85)");
@@ -44,7 +47,10 @@ const makeShockTexture = () => {
   const size = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   g.addColorStop(0, "rgba(255,255,255,0)");
   g.addColorStop(0.62, "rgba(255,255,255,0)");
@@ -70,8 +76,8 @@ export const ImpactFx = ({ mode }: { mode: ScaleMode }) => {
 
   useEffect(
     () => () => {
-      flashTex.dispose();
-      shockTex.dispose();
+      flashTex?.dispose();
+      shockTex?.dispose();
     },
     [flashTex, shockTex],
   );
@@ -131,7 +137,7 @@ export const ImpactFx = ({ mode }: { mode: ScaleMode }) => {
     step(shocks, shockRefs.current, SHOCK_LIFE, 13, 0.85);
   });
 
-  return (
+  return flashTex && shockTex ? (
     <group>
       {Array.from({ length: POOL_FLASH }, (_, i) => (
         <sprite
@@ -170,5 +176,5 @@ export const ImpactFx = ({ mode }: { mode: ScaleMode }) => {
         </sprite>
       ))}
     </group>
-  );
+  ) : null;
 };

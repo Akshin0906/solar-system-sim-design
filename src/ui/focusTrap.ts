@@ -79,9 +79,8 @@ export const useFocusTrap = (
     return () => {
       window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", handleKeyDown, true);
-      const target = restoreFocusRef?.current ?? restoreTarget;
-      if (target && document.contains(target)) {
-        target.focus();
+      if (restoreTarget && document.contains(restoreTarget)) {
+        restoreTarget.focus();
       }
     };
   }, [active, containerRef, restoreFocusRef]);

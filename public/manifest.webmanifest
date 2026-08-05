@@ -1,8 +1,10 @@
 {
-  "name": "Solar System",
-  "short_name": "Solar",
-  "description": "A quiet interactive 3D solar system simulation.",
+  "name": "Solar System Simulator",
+  "short_name": "Solar System",
+  "description": "An interactive 3D solar system with orbital mechanics and scientific provenance.",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#090907",
   "theme_color": "#090907",
@@ -11,6 +13,18 @@
       "src": "icons/solar-icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/solar-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/solar-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]

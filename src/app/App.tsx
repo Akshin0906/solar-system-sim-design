@@ -108,7 +108,10 @@ const liveDateFormatter = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
 });
 
-type CanvasGlFactory = Extract<NonNullable<ComponentProps<typeof Canvas>["gl"]>, (defaultProps: any) => unknown>;
+type CanvasGlFactory = Extract<
+  NonNullable<ComponentProps<typeof Canvas>["gl"]>,
+  (...args: never[]) => unknown
+>;
 type CanvasRendererProps = Parameters<CanvasGlFactory>[0];
 
 const TimeDriver = () => {
@@ -250,8 +253,10 @@ const KeyboardShortcuts = () => {
 
 const SimulationLiveRegion = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
-  const simulationDateMs = useTimeStore((state) => state.simulationDateMs);
   const isPaused = useTimeStore((state) => state.isPaused);
+  // When playback is active this selector remains null, so the 30 Hz scene clock does
+  // not force a React reconciliation for text we intentionally do not announce.
+  const pausedSimulationDateMs = useTimeStore((state) => (state.isPaused ? state.simulationDateMs : null));
   const timeScale = useTimeStore((state) => state.timeScale);
   const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
   const scenarioStatus = useScenarioStore((state) => state.status);
@@ -260,7 +265,10 @@ const SimulationLiveRegion = () => {
   // While playing, omit the continuously-changing date: a polite live region that
   // re-announced every simulated day (up to thousands/sec at high time scales) would
   // overwhelm a screen reader. The date is announced when paused or after a scrub.
-  const dateSegment = isPaused ? ` · ${liveDateFormatter.format(new Date(simulationDateMs))}` : "";
+  const dateSegment =
+    isPaused && pausedSimulationDateMs !== null
+      ? ` · ${liveDateFormatter.format(new Date(pausedSimulationDateMs))}`
+      : "";
   const message = activeScenario
     ? `${selected?.name ?? "Object"} selected · ${activeScenario.name} scenario ${scenarioStatus}`
     : `${selected?.name ?? "Object"} selected${dateSegment} · ${isPaused ? "paused" : "playing"} · ${formatTimeScale(timeScale)}`;

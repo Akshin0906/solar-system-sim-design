@@ -2,7 +2,14 @@ import { defineConfig } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 4397);
 const baseURL = `http://127.0.0.1:${port}`;
+const appPath = process.env.PLAYWRIGHT_APP_PATH ?? "/";
 const isCI = Boolean(process.env.CI);
+const usePrebuiltArtifact = process.env.PLAYWRIGHT_PREBUILT === "1";
+const previewCommand = `node scripts/serve-built-app.mjs --port ${port}`;
+
+if (!appPath.startsWith("/") || !appPath.endsWith("/")) {
+  throw new Error("PLAYWRIGHT_APP_PATH must begin and end with '/'.");
+}
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -24,14 +31,29 @@ export default defineConfig({
   use: {
     baseURL,
     colorScheme: "dark",
-    reducedMotion: "reduce",
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
+  projects: [
+    {
+      name: "chromium",
+      use: { browserName: "chromium", contextOptions: { reducedMotion: "no-preference" } },
+    },
+    {
+      name: "chromium-reduced-motion",
+      grep: /@smoke/,
+      use: { browserName: "chromium", contextOptions: { reducedMotion: "reduce" } },
+    },
+    {
+      name: "webkit",
+      grep: /@smoke/,
+      use: { browserName: "webkit", contextOptions: { reducedMotion: "reduce" } },
+    },
+  ],
   webServer: {
-    command: `npm run build && npm run preview -- --port ${port}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    command: `${usePrebuiltArtifact ? "" : "npm run build && "}${previewCommand}`,
+    url: `${baseURL}${appPath}`,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === "1",
     timeout: 180_000,
   },
 });

@@ -9,8 +9,8 @@ type HelpPopoverProps = {
   triggerRef?: RefObject<HTMLButtonElement | null>;
 };
 
-// Opt-in shortcut/controls reference. Keeps the canvas free of tutorial text
-// (per DESIGN.md) while giving the previously-dead settings button a real job.
+// Opt-in shortcut/controls reference. Keeps the canvas free of persistent tutorial text
+// while giving the compact help button a clear job.
 export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);

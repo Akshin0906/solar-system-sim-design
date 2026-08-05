@@ -24,7 +24,10 @@ const makeGlowTexture = () => {
   const size = 128;
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   g.addColorStop(0, "rgba(255,255,255,1)");
   g.addColorStop(0.45, "rgba(255,255,255,0.55)");
@@ -44,7 +47,7 @@ export const MoltenRemnant = ({ mode }: { mode: ScaleMode }) => {
   const tex = useMemo(makeGlowTexture, []);
   const refs = useRef<(Sprite | null)[]>([]);
 
-  useEffect(() => () => tex.dispose(), [tex]);
+  useEffect(() => () => tex?.dispose(), [tex]);
 
   useFrame((state) => {
     const sprites = refs.current;
@@ -76,7 +79,7 @@ export const MoltenRemnant = ({ mode }: { mode: ScaleMode }) => {
     }
   });
 
-  return (
+  return tex ? (
     <group>
       {Array.from({ length: POOL }, (_, i) => (
         <sprite
@@ -90,5 +93,5 @@ export const MoltenRemnant = ({ mode }: { mode: ScaleMode }) => {
         </sprite>
       ))}
     </group>
-  );
+  ) : null;
 };

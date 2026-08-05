@@ -54,22 +54,28 @@ export const useTimeStore = create<TimeState>((set, get) => ({
   togglePaused: () => set((state) => (state.transportLocked ? state : { isPaused: !state.isPaused })),
   tick: (elapsedRealSeconds) => {
     const { isPaused, direction, timeScale } = get();
-    if (isPaused) {
+    if (isPaused || !Number.isFinite(elapsedRealSeconds) || elapsedRealSeconds <= 0) {
       return;
     }
 
     const boundedElapsedSeconds = clamp(elapsedRealSeconds, 0, MAX_TICK_REAL_SECONDS);
-    set((state) => ({
-      simulationDateMs: clampSimulationDateMs(
+    set((state) => {
+      const simulationDateMs = clampSimulationDateMs(
         state.simulationDateMs + boundedElapsedSeconds * timeScale * 1_000 * direction,
-      ),
-    }));
+      );
+      const reachedBoundary =
+        (direction < 0 && simulationDateMs === minSimulationDateMs) ||
+        (direction > 0 && simulationDateMs === maxSimulationDateMs);
+      return simulationDateMs === state.simulationDateMs && !reachedBoundary
+        ? state
+        : { simulationDateMs, isPaused: reachedBoundary ? true : state.isPaused };
+    });
   },
   stepDays: (days) => {
     // Respect the arrow-of-time direction so stepping stays consistent with playback
     // (tick() applies the same factor): in reverse mode the step controls also reverse.
     const { direction, transportLocked } = get();
-    if (transportLocked) {
+    if (transportLocked || !Number.isFinite(days) || days === 0) {
       return;
     }
     set((state) => ({
@@ -85,7 +91,7 @@ export const useTimeStore = create<TimeState>((set, get) => ({
     set({ preset: match.id, timeScale: match.secondsPerSecond });
   },
   setTimeScale: (timeScale) => {
-    if (get().transportLocked) {
+    if (get().transportLocked || !Number.isFinite(timeScale)) {
       return;
     }
     const boundedTimeScale = clampTimeScale(timeScale);
@@ -100,7 +106,7 @@ export const useTimeStore = create<TimeState>((set, get) => ({
     set({ timeScale: boundedTimeScale, preset: nearestPreset ? nearestPreset.id : "custom" });
   },
   setSimulationDateMs: (simulationDateMs) => {
-    if (get().transportLocked) {
+    if (get().transportLocked || !Number.isFinite(simulationDateMs)) {
       return;
     }
     set({ simulationDateMs: clampSimulationDateMs(simulationDateMs) });

@@ -394,12 +394,19 @@ export const InstrumentSelect = <T extends string,>({
                   id={`${listboxId}-option-${currentIndex}`}
                   className={`instrument-select-option ${selected ? "selected" : ""} ${active ? "active" : ""}`.trim()}
                   role="option"
+                  tabIndex={-1}
                   ref={active ? activeOptionRef : undefined}
                   aria-selected={selected}
                   aria-disabled={option.disabled || undefined}
                   onMouseEnter={() => setActiveIndex(currentIndex)}
                   onPointerDown={(event) => event.preventDefault()}
                   onClick={() => !option.disabled && selectOption(option)}
+                  onKeyDown={(event) => {
+                    if (!option.disabled && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      selectOption(option);
+                    }
+                  }}
                 >
                   <span className="instrument-select-option-mark" aria-hidden>
                     {selected && <Check size={14} />}

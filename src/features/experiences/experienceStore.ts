@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useRocketStore } from "../rockets/rocketStore";
-import { useScaleStore } from "../../simulation/scaleStore";
+import { useScaleStore, withoutPersistingViewPreferences } from "../../simulation/scaleStore";
 import { useSelectionStore } from "../../simulation/selectionStore";
 import { useTimeStore } from "../../simulation/timeStore";
 import type { LabelDensity, ScaleMode } from "../../simulation/units";
@@ -85,7 +85,7 @@ const restoreSnapshot = () => {
   }
 
   useTimeStore.setState(snapshot.time);
-  useScaleStore.setState(snapshot.scale);
+  withoutPersistingViewPreferences(() => useScaleStore.setState(snapshot.scale));
   useSelectionStore.getState().restoreViewSession("experience");
 };
 
@@ -101,15 +101,17 @@ const sessionConflict = () => {
 
 const configureExperiencePresentation = () => {
   const scale = useScaleStore.getState();
-  scale.setLabelDensity("minimal");
-  scale.setShowGrid(false);
-  scale.setShowOrbits(true);
-  scale.setShowTrails(false);
+  withoutPersistingViewPreferences(() => {
+    scale.setLabelDensity("minimal");
+    scale.setShowGrid(false);
+    scale.setShowOrbits(true);
+    scale.setShowTrails(false);
+  });
 };
 
 const applyDirectorStop = (stop: DirectorStop) => {
   useTimeStore.getState().setPaused(true);
-  useScaleStore.getState().setMode(stop.scaleMode);
+  withoutPersistingViewPreferences(() => useScaleStore.getState().setMode(stop.scaleMode));
   const selection = useSelectionStore.getState();
   selection.selectBody(stop.selectedBodyId);
   selection.setCameraMode(stop.cameraMode);
@@ -213,7 +215,7 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
     useSelectionStore.getState().beginViewSession("experience");
     configureExperiencePresentation();
     const stop = eclipseStop(event);
-    useScaleStore.getState().setMode(stop.scaleMode);
+    withoutPersistingViewPreferences(() => useScaleStore.getState().setMode(stop.scaleMode));
     const selection = useSelectionStore.getState();
     selection.selectBody(stop.selectedBodyId);
     selection.setCameraMode(stop.cameraMode);

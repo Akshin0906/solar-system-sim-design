@@ -114,7 +114,9 @@ for (const profile of rocketCatalog) {
               if (!finite(v.destination.distanceToTargetKm)) note(`dest dist NaN ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`);
               if (!finite(v.destination.closestApproachKm)) note(`closest NaN ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`);
               if (v.destination.closestApproachKm < -1e-6) note(`closest<0 ${profile.id}/${dest.id}/${mm.id}/${launchMode.id}/${mode}/dt=${dt}`);
-              v.destination.destScenePosition && checkVec("destScene", v.destination.destScenePosition);
+              if (v.destination.destScenePosition) {
+                checkVec("destScene", v.destination.destScenePosition);
+              }
             }
             if (v.transfer) {
               v.transfer.arcScenePoints.forEach((pt, i) => checkVec(`tArc ${dest.id}[${i}]`, pt));

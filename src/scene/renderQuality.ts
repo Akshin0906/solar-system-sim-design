@@ -140,9 +140,3 @@ export const getSharedSphereLodGeometries = (compact: boolean): SphereLodGeometr
   sharedStandardSphereLods ??= createSphereLodGeometries(false);
   return sharedStandardSphereLods;
 };
-
-export const disposeSphereLodGeometries = (geometries: SphereLodGeometrySet) => {
-  geometries.low.dispose();
-  geometries.medium.dispose();
-  geometries.high.dispose();
-};

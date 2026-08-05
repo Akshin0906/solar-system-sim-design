@@ -155,8 +155,3 @@ export const BODY_PHYSICAL_METADATA: ScientificMetadata = {
   sources: [NAIF_PCK_00011],
   omissions: ["Triaxial shape except where a future renderer consumes dedicated shape data"],
 };
-
-export const isModelWithinValidity = (metadata: ScientificMetadata, date: Date) => {
-  const time = date.getTime();
-  return time >= Date.parse(metadata.validity.from) && time <= Date.parse(metadata.validity.to);
-};

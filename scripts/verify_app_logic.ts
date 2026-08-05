@@ -19,7 +19,12 @@ import {
   fitDistanceForRadius,
 } from "../src/scene/cameraFraming";
 import { getBodyLabelScale } from "../src/scene/labelScaling";
-import { isOrbitModelExtrapolated, useTimeStore } from "../src/simulation/timeStore";
+import {
+  getDateMsFromEpochDays,
+  isOrbitModelExtrapolated,
+  SIMULATION_WINDOW_DAYS,
+  useTimeStore,
+} from "../src/simulation/timeStore";
 import { useScaleStore } from "../src/simulation/scaleStore";
 import { readBooleanPreference, writeBooleanPreference } from "../src/ui/safeStorage";
 import { rankSearchItems } from "../src/ui/searchRanking";
@@ -36,6 +41,7 @@ import {
   encodeSharedViewState,
   type SharedViewState,
 } from "../src/features/share/viewState";
+import { useExperienceStore } from "../src/features/experiences/experienceStore";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -1011,6 +1017,39 @@ const assertRocketWatchRestoresClock = () => {
   });
 };
 
+const assertTimeStoreRejectsInvalidInputsAndStopsAtBounds = () => {
+  const baseline = useTimeStore.getState();
+  const originalDate = baseline.simulationDateMs;
+  const originalScale = baseline.timeScale;
+
+  baseline.setSimulationDateMs(Number.NaN);
+  baseline.setTimeScale(Number.POSITIVE_INFINITY);
+  baseline.stepDays(Number.NaN);
+  baseline.tick(Number.NaN);
+  assert.equal(useTimeStore.getState().simulationDateMs, originalDate, "invalid dates must not poison the clock");
+  assert.equal(useTimeStore.getState().timeScale, originalScale, "invalid speeds must not poison playback");
+
+  const minimumDateMs = getDateMsFromEpochDays(-SIMULATION_WINDOW_DAYS);
+  useTimeStore.setState({
+    direction: -1,
+    isPaused: false,
+    simulationDateMs: minimumDateMs,
+    transportLocked: false,
+  });
+  useTimeStore.getState().tick(0.01);
+  assert.equal(useTimeStore.getState().simulationDateMs, minimumDateMs, "playback must stay inside its date window");
+  assert.equal(useTimeStore.getState().isPaused, true, "playback should pause when it reaches a date boundary");
+
+  useTimeStore.setState({
+    direction: baseline.direction,
+    isPaused: baseline.isPaused,
+    preset: baseline.preset,
+    simulationDateMs: baseline.simulationDateMs,
+    timeScale: baseline.timeScale,
+    transportLocked: baseline.transportLocked,
+  });
+};
+
 const assertShareableViewState = () => {
   const shared: SharedViewState = {
     bodyId: "saturn",
@@ -1091,6 +1130,21 @@ const assertShareableViewState = () => {
     assert.equal(persistedWrites.length, 0, "opening a shared link must not overwrite saved view preferences");
     useScaleStore.getState().setShowGrid(true);
     assert.equal(persistedWrites.length, 1, "an explicit view change should still persist preferences");
+
+    const writesBeforeExperience = persistedWrites.length;
+    useExperienceStore.getState().startTour("scale-revelation");
+    useExperienceStore.getState().nextStop();
+    assert.equal(
+      persistedWrites.length,
+      writesBeforeExperience,
+      "Director-authored view changes must remain temporary during a guided experience",
+    );
+    useExperienceStore.getState().stop();
+    assert.equal(
+      persistedWrites.length,
+      writesBeforeExperience,
+      "restoring a guided experience must not rewrite saved view preferences",
+    );
   } finally {
     if (originalWindow) {
       Object.defineProperty(globalThis, "window", originalWindow);
@@ -1120,6 +1174,7 @@ assertRepeatedBodySelectionIsObservable();
 assertExplicitNavigationAndViewSessions();
 assertRecommendedViewRecovery();
 assertRocketWatchRestoresClock();
+assertTimeStoreRejectsInvalidInputsAndStopsAtBounds();
 assertShareableViewState();
 
 console.log("App logic checks passed");
