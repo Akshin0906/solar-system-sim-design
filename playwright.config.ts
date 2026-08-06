@@ -54,7 +54,13 @@ export default defineConfig({
     {
       name: "firefox",
       grep: crossBrowserTests,
-      use: { browserName: "firefox", contextOptions: { reducedMotion: "no-preference" } },
+      use: {
+        browserName: "firefox",
+        contextOptions: { reducedMotion: "no-preference" },
+        // GitHub's GPU-less Linux runners can block WebGL2 before Firefox tries
+        // its software backend. Keep the real WebGL assertions enabled there.
+        launchOptions: { firefoxUserPrefs: { "webgl.force-enabled": true } },
+      },
     },
   ],
   webServer: {
