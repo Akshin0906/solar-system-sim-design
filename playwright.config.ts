@@ -57,8 +57,9 @@ export default defineConfig({
       use: {
         browserName: "firefox",
         contextOptions: { reducedMotion: "no-preference" },
-        // GitHub's GPU-less Linux runners can block WebGL2 before Firefox tries
-        // its software backend. Keep the real WebGL assertions enabled there.
+        // Hosted CI gives Firefox an Xvfb display backed by Mesa LLVMpipe. This
+        // preference permits that real software GL context without weakening the
+        // nonblank-render and console-error assertions.
         launchOptions: { firefoxUserPrefs: { "webgl.force-enabled": true } },
       },
     },

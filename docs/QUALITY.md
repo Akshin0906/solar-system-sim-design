@@ -34,6 +34,11 @@ npx playwright install chromium firefox webkit
 npm run check:release
 ```
 
+GitHub's GPU-less Linux runner exercises the Firefox project headed under Xvfb
+with an explicitly verified Mesa LLVMpipe renderer. Chromium and WebKit remain
+on their normal headless paths, and Firefox still has to render the real Three.js
+scene without console errors; the workflow does not skip or mock WebGL coverage.
+
 ## Manual desktop pass
 
 Use a current desktop browser at approximately 1280 × 720.

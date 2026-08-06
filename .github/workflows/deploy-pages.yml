@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -65,12 +65,39 @@ jobs:
           BUILD_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BUILD_DIRTY: "false"
 
-      - name: Install browser engines
-        run: npx playwright install --with-deps chromium firefox webkit
+      - name: Install browser engines and Firefox software GL
+        run: |
+          npx playwright install --with-deps chromium firefox webkit
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            libegl-mesa0 \
+            libgl1-mesa-dri \
+            libglx-mesa0 \
+            mesa-utils
 
-      - name: Test the Pages artifact in browsers
-        run: npm run test:e2e
+      - name: Test the Pages artifact in Chromium and WebKit
+        run: >-
+          npm run test:e2e --
+          --project=chromium
+          --project=chromium-reduced-motion
+          --project=webkit
         env:
+          PLAYWRIGHT_APP_PATH: /solar-system-sim-design/
+          PLAYWRIGHT_PREBUILT: "1"
+
+      - name: Test the Pages artifact in headed Firefox with LLVMpipe
+        shell: bash
+        run: |
+          xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" \
+            bash -euo pipefail -c '
+              renderer_info="$(glxinfo -B)"
+              printf "%s\n" "$renderer_info"
+              grep -qi "OpenGL renderer string:.*llvmpipe" <<<"$renderer_info"
+              npm run test:e2e -- --project=firefox --headed
+            '
+        env:
+          GALLIUM_DRIVER: llvmpipe
+          LIBGL_ALWAYS_SOFTWARE: "true"
           PLAYWRIGHT_APP_PATH: /solar-system-sim-design/
           PLAYWRIGHT_PREBUILT: "1"
 
