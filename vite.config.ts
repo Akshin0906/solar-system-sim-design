@@ -1,9 +1,20 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ command, mode }) => ({
   base: mode === "github-pages" ? "/solar-system-sim-design/" : "/",
-  plugins: [react()],
+  plugins: [
+    {
+      name: "environment-csp",
+      enforce: "pre",
+      transformIndexHtml: (html) =>
+        html.replace(
+          "__CSP_CONNECT_SOURCES__",
+          command === "serve" ? "'self' ws: wss:" : "'self'",
+        ),
+    },
+    react(),
+  ],
   // postprocessing renders R3F components, so React/three/fiber must resolve to a
   // single instance — otherwise the dev pre-bundle hands postprocessing its own React
   // copy and every hook throws "Invalid hook call".

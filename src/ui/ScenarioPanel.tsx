@@ -340,7 +340,6 @@ export const ScenarioPanel = () => {
   const scenarioStatus = useScenarioStore((state) => state.status);
   const startScenario = useScenarioStore((state) => state.start);
   const rocketPanelOpen = useRocketStore((state) => state.panelOpen);
-  const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
   const previousScenarioRef = useRef<string | null>(activeScenarioId);
 
   // Desktop: keep the two left-column panels mutually exclusive (mirrors how mobile's
@@ -417,10 +416,6 @@ export const ScenarioPanel = () => {
   }
 
   const handleToggle = () => {
-    // Opening Doomsday closes the rocket panel so the two left-edge panels never overlap.
-    if (!doomsdayPanelOpen) {
-      setRocketPanelOpen(false);
-    }
     toggleDoomsdayPanel();
   };
 

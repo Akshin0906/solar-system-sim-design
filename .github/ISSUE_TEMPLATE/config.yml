@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a vulnerability privately
+    url: https://github.com/Akshin0906/solar-system-sim-design/security
+    about: Use the Security tab's private reporting flow; do not publish exploit details in an issue.

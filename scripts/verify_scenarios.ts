@@ -4,7 +4,10 @@ import { AU_KM, DAY_SECONDS } from "../src/data/constants";
 import {
   DEFAULT_FRAGMENT_CAP,
   FIXED_STEP_SECONDS,
+  MAX_SIM_SECONDS_PER_FRAME,
+  MAX_SUBSTEPS_PER_FRAME,
   addSimBody,
+  advance,
   contactOutcome,
   enableDebris,
   resolveContact,
@@ -12,18 +15,26 @@ import {
   stepFixed,
   tidalDisrupt,
 } from "../src/scenarios/integrator";
-import { IMPACTOR_ID, INTERLOPER_ID, scenarioById } from "../src/scenarios/registry";
+import { IMPACTOR_ID, INTERLOPER_ID, SCENARIOS, scenarioById } from "../src/scenarios/registry";
+import {
+  SCENARIO_MAX_TIME_SCALE,
+  SCENARIO_MIN_TIME_SCALE,
+  useScenarioStore,
+} from "../src/scenarios/scenarioStore";
 import {
   SCENARIO_MAX_FRAME_ADVANCE_SECONDS,
   SCENARIO_MAX_REALTIME_BACKLOG_SECONDS,
   getElapsedSimSeconds,
   getParticipant,
   isThrottled,
+  scenarioFrameAdvanceLimitSeconds,
+  scenarioRealtimeBacklogLimitSeconds,
   startRuntime,
   stepRuntime,
   stopRuntime,
 } from "../src/scenarios/scenarioRuntime";
 import { useSelectionStore } from "../src/simulation/selectionStore";
+import { useTimeStore } from "../src/simulation/timeStore";
 import type { Vec3 } from "../src/simulation/orbitalElements";
 import type { IntegratorState, SimBody } from "../src/scenarios/types";
 
@@ -137,7 +148,7 @@ check("integration is deterministic (identical runs match exactly)", () => {
 });
 
 check("one low-FPS frame preserves the same elapsed time and state as smaller frames", () => {
-  const timeScaleDaysPerSec = 30;
+  const timeScaleDaysPerSec = 10;
   const run = (realFrameDeltas: number[]) => {
     startRuntime(1, "freefall", {}, bodies, bodiesById, J2000_MS);
     for (const realDeltaSeconds of realFrameDeltas) {
@@ -187,6 +198,113 @@ check("background backlog is bounded and any deferred or dropped time is reporte
     "the bounded backlog should be preserved while excess time stays dropped",
   );
   stopRuntime();
+});
+
+check("maximum scenario speed is metered through the exact production step cap", () => {
+  const frameLimit = scenarioFrameAdvanceLimitSeconds(SCENARIO_MAX_TIME_SCALE);
+  const backlogLimit = scenarioRealtimeBacklogLimitSeconds(SCENARIO_MAX_TIME_SCALE);
+  assert.ok(frameLimit > 0 && frameLimit < SCENARIO_MAX_FRAME_ADVANCE_SECONDS);
+  assert.equal(backlogLimit, frameLimit * 2, "high-speed playback should retain exactly one extra work slice");
+
+  startRuntime(3, "freefall", {}, bodies, bodiesById, J2000_MS);
+  const capped = stepRuntime(SCENARIO_MAX_FRAME_ADVANCE_SECONDS, SCENARIO_MAX_TIME_SCALE);
+  assert.equal(capped.advancedRealSeconds, frameLimit);
+  assert.equal(capped.pendingRealSeconds, frameLimit);
+  assert.equal(capped.droppedRealSeconds, SCENARIO_MAX_FRAME_ADVANCE_SECONDS - backlogLimit);
+  assert.equal(capped.throttled, true, "deferred or dropped high-speed time must be visible");
+  assert.equal(
+    getElapsedSimSeconds(),
+    MAX_SIM_SECONDS_PER_FRAME,
+    "one render must execute no more than the benchmarked production step cap",
+  );
+
+  const drained = stepRuntime(0, SCENARIO_MAX_TIME_SCALE);
+  assert.equal(drained.pendingRealSeconds, 0);
+  assert.equal(getElapsedSimSeconds(), MAX_SIM_SECONDS_PER_FRAME * 2);
+  stopRuntime();
+});
+
+check("maximum scenario speed leaves fixed-step headroom at a nominal 60 Hz", () => {
+  const nominalFrameSeconds = 1 / 60;
+  const nominalSteps = nominalFrameSeconds * SCENARIO_MAX_TIME_SCALE * DAY_SECONDS / FIXED_STEP_SECONDS;
+  assert.equal(nominalSteps, 96, "the public maximum should request the reviewed 80% step budget");
+  assert.equal(nominalSteps / MAX_SUBSTEPS_PER_FRAME, 0.8);
+
+  startRuntime(4, "freefall", {}, bodies, bodiesById, J2000_MS);
+  const result = stepRuntime(nominalFrameSeconds, SCENARIO_MAX_TIME_SCALE);
+  assert.equal(result.advancedRealSeconds, nominalFrameSeconds);
+  assert.equal(result.pendingRealSeconds, 0);
+  assert.equal(result.droppedRealSeconds, 0);
+  assert.equal(result.throttled, false, "a nominal frame at the public maximum must not throttle");
+  assert.equal(getElapsedSimSeconds(), nominalSteps * FIXED_STEP_SECONDS);
+  stopRuntime();
+});
+
+check("capacity-sized frame slices preserve deterministic state across render cadence", () => {
+  const timeScaleDaysPerSec = SCENARIO_MAX_TIME_SCALE;
+  const frameLimit = scenarioFrameAdvanceLimitSeconds(timeScaleDaysPerSec);
+  const run = (realFrameDeltas: number[]) => {
+    startRuntime(5, "freefall", {}, bodies, bodiesById, J2000_MS);
+    for (const realDeltaSeconds of realFrameDeltas) {
+      stepRuntime(realDeltaSeconds, timeScaleDaysPerSec);
+    }
+    const result = {
+      elapsedSimSeconds: getElapsedSimSeconds(),
+      earthPosition: [...getParticipant("earth")!.posKm] as Vec3,
+    };
+    stopRuntime();
+    return result;
+  };
+
+  assert.deepEqual(
+    run([frameLimit, frameLimit]),
+    run([frameLimit * 2, 0]),
+    "the retained capacity slice must produce the same fixed-step trajectory as two ordinary frames",
+  );
+});
+
+check("runtime and integrator reject hostile timing values without poisoning state", () => {
+  startRuntime(6, "freefall", {}, bodies, bodiesById, J2000_MS);
+  for (const realDeltaSeconds of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, -1]) {
+    const result = stepRuntime(realDeltaSeconds, SCENARIO_MAX_TIME_SCALE);
+    assert.ok(Object.values(result).every((value) => typeof value === "boolean" || Number.isFinite(value)));
+  }
+  for (const timeScaleDaysPerSec of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1]) {
+    const result = stepRuntime(0.1, timeScaleDaysPerSec);
+    assert.equal(result.advancedRealSeconds, 0);
+    assert.ok(Object.values(result).every((value) => typeof value === "boolean" || Number.isFinite(value)));
+  }
+  assert.equal(getElapsedSimSeconds(), 0, "invalid timing values must not advance or poison the runtime");
+
+  const hugeFiniteDelta = stepRuntime(Number.MAX_VALUE, SCENARIO_MAX_TIME_SCALE);
+  assert.equal(
+    hugeFiniteDelta.advancedRealSeconds,
+    scenarioFrameAdvanceLimitSeconds(SCENARIO_MAX_TIME_SCALE),
+  );
+  assert.ok(Number.isFinite(hugeFiniteDelta.droppedRealSeconds) && hugeFiniteDelta.droppedRealSeconds > 0);
+  assert.equal(getElapsedSimSeconds(), MAX_SIM_SECONDS_PER_FRAME, "a huge finite delta must still run only one cap");
+  stopRuntime();
+
+  const state = seedIntegrator(bodies, bodiesById, J2000_MS);
+  const oversizedSimSeconds = MAX_SIM_SECONDS_PER_FRAME + FIXED_STEP_SECONDS * 50 + FIXED_STEP_SECONDS / 2;
+  let driverCalls = 0;
+  const steps = advance(state, oversizedSimSeconds, () => {
+    driverCalls += 1;
+  });
+  assert.equal(steps, MAX_SUBSTEPS_PER_FRAME);
+  assert.equal(driverCalls, MAX_SUBSTEPS_PER_FRAME, "scenario drivers must share the same bounded work ceiling");
+  assert.equal(state.elapsedSimSeconds, MAX_SIM_SECONDS_PER_FRAME);
+  assert.equal(state.accumulatorSeconds, FIXED_STEP_SECONDS / 2, "only the sub-step remainder should survive");
+  assert.equal(state.throttled, true, "direct over-cap work must be surfaced as throttled");
+
+  const beforeInvalidAdvance = [...state.byId.get("earth")!.posKm] as Vec3;
+  assert.equal(advance(state, Number.NaN), 0);
+  assert.ok(Number.isFinite(state.accumulatorSeconds));
+  assert.deepEqual(state.byId.get("earth")!.posKm, beforeInvalidAdvance);
+
+  state.accumulatorSeconds = Number.POSITIVE_INFINITY;
+  assert.equal(advance(state, FIXED_STEP_SECONDS / 2), 0);
+  assert.equal(state.accumulatorSeconds, FIXED_STEP_SECONDS / 2, "a corrupt accumulator must recover safely");
 });
 
 // --- 4. Collision: heavy rogue consumes the Sun ------------------------------
@@ -595,6 +713,167 @@ check("collision scenario shatters both worlds at high closing speed", () => {
   assert.ok(shattered, "a 32 km/s smash should destroy Earth within 400 days");
   assert.equal(state.byId.get("venus")!.alive, false, "the incoming world is also shattered");
   assert.ok(fragCount(state) >= 2, "the smash leaves a debris cloud");
+});
+
+// --- 20. Store boundary: registry metadata is complete and enforceable --------
+check("scenario parameter registry defines finite defaults and complete constraints", () => {
+  for (const scenario of SCENARIOS) {
+    assert.ok(Number.isFinite(scenario.defaultTimeScaleDaysPerSec), `${scenario.id} time scale must be finite`);
+    assert.ok(
+      scenario.defaultTimeScaleDaysPerSec >= SCENARIO_MIN_TIME_SCALE &&
+        scenario.defaultTimeScaleDaysPerSec <= SCENARIO_MAX_TIME_SCALE,
+      `${scenario.id} default time scale must be within store bounds`,
+    );
+
+    const keys = new Set<string>();
+    for (const param of scenario.params) {
+      assert.ok(!keys.has(param.key), `${scenario.id}.${param.key} must be unique`);
+      keys.add(param.key);
+      assert.ok(Number.isFinite(param.default), `${scenario.id}.${param.key} default must be finite`);
+
+      if (param.options) {
+        assert.ok(param.options.length > 0, `${scenario.id}.${param.key} must offer a choice`);
+        assert.ok(
+          param.options.every((option) => Number.isFinite(option.value)),
+          `${scenario.id}.${param.key} choice values must be finite`,
+        );
+        assert.ok(
+          param.options.some((option) => option.value === param.default),
+          `${scenario.id}.${param.key} default must match a registered choice`,
+        );
+      } else {
+        assert.ok(
+          Number.isFinite(param.min) && Number.isFinite(param.max) && Number.isFinite(param.step),
+          `${scenario.id}.${param.key} range metadata must be finite`,
+        );
+        assert.ok(
+          param.min <= param.default && param.default <= param.max,
+          `${scenario.id}.${param.key} default must be in range`,
+        );
+        assert.ok(
+          param.min <= param.max && param.step > 0,
+          `${scenario.id}.${param.key} must define an ordered, positive-step range`,
+        );
+      }
+    }
+  }
+});
+
+// --- 21. Store boundary: reject malformed writes and restore clock ownership --
+check("scenario store validates writes and preserves its original clock snapshot across restarts", () => {
+  const scenarioBaseline = useScenarioStore.getState();
+  const timeBaseline = useTimeStore.getState();
+  const selectionBaseline = useSelectionStore.getState();
+  const originalDateMs = Date.parse("2024-03-20T12:00:00.000Z");
+  const replacementDateMs = Date.parse("2030-09-22T18:00:00.000Z");
+
+  try {
+    useTimeStore.setState({
+      direction: -1,
+      isPaused: false,
+      preset: "custom",
+      simulationDateMs: originalDateMs,
+      timeScale: 321,
+      transportLocked: false,
+    });
+
+    useScenarioStore.getState().start("impact");
+    assert.deepEqual(useScenarioStore.getState().clockSnapshot, {
+      direction: -1,
+      isPaused: false,
+      preset: "custom",
+      simulationDateMs: originalDateMs,
+      timeScale: 321,
+    });
+    assert.equal(useTimeStore.getState().isPaused, true, "a scenario must freeze the shared clock");
+    assert.equal(useTimeStore.getState().transportLocked, true, "a scenario must own the transport");
+
+    const beforeUnknown = useScenarioStore.getState();
+    beforeUnknown.setParam("not-in-the-registry", 42);
+    assert.strictEqual(useScenarioStore.getState(), beforeUnknown, "unknown keys must be a no-op");
+
+    const beforeNonFiniteParam = useScenarioStore.getState();
+    beforeNonFiniteParam.setParam("sizeKm", Number.NaN);
+    beforeNonFiniteParam.setParam("sizeKm", Number.POSITIVE_INFINITY);
+    assert.strictEqual(useScenarioStore.getState(), beforeNonFiniteParam, "non-finite params must be a no-op");
+
+    useScenarioStore.getState().setParam("sizeKm", -100);
+    assert.equal(
+      useScenarioStore.getState().params.sizeKm,
+      5,
+      "range params must clamp to their registered minimum",
+    );
+    useScenarioStore.getState().setParam("sizeKm", 10_000);
+    assert.equal(
+      useScenarioStore.getState().params.sizeKm,
+      3_000,
+      "range params must clamp to their registered maximum",
+    );
+
+    const beforeUnknownChoice = useScenarioStore.getState();
+    beforeUnknownChoice.setParam("impactorType", 99);
+    assert.strictEqual(useScenarioStore.getState(), beforeUnknownChoice, "unregistered choices must be a no-op");
+    useScenarioStore.getState().setParam("impactorType", 1);
+    assert.equal(useScenarioStore.getState().params.impactorType, 1, "registered choices must be accepted");
+
+    const beforeNonFiniteScale = useScenarioStore.getState();
+    beforeNonFiniteScale.setTimeScale(Number.NaN);
+    beforeNonFiniteScale.setTimeScale(Number.NEGATIVE_INFINITY);
+    beforeNonFiniteScale.setTimeScale(Number.POSITIVE_INFINITY);
+    assert.strictEqual(useScenarioStore.getState(), beforeNonFiniteScale, "non-finite time scales must be a no-op");
+    useScenarioStore.getState().setTimeScale(-50);
+    assert.equal(useScenarioStore.getState().timeScaleDaysPerSec, SCENARIO_MIN_TIME_SCALE);
+    useScenarioStore.getState().setTimeScale(10_000);
+    assert.equal(useScenarioStore.getState().timeScaleDaysPerSec, SCENARIO_MAX_TIME_SCALE);
+
+    const originalSnapshot = useScenarioStore.getState().clockSnapshot;
+    useTimeStore.setState({ simulationDateMs: replacementDateMs });
+    useScenarioStore.getState().start("rogue-mass");
+    assert.strictEqual(
+      useScenarioStore.getState().clockSnapshot,
+      originalSnapshot,
+      "replacing an active scenario must preserve the first ownership snapshot",
+    );
+
+    useScenarioStore.getState().stop();
+    assert.equal(useTimeStore.getState().simulationDateMs, originalDateMs, "stop must restore the pre-scenario date");
+    assert.equal(useTimeStore.getState().isPaused, false, "stop must restore the pre-scenario paused state");
+    assert.equal(useTimeStore.getState().direction, -1, "stop must restore the pre-scenario direction");
+    assert.equal(useTimeStore.getState().preset, "custom", "stop must restore the pre-scenario preset");
+    assert.equal(useTimeStore.getState().timeScale, 321, "stop must restore the pre-scenario speed");
+    assert.equal(useTimeStore.getState().transportLocked, false, "stop must release the transport");
+    assert.equal(useScenarioStore.getState().clockSnapshot, null, "stop must clear restoration state");
+
+    useTimeStore.setState({
+      direction: 1,
+      isPaused: true,
+      preset: "day",
+      simulationDateMs: replacementDateMs,
+      timeScale: DAY_SECONDS,
+    });
+    useScenarioStore.getState().start("freefall");
+    assert.deepEqual(
+      useScenarioStore.getState().clockSnapshot,
+      {
+        direction: 1,
+        isPaused: true,
+        preset: "day",
+        simulationDateMs: replacementDateMs,
+        timeScale: DAY_SECONDS,
+      },
+      "a later run must capture a fresh snapshot instead of leaking the previous session",
+    );
+    useScenarioStore.getState().stop();
+    assert.equal(useTimeStore.getState().simulationDateMs, replacementDateMs);
+    assert.equal(useTimeStore.getState().isPaused, true);
+  } finally {
+    if (useScenarioStore.getState().activeScenarioId) {
+      useScenarioStore.getState().stop();
+    }
+    useScenarioStore.setState(scenarioBaseline);
+    useTimeStore.setState(timeBaseline);
+    useSelectionStore.setState(selectionBaseline);
+  }
 });
 
 console.log("");

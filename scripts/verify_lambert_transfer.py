@@ -209,14 +209,36 @@ def run_case(label: str, destination_au: float) -> None:
     post_energy = dot(post_velocity, post_velocity) / 2.0 - MU_SUN_KM3_S2 / length(post_position)
     assert abs(post_energy - arrival_energy) < 1e-8, (label, arrival_energy, post_energy)
 
-    route_points = [propagate_universal(r1, v1, transfer_time * index / 400, MU_SUN_KM3_S2)[0] for index in range(401)]
+    route_states = [
+        propagate_universal(r1, v1, transfer_time * index / 400, MU_SUN_KM3_S2)
+        for index in range(401)
+    ]
+    route_points = [state[0] for state in route_states]
+    sampled_speeds = [length(state[1]) for state in route_states]
     route_length = sum(length(sub(route_points[index], route_points[index - 1])) for index in range(1, len(route_points)))
     mean_speed = route_length / transfer_time
-    assert abs(mean_speed - route_length / transfer_time) < 1e-12
+    chord_length = length(sub(r2, r1))
+    trapezoidal_mean_speed = (
+        sum(sampled_speeds) - (sampled_speeds[0] + sampled_speeds[-1]) / 2.0
+    ) / (len(sampled_speeds) - 1)
+    relative_speed_integral_error = abs(mean_speed - trapezoidal_mean_speed) / trapezoidal_mean_speed
+    assert route_length >= chord_length, (label, route_length, chord_length)
+    assert min(sampled_speeds) <= mean_speed <= max(sampled_speeds), (
+        label,
+        min(sampled_speeds),
+        mean_speed,
+        max(sampled_speeds),
+    )
+    assert relative_speed_integral_error < 0.001, (
+        label,
+        mean_speed,
+        trapezoidal_mean_speed,
+        relative_speed_integral_error,
+    )
     print(
         f"{label}: {transfer_time / DAY_SECONDS:.2f} d, endpoint {endpoint_error:.6f} km, "
         f"velocity {velocity_error:.3e} km/s, continuation {continuation_error:.6f} km, "
-        f"route mean {mean_speed:.3f} km/s"
+        f"route mean {mean_speed:.3f} km/s, speed-integral error {relative_speed_integral_error:.2e}"
     )
 
 

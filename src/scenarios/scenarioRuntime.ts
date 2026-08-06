@@ -3,7 +3,7 @@ import type { CelestialBody, Vec3 } from "../simulation/orbitalElements";
 import { getOrbitPositionKm } from "../simulation/solveOrbit";
 import { addVec3 } from "../simulation/vec3";
 import { computeScenePositions, scaleMoonOffset, scaleVectorFromSun, type ScaleMode } from "../simulation/units";
-import { advance, seedIntegrator } from "./integrator";
+import { MAX_SIM_SECONDS_PER_FRAME, advance, seedIntegrator } from "./integrator";
 import { scenarioById } from "./registry";
 import type { DoomsdayScenario, ImpactFx, IntegratorState, SimBody } from "./types";
 
@@ -33,12 +33,27 @@ type Runtime = {
 
 let current: Runtime | null = null;
 
-// A quarter second still fits below the integrator's 4,000-substep ceiling at the
-// store's maximum 300 days/sec scale (3,600 steps). Retain one additional slice so a
-// brief stall can catch up on the next frame, but discard anything beyond that bounded
-// backlog and surface it as throttling.
+// Absolute wall-time ceilings. The actual slice shrinks at high scenario speeds so it
+// can never request more than MAX_SIM_SECONDS_PER_FRAME from the integrator. Retain one
+// additional capacity-sized slice after a brief stall; discard older debt and surface
+// throttling rather than turning one render into a long catch-up task.
 export const SCENARIO_MAX_FRAME_ADVANCE_SECONDS = 0.25;
 export const SCENARIO_MAX_REALTIME_BACKLOG_SECONDS = 0.5;
+const SCENARIO_RETAINED_FRAME_SLICES = 2;
+
+export const scenarioFrameAdvanceLimitSeconds = (timeScaleDaysPerSec: number) => {
+  const simSecondsPerRealSecond = timeScaleDaysPerSec * DAY_SECONDS;
+  if (!Number.isFinite(simSecondsPerRealSecond) || simSecondsPerRealSecond <= 0) {
+    return 0;
+  }
+  return Math.min(SCENARIO_MAX_FRAME_ADVANCE_SECONDS, MAX_SIM_SECONDS_PER_FRAME / simSecondsPerRealSecond);
+};
+
+export const scenarioRealtimeBacklogLimitSeconds = (timeScaleDaysPerSec: number) =>
+  Math.min(
+    SCENARIO_MAX_REALTIME_BACKLOG_SECONDS,
+    scenarioFrameAdvanceLimitSeconds(timeScaleDaysPerSec) * SCENARIO_RETAINED_FRAME_SLICES,
+  );
 
 export type ScenarioRuntimeStepResult = {
   advancedRealSeconds: number;
@@ -88,10 +103,11 @@ export const stopRuntime = () => {
   current = null;
 };
 
-// Step the live sim forward by one rendered frame's worth of time. Ordinary low-FPS
-// deltas are preserved in full. Long stalls are metered through a bounded accumulator:
-// one quarter-second slice runs now, one can wait for the next frame, and any excess is
-// explicitly dropped and reported instead of silently slowing the scenario clock.
+// Step the live sim forward by one rendered frame's worth of time. Moderate speeds can
+// preserve ordinary low-FPS deltas in full. At high speeds the wall-time slice contracts
+// to the fixed physics-work ceiling: one slice runs now, one can wait for the next frame,
+// and older debt is explicitly dropped. Executed fixed steps remain deterministic; only
+// requested wall-clock progress slows, with `throttled` surfaced to the UI.
 export const stepRuntime = (
   realDeltaSeconds: number,
   timeScaleDaysPerSec: number,
@@ -100,14 +116,30 @@ export const stepRuntime = (
     return EMPTY_STEP_RESULT;
   }
 
-  const incomingRealSeconds = Number.isNaN(realDeltaSeconds) || realDeltaSeconds <= 0 ? 0 : realDeltaSeconds;
+  const frameAdvanceLimit = scenarioFrameAdvanceLimitSeconds(timeScaleDaysPerSec);
+  if (frameAdvanceLimit <= 0) {
+    const throttled = current.pendingRealSeconds > 0;
+    current.state.throttled = throttled;
+    return {
+      advancedRealSeconds: 0,
+      pendingRealSeconds: current.pendingRealSeconds,
+      droppedRealSeconds: 0,
+      throttled,
+    };
+  }
+
+  const incomingRealSeconds = Number.isFinite(realDeltaSeconds) && realDeltaSeconds > 0 ? realDeltaSeconds : 0;
   const unboundedBacklog = current.pendingRealSeconds + incomingRealSeconds;
-  const boundedBacklog = Math.min(unboundedBacklog, SCENARIO_MAX_REALTIME_BACKLOG_SECONDS);
+  const backlogLimit = scenarioRealtimeBacklogLimitSeconds(timeScaleDaysPerSec);
+  const boundedBacklog = Math.min(unboundedBacklog, backlogLimit);
   const droppedRealSeconds = Math.max(unboundedBacklog - boundedBacklog, 0);
-  const advancedRealSeconds = Math.min(boundedBacklog, SCENARIO_MAX_FRAME_ADVANCE_SECONDS);
+  const advancedRealSeconds = Math.min(boundedBacklog, frameAdvanceLimit);
   current.pendingRealSeconds = boundedBacklog - advancedRealSeconds;
 
-  const simSeconds = advancedRealSeconds * timeScaleDaysPerSec * DAY_SECONDS;
+  const simSeconds = Math.min(
+    advancedRealSeconds * timeScaleDaysPerSec * DAY_SECONDS,
+    MAX_SIM_SECONDS_PER_FRAME,
+  );
   const { scenario, params, state, bodiesById } = current;
   const beforeStep = scenario.drive ? (dt: number) => scenario.drive!({ state, params, bodiesById }, dt) : undefined;
   advance(state, simSeconds, beforeStep);

@@ -4,20 +4,24 @@ import { useExperienceStore } from "../features/experiences/experienceStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { defaultParamsFor, impactTargetId, scenarioById } from "./registry";
-import type { SimEvent } from "./types";
+import {
+  normalizeScenarioParamValue,
+  normalizeScenarioTimeScale,
+  SCENARIO_MAX_TIME_SCALE,
+  SCENARIO_MIN_TIME_SCALE,
+} from "./scenarioValidation";
+import type { ScenarioParamValues, SimEvent } from "./types";
 
 export type ScenarioStatus = "idle" | "running" | "paused";
 
-// Scenario time-scale bounds (days/sec). Exported so the panel slider and the store
-// agree, and so a programmatic setTimeScale can't push the integrator off-scale.
-export const SCENARIO_MIN_TIME_SCALE = 1;
-export const SCENARIO_MAX_TIME_SCALE = 300;
+// Preserve the store's existing public surface while the pure validation module owns
+// the implementation and can be exercised without creating application state.
+export { SCENARIO_MAX_TIME_SCALE, SCENARIO_MIN_TIME_SCALE };
 
-// The J2000 clock's paused state and date from before a scenario took over, so we can
-// restore exactly how the user left it on exit (a scenario freezes the real clock so the
-// date readout doesn't drift while its own T+ clock runs). Kept outside reactive state.
-let priorClockPaused = false;
-let frozenSimulationDateMs = 0;
+type ScenarioClockSnapshot = Pick<
+  ReturnType<typeof useTimeStore.getState>,
+  "direction" | "isPaused" | "preset" | "simulationDateMs" | "timeScale"
+>;
 
 type ScenarioState = {
   activeScenarioId: string | null;
@@ -25,8 +29,11 @@ type ScenarioState = {
   // know when to (re)seed the integrator — so editing a slider re-runs from T+0.
   instanceId: number;
   status: ScenarioStatus;
-  params: Record<string, number>;
+  params: ScenarioParamValues;
   timeScaleDaysPerSec: number;
+  // Captured only when a scenario first takes ownership. Replacing/restarting the
+  // active scenario preserves this original snapshot; stop restores and clears it.
+  clockSnapshot: ScenarioClockSnapshot | null;
   elapsedSimSeconds: number;
   // Data-body ids the catastrophe has destroyed; the scene stops drawing them.
   consumedIds: string[];
@@ -53,7 +60,7 @@ type ScenarioState = {
   reportEvent: (event: SimEvent | null) => void;
 };
 
-const frameScenarioAction = (scenarioId: string, params: Record<string, number>) => {
+const frameScenarioAction = (scenarioId: string, params: ScenarioParamValues) => {
   const selection = useSelectionStore.getState();
 
   if (scenarioId === "impact" || scenarioId === "collision") {
@@ -76,6 +83,7 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
   status: "idle",
   params: {},
   timeScaleDaysPerSec: 30,
+  clockSnapshot: null,
   elapsedSimSeconds: 0,
   consumedIds: [],
   fragmentCapHit: 0,
@@ -92,17 +100,26 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
     // session before capturing the scenario snapshot so exit returns to the user's
     // actual pre-tour state rather than to a transient authored stop.
     useExperienceStore.getState().stop();
-    const replacingActiveScenario = get().activeScenarioId !== null;
+    const currentState = get();
+    const time = useTimeStore.getState();
+    const replacingActiveScenario = currentState.activeScenarioId !== null;
+    const clockSnapshot = replacingActiveScenario
+      ? currentState.clockSnapshot
+      : {
+          direction: time.direction,
+          isPaused: time.isPaused,
+          preset: time.preset,
+          simulationDateMs: time.simulationDateMs,
+          timeScale: time.timeScale,
+        };
     if (!replacingActiveScenario) {
-      priorClockPaused = useTimeStore.getState().isPaused;
-      frozenSimulationDateMs = useTimeStore.getState().simulationDateMs;
       useSelectionStore.getState().beginViewSession("scenario");
     }
-    useTimeStore.getState().setPaused(true);
+    time.setPaused(true);
     // Lock the J2000 transport so the user can't scrub/step/un-pause the frozen clock out
     // from under the scenario's frozen base layer (which would desync the date readout and
     // snap to a different date on exit).
-    useTimeStore.getState().setTransportLocked(true);
+    time.setTransportLocked(true);
     // The rocket marker is hidden while a scenario runs; release a rocket-follow camera so
     // it doesn't get stuck tracking a now-hidden rocket.
     useSelectionStore.getState().clearRocketTarget();
@@ -112,7 +129,9 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
       instanceId: state.instanceId + 1,
       status: "running",
       params,
-      timeScaleDaysPerSec: scenario.defaultTimeScaleDaysPerSec,
+      timeScaleDaysPerSec:
+        normalizeScenarioTimeScale(scenario.defaultTimeScaleDaysPerSec) ?? SCENARIO_MIN_TIME_SCALE,
+      clockSnapshot,
       elapsedSimSeconds: 0,
       consumedIds: [],
       fragmentCapHit: 0,
@@ -124,20 +143,24 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
   },
 
   stop: () => {
-    if (get().activeScenarioId === null) {
+    const { activeScenarioId, clockSnapshot } = get();
+    if (activeScenarioId === null) {
       return;
     }
-    // Unlock first — setSimulationDateMs is itself gated by the lock — then restore the
-    // exact date the scenario froze at (a backstop in case anything slipped the freeze)
-    // and the prior paused state, so exit is always consistent.
-    useTimeStore.getState().setTransportLocked(false);
-    useTimeStore.getState().setSimulationDateMs(frozenSimulationDateMs);
-    useTimeStore.getState().setPaused(priorClockPaused);
+    // Restore the entire transport snapshot directly so nested owners (notably a rocket
+    // watch retired while this scenario was active) cannot leak their direction, preset,
+    // or playback rate after exit.
+    if (clockSnapshot) {
+      useTimeStore.setState({ ...clockSnapshot, transportLocked: false });
+    } else {
+      useTimeStore.getState().setTransportLocked(false);
+    }
     useSelectionStore.getState().restoreViewSession("scenario");
     set((state) => ({
       activeScenarioId: null,
       instanceId: state.instanceId + 1,
       status: "idle",
+      clockSnapshot: null,
       elapsedSimSeconds: 0,
       consumedIds: [],
       fragmentCapHit: 0,
@@ -160,10 +183,15 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
     if (!activeScenarioId) {
       return;
     }
+    const scenario = scenarioById.get(activeScenarioId);
+    const normalizedValue = normalizeScenarioParamValue(scenario?.params ?? [], key, value);
+    if (normalizedValue === null) {
+      return;
+    }
     // A param edit re-seeds from T+0 (instanceId bump) so the new initial condition
     // is shown immediately — the sandbox half of "watch and play".
     set((state) => ({
-      params: { ...state.params, [key]: value },
+      params: { ...state.params, [key]: normalizedValue },
       instanceId: state.instanceId + 1,
       elapsedSimSeconds: 0,
       consumedIds: [],
@@ -178,10 +206,13 @@ export const useScenarioStore = create<ScenarioState>((set, get) => ({
     }
   },
 
-  setTimeScale: (daysPerSec) =>
-    set({
-      timeScaleDaysPerSec: Math.min(Math.max(daysPerSec, SCENARIO_MIN_TIME_SCALE), SCENARIO_MAX_TIME_SCALE),
-    }),
+  setTimeScale: (daysPerSec) => {
+    const normalizedTimeScale = normalizeScenarioTimeScale(daysPerSec);
+    if (normalizedTimeScale === null) {
+      return;
+    }
+    set({ timeScaleDaysPerSec: normalizedTimeScale });
+  },
 
   // Bail when unchanged (returning the same state ref skips the zustand notify) so a
   // paused scenario doesn't fire a subscriber notification every throttle tick.

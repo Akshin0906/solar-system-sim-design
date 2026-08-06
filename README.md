@@ -2,6 +2,7 @@
 
 [![CI and GitHub Pages](https://github.com/Akshin0906/solar-system-sim-design/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/Akshin0906/solar-system-sim-design/actions/workflows/deploy-pages.yml)
 [![Live demo](https://img.shields.io/badge/live_demo-open-0f766e?logo=github)](https://akshin0906.github.io/solar-system-sim-design/)
+[![Release](https://img.shields.io/github/v/release/Akshin0906/solar-system-sim-design?display_name=tag)](https://github.com/Akshin0906/solar-system-sim-design/releases/latest)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](tsconfig.json)
 
 An interactive, offline-capable 3D solar system built with React, TypeScript, and Three.js. Explore dated orbital motion, compare physical and readable scale lenses, inspect scientific provenance, run guided scenarios, and preview educational interplanetary transfers.
@@ -17,8 +18,8 @@ An interactive, offline-capable 3D solar system built with React, TypeScript, an
 - A responsive React Three Fiber scene with shared LOD geometry, label culling, adaptive DPR/exposure, recoverable WebGL state, and procedural fallbacks.
 - Reversible camera/view sessions for guided tours, eclipse chasing, rocket watch, isolated scenarios, photo mode, and share links.
 - Physical two-body Hohmann and Lambert transfers kept separate from illustrative propulsion curves and hardware evidence.
-- A generated service worker with content-hashed cache versioning and an automated offline-reload test.
-- Strict TypeScript, React/JSX linting, deterministic math verification, browser tests, dependency auditing, and a tested GitHub Pages deployment.
+- A generated service worker with content-hashed shell and runtime-texture identities, plus an automated offline-reload test.
+- Strict TypeScript, React/JSX linting, Node-native unit coverage gates, deterministic math verification, browser tests, dependency auditing, and a tested GitHub Pages deployment.
 
 ## Features
 
@@ -49,7 +50,7 @@ Open the address printed by Vite, normally `http://127.0.0.1:5173`.
 For the browser suite, install its engines once:
 
 ```bash
-npx playwright install chromium webkit
+npx playwright install chromium firefox webkit
 npm run test:e2e
 ```
 
@@ -60,13 +61,20 @@ npm run test:e2e
 | `npm run dev` | Start the local Vite server. |
 | `npm run lint` | Run TypeScript, React Hooks, and JSX accessibility rules. |
 | `npm run typecheck` | Type-check the app, scripts, Playwright config, and browser tests. |
-| `npm test` | Run app, rocket, scenario, and service-worker invariants. |
+| `npm run test:unit` | Run focused Node unit tests with 100% coverage gates on critical render and scenario-validation logic. |
+| `npm test` | Run unit tests plus app, rocket, scenario, and service-worker invariants. |
+| `npm run verify:performance` | Enforce production cold-asset and live integrator budgets. |
 | `npm run verify:math` | Verify orbital data/math, frames, ephemeris checks, transfers, scenarios, and render budgets. |
 | `npm run build` | Build the root-path production app and generate its service worker. |
-| `npm run build:github` | Build the repository-prefix artifact used by GitHub Pages. |
-| `npm run test:e2e` | Test desktop, mobile, reduced-motion, WebKit smoke, and offline flows. |
+| `npm run build:github` | Build the complete repository-prefix Pages artifact, write its provenance record, and generate the final service worker. |
+| `npm run test:e2e` | Test desktop, mobile, reduced-motion, Chromium, Firefox, WebKit, and offline flows. |
 | `npm run check` | Run the complete static, model, behavior, and build gate. |
-| `npm run check:release` | Run `check` plus the browser suite. |
+| `npm run check:release` | Run `check`, rebuild the exact Pages-prefix artifact with provenance, and test that artifact in the browser suite. |
+
+`npm run build:github` is the single local and CI flow for producing the Pages
+artifact. A local `build-info.json` records the current Git commit and marks
+uncommitted or untracked work with `"dirty": true`; CI supplies the repository,
+ref, workflow-run, and clean-worktree metadata for a deployed artifact.
 
 ## Controls
 
@@ -92,6 +100,7 @@ src/
   simulation/   Orbits, frames, orientation, time, scale, and contracts
   ui/           Controls, inspectors, search, sheets, and accessibility
 scripts/        Deterministic source, math, behavior, and budget checks
+tests/unit/     Fast Node unit tests for pure production logic
 tests/e2e/      Cross-browser desktop, mobile, and PWA coverage
 ```
 
@@ -109,7 +118,18 @@ For the detailed evidence and limitation contracts, see:
 - [Educational rocket model](ROCKETS.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Quality and release checks](docs/QUALITY.md)
+- [Release history](CHANGELOG.md)
+
+## Source availability and attribution
+
+This repository is publicly visible for portfolio review, but no open-source
+license is currently granted. Public access should not be interpreted as
+permission to copy, modify, or redistribute project material. See the
+[public source notice](LICENSE), [asset provenance inventory](ASSET_ATTRIBUTION.md),
+and [contribution policy](CONTRIBUTING.md) for the recorded status and process.
+The [AI assistance policy](AI_ASSISTANCE.md) documents contribution transparency
+and the maintainer's responsibility for technical ownership.
 
 ## Deployment
 
-Pull requests and pushes to `main` run the complete GitHub Actions gate. CI builds the repository-prefix artifact first, tests that exact artifact in Chromium and WebKit, uploads it unchanged, deploys it to GitHub Pages, and verifies the live HTML, manifest, and service worker endpoints.
+Pull requests and pushes to `main` run the complete GitHub Actions gate. CI builds the repository-prefix artifact first and tests that exact artifact in Chromium, Firefox, and WebKit. A push rechecks the tip of `main` before upload and again immediately before deployment; a stale run finishes cleanly without replacing the site. The live verification checks the HTML, manifest, service worker, and the artifact's generated [`build-info.json`](https://akshin0906.github.io/solar-system-sim-design/build-info.json) commit and workflow identity.

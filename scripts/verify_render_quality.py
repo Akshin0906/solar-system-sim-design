@@ -54,8 +54,8 @@ def adaptive_dpr(initial_dpr: float, quality_factor: float) -> float:
     return minimum + (initial_dpr - minimum) * quality
 
 
-def performance_bounds(refresh_rate: float) -> tuple[float, float]:
-    return min(45.0, refresh_rate * 0.55), min(58.0, refresh_rate * 0.9)
+def performance_bounds() -> tuple[float, float]:
+    return 24.0, 29.0
 
 
 def main() -> None:
@@ -89,8 +89,7 @@ def main() -> None:
     assert math.isclose(adaptive_dpr(1.65, 1.0), 1.65)
     assert math.isclose(adaptive_dpr(1.65, 0.5), 1.325)
     assert adaptive_dpr(1.0, 0.5) == 1.0
-    assert performance_bounds(60) == (33.0, 54.0)
-    assert performance_bounds(120) == (45.0, 58.0)
+    assert performance_bounds() == (24.0, 29.0)
 
     print(
         "render-quality arithmetic verified:",

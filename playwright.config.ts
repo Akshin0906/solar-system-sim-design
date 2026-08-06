@@ -6,6 +6,7 @@ const appPath = process.env.PLAYWRIGHT_APP_PATH ?? "/";
 const isCI = Boolean(process.env.CI);
 const usePrebuiltArtifact = process.env.PLAYWRIGHT_PREBUILT === "1";
 const previewCommand = `node scripts/serve-built-app.mjs --port ${port}`;
+const crossBrowserTests = /@(smoke|cross-browser)/;
 
 if (!appPath.startsWith("/") || !appPath.endsWith("/")) {
   throw new Error("PLAYWRIGHT_APP_PATH must begin and end with '/'.");
@@ -15,6 +16,7 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
   forbidOnly: isCI,
+  failOnFlakyTests: isCI,
   retries: isCI ? 1 : 0,
   // WebGL-heavy pages can share a constrained GPU/software renderer locally and in CI.
   // Two simultaneous scenes starve each other's initialization even when stable alone.
@@ -46,8 +48,20 @@ export default defineConfig({
     },
     {
       name: "webkit",
-      grep: /@smoke/,
-      use: { browserName: "webkit", contextOptions: { reducedMotion: "reduce" } },
+      grep: crossBrowserTests,
+      use: { browserName: "webkit", contextOptions: { reducedMotion: "no-preference" } },
+    },
+    {
+      name: "firefox",
+      grep: crossBrowserTests,
+      use: {
+        browserName: "firefox",
+        contextOptions: { reducedMotion: "no-preference" },
+        // Hosted CI gives Firefox an Xvfb display backed by Mesa LLVMpipe. This
+        // preference permits that real software GL context without weakening the
+        // nonblank-render and console-error assertions.
+        launchOptions: { firefoxUserPrefs: { "webgl.force-enabled": true } },
+      },
     },
   ],
   webServer: {

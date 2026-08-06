@@ -1,5 +1,5 @@
 import { X } from "lucide-react";
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { commandKey } from "./shortcuts";
 import { useIsMobile } from "./useMediaQuery";
 
@@ -7,6 +7,69 @@ type HelpPopoverProps = {
   open: boolean;
   onClose: () => void;
   triggerRef?: RefObject<HTMLButtonElement | null>;
+};
+
+type BuildIdentity = {
+  commit: string;
+  repository: string | null;
+  workflowRun: string | null;
+};
+
+const BuildIdentityLink = ({ open }: { open: boolean }) => {
+  const [identity, setIdentity] = useState<BuildIdentity | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const controller = new AbortController();
+    fetch(`${import.meta.env.BASE_URL}build-info.json`, {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Build identity returned ${response.status}`);
+        }
+        return await response.json() as BuildIdentity;
+      })
+      .then((value) => {
+        if (/^[0-9a-f]{40}$/.test(value.commit)) {
+          setIdentity(value);
+        }
+      })
+      .catch(() => {
+        // Local development and older cached builds may not have an identity file.
+      });
+
+    return () => controller.abort();
+  }, [open]);
+
+  if (!identity) {
+    return null;
+  }
+
+  const commitUrl = identity.repository
+    ? `https://github.com/${identity.repository}/commit/${identity.commit}`
+    : null;
+  return (
+    <div className="help-build" aria-label="Deployed build identity">
+      <span>Build</span>
+      {commitUrl ? (
+        <a href={commitUrl} target="_blank" rel="noreferrer">
+          {identity.commit.slice(0, 7)}
+        </a>
+      ) : (
+        <code>{identity.commit.slice(0, 7)}</code>
+      )}
+      {identity.workflowRun && (
+        <a href={identity.workflowRun} target="_blank" rel="noreferrer">
+          CI run
+        </a>
+      )}
+    </div>
+  );
 };
 
 // Opt-in shortcut/controls reference. Keeps the canvas free of persistent tutorial text
@@ -143,6 +206,7 @@ export const HelpPopover = ({ open, onClose, triggerRef }: HelpPopoverProps) => 
           <dd>Use Photo mode in the top bar</dd>
         </div>
       </dl>
+      <BuildIdentityLink open={open} />
     </div>
   );
 };

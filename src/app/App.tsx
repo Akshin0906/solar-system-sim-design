@@ -1,9 +1,6 @@
 import { Canvas, invalidate } from "@react-three/fiber";
 import { Suspense, useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
-import { Rocket, RotateCcw, Search, Sparkles, X } from "lucide-react";
 import { ACESFilmicToneMapping, SRGBColorSpace, WebGLRenderer } from "three";
-import { bodiesById } from "../data";
-import { scenarioById } from "../scenarios/registry";
 import { CAMERA_FOV_DEG } from "../scene/cameraFraming";
 import { SolarScene } from "../scene/SolarScene";
 import { ObjectInspector } from "../ui/ObjectInspector";
@@ -17,48 +14,25 @@ import { RocketLauncherPanel, RocketWatchHud } from "../features/rockets/RocketL
 import { useRocketStore } from "../features/rockets/rocketStore";
 import { useExperienceStore } from "../features/experiences/experienceStore";
 import { useScenarioStore } from "../scenarios/scenarioStore";
-import { useScaleStore } from "../simulation/scaleStore";
-import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
-import { SCALE_MODES, formatBodyType, formatTimeScale } from "../simulation/units";
-import { readBooleanPreference, writeBooleanPreference } from "../ui/safeStorage";
 import { ErrorBoundary } from "../ui/ErrorBoundary";
 import { useUiStore } from "../ui/uiStore";
 import { useIsMobile, useReducedMotion } from "../ui/useMediaQuery";
 import { PhotoModeExit } from "../features/share/ViewShareControls";
 import { usePhotoModeStore } from "../features/share/photoModeStore";
 import { applySharedViewFromLocation } from "../features/share/viewState";
-
-const isEditableTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  const tagName = target.tagName.toLowerCase();
-  return target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select";
-};
-
-// Any focusable control that should own its own keys (Space/arrows) rather than
-// letting the global transport shortcuts steal them. Editable fields are a subset.
-const isInteractiveTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  if (isEditableTarget(target) || target.getAttribute("role") === "button") {
-    return true;
-  }
-
-  const tagName = target.tagName.toLowerCase();
-  if (tagName === "a") {
-    return target.hasAttribute("href");
-  }
-
-  return tagName === "button";
-};
-
-const isCanvasTarget = (target: EventTarget | null) =>
-  target instanceof HTMLCanvasElement && target.classList.contains("solar-canvas");
+import {
+  copyClientDiagnostics,
+  reportClientDiagnostic,
+} from "../observability/clientDiagnostics";
+import {
+  DiscoverabilityCue,
+  KeyboardShortcuts,
+  LowInformationRecovery,
+  SceneAccessibleDescription,
+  SimulationLiveRegion,
+  TimeDriver,
+} from "./AppSupport";
 
 const canCreateWebGlContext = () => {
   if (typeof document === "undefined") {
@@ -95,330 +69,23 @@ const WebGlFallback = ({ onRetry, restoring = false }: { onRetry: () => void; re
         : "This browser cannot create the graphics context needed for the simulator."}
     </p>
     {!restoring && (
-      <button className="reset-time webgl-retry" type="button" onClick={onRetry}>
-        Retry
-      </button>
+      <div className="webgl-fallback-actions">
+        <button className="reset-time webgl-retry" type="button" onClick={onRetry}>
+          Retry
+        </button>
+        <button className="reset-time" type="button" onClick={() => void copyClientDiagnostics()}>
+          Copy diagnostics
+        </button>
+      </div>
     )}
   </section>
 );
-
-const liveDateFormatter = new Intl.DateTimeFormat(undefined, {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-});
 
 type CanvasGlFactory = Extract<
   NonNullable<ComponentProps<typeof Canvas>["gl"]>,
   (...args: never[]) => unknown
 >;
 type CanvasRendererProps = Parameters<CanvasGlFactory>[0];
-
-const TimeDriver = () => {
-  const tick = useTimeStore((state) => state.tick);
-  const isPaused = useTimeStore((state) => state.isPaused);
-  const frameRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number | null>(null);
-  const accumulatedTimeRef = useRef(0);
-
-  useEffect(() => {
-    if (isPaused) {
-      frameRef.current = null;
-      lastTimeRef.current = null;
-      accumulatedTimeRef.current = 0;
-      return;
-    }
-
-    const targetTickSeconds = 1 / 30;
-
-    const loop = (time: number) => {
-      if (lastTimeRef.current !== null) {
-        accumulatedTimeRef.current += Math.min((time - lastTimeRef.current) / 1_000, 0.12);
-
-        // Drain the accumulator in fixed 1/30s steps, carrying the remainder rather than
-        // discarding it. tick() clamps each call to the same 1/30s cap, so passing the raw
-        // accumulated value and then zeroing it silently dropped any time above one step on
-        // slow/janky frames — making the sim clock run slow on non-60Hz displays. The
-        // upstream Math.min(…, 0.12) bounds the backlog to ~4 steps, so this can't spiral.
-        while (accumulatedTimeRef.current >= targetTickSeconds) {
-          tick(targetTickSeconds);
-          accumulatedTimeRef.current -= targetTickSeconds;
-        }
-      }
-
-      lastTimeRef.current = time;
-      frameRef.current = window.requestAnimationFrame(loop);
-    };
-
-    frameRef.current = window.requestAnimationFrame(loop);
-
-    return () => {
-      if (frameRef.current !== null) {
-        window.cancelAnimationFrame(frameRef.current);
-      }
-      frameRef.current = null;
-      lastTimeRef.current = null;
-      accumulatedTimeRef.current = 0;
-    };
-  }, [isPaused, tick]);
-
-  return null;
-};
-
-const KeyboardShortcuts = () => {
-  const togglePaused = useTimeStore((state) => state.togglePaused);
-  const stepDays = useTimeStore((state) => state.stepDays);
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const editable = isEditableTarget(event.target);
-
-      if (event.key === "Escape") {
-        if (usePhotoModeStore.getState().active) {
-          usePhotoModeStore.getState().setActive(false);
-          return;
-        }
-        const { closeSearch, closeSheet } = useUiStore.getState();
-        useExperienceStore.getState().stop();
-        closeSearch();
-        closeSheet();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        useUiStore.getState().openSearch();
-        return;
-      }
-
-      if (editable) {
-        return;
-      }
-
-      if (event.key === "/") {
-        event.preventDefault();
-        useUiStore.getState().openSearch();
-        return;
-      }
-
-      // Transport shortcuts belong to the scene; let a focused button/slider/link
-      // handle Space and the arrow keys itself.
-      if (isInteractiveTarget(event.target)) {
-        return;
-      }
-
-      // While a doomsday scenario owns the view the J2000 transport is frozen and locked,
-      // so route Space to the scenario's own pause and swallow the date-stepping arrows
-      // instead of firing a no-op against the locked clock.
-      const scenarioActive = useScenarioStore.getState().activeScenarioId !== null;
-
-      if (event.code === "Space") {
-        event.preventDefault();
-        if (scenarioActive) {
-          useScenarioStore.getState().togglePause();
-        } else {
-          togglePaused();
-        }
-        return;
-      }
-
-      if (event.key === "ArrowLeft") {
-        if (isCanvasTarget(event.target)) {
-          return;
-        }
-        event.preventDefault();
-        if (!scenarioActive) {
-          stepDays(-1);
-        }
-        return;
-      }
-
-      if (event.key === "ArrowRight") {
-        if (isCanvasTarget(event.target)) {
-          return;
-        }
-        event.preventDefault();
-        if (!scenarioActive) {
-          stepDays(1);
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [stepDays, togglePaused]);
-
-  return null;
-};
-
-const SimulationLiveRegion = () => {
-  const selectedId = useSelectionStore((state) => state.selectedId);
-  const isPaused = useTimeStore((state) => state.isPaused);
-  // When playback is active this selector remains null, so the 30 Hz scene clock does
-  // not force a React reconciliation for text we intentionally do not announce.
-  const pausedSimulationDateMs = useTimeStore((state) => (state.isPaused ? state.simulationDateMs : null));
-  const timeScale = useTimeStore((state) => state.timeScale);
-  const activeScenarioId = useScenarioStore((state) => state.activeScenarioId);
-  const scenarioStatus = useScenarioStore((state) => state.status);
-  const selected = bodiesById.get(selectedId);
-  const activeScenario = activeScenarioId ? scenarioById.get(activeScenarioId) : undefined;
-  // While playing, omit the continuously-changing date: a polite live region that
-  // re-announced every simulated day (up to thousands/sec at high time scales) would
-  // overwhelm a screen reader. The date is announced when paused or after a scrub.
-  const dateSegment =
-    isPaused && pausedSimulationDateMs !== null
-      ? ` · ${liveDateFormatter.format(new Date(pausedSimulationDateMs))}`
-      : "";
-  const message = activeScenario
-    ? `${selected?.name ?? "Object"} selected · ${activeScenario.name} scenario ${scenarioStatus}`
-    : `${selected?.name ?? "Object"} selected${dateSegment} · ${isPaused ? "paused" : "playing"} · ${formatTimeScale(timeScale)}`;
-
-  return (
-    <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-      {message}
-    </span>
-  );
-};
-
-const DISCOVERY_HINT_KEY = "solar-system-sim.discoveryHintDismissed";
-
-const DiscoverabilityCue = ({ isMobile }: { isMobile: boolean }) => {
-  const [visible, setVisible] = useState(() => {
-    return !readBooleanPreference(DISCOVERY_HINT_KEY);
-  });
-  const openSearch = useUiStore((state) => state.openSearch);
-  const openSheet = useUiStore((state) => state.openSheet);
-  const setRocketPanelOpen = useRocketStore((state) => state.setPanelOpen);
-  const startTour = useExperienceStore((state) => state.startTour);
-
-  const dismiss = useCallback(() => {
-    setVisible(false);
-    writeBooleanPreference(DISCOVERY_HINT_KEY, true);
-  }, []);
-
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <aside
-      className="discoverability-cue"
-      aria-label="Start exploring"
-    >
-      <span className="discovery-copy">
-        <small>New here?</small>
-        <strong>Choose a first move</strong>
-      </span>
-      <span className="discovery-actions">
-        <button
-          className="discovery-action"
-          type="button"
-          onClick={() => {
-            dismiss();
-            openSearch();
-          }}
-        >
-          <Search size={14} aria-hidden /> Find a world
-        </button>
-        <button
-          className="discovery-action"
-          type="button"
-          onClick={() => {
-            dismiss();
-            startTour("three-worlds");
-          }}
-        >
-          <Sparkles size={14} aria-hidden /> Take a tour
-        </button>
-        <button
-          className="discovery-action"
-          type="button"
-          onClick={() => {
-            dismiss();
-            if (isMobile) {
-              openSheet("rocket");
-            } else {
-              setRocketPanelOpen(true);
-            }
-          }}
-        >
-          <Rocket size={14} aria-hidden /> Plan a mission
-        </button>
-      </span>
-      <button className="discovery-close" type="button" onClick={dismiss} aria-label="Dismiss getting started">
-        <X size={12} />
-      </button>
-    </aside>
-  );
-};
-
-const cameraModeDescription: Record<ReturnType<typeof useSelectionStore.getState>["cameraMode"], string> = {
-  free: "free-look camera",
-  focus: "focused camera",
-  follow: "body-follow camera",
-  overview: "whole-system overview",
-  inner: "inner-planets view",
-  outer: "outer-planets view",
-  "earth-moon": "Earth and Moon system view",
-  "jupiter-system": "Jupiter system view",
-  "saturn-system": "Saturn system view",
-  "kuiper-belt": "Kuiper belt view",
-  moons: "moon-system view",
-  observer: "terminator observer view",
-  "rocket-follow": "rocket-follow camera",
-};
-
-const SceneAccessibleDescription = () => {
-  const selectedId = useSelectionStore((state) => state.selectedId);
-  const cameraMode = useSelectionStore((state) => state.cameraMode);
-  const mode = useScaleStore((state) => state.mode);
-  const labelDensity = useScaleStore((state) => state.labelDensity);
-  const showGrid = useScaleStore((state) => state.showGrid);
-  const showOrbits = useScaleStore((state) => state.showOrbits);
-  const showTrails = useScaleStore((state) => state.showTrails);
-  const selected = bodiesById.get(selectedId);
-  const scale = SCALE_MODES.find((item) => item.id === mode);
-  const guides = [
-    labelDensity === "off" ? null : `${labelDensity} labels`,
-    showGrid ? "ecliptic grid" : null,
-    showOrbits ? "orbit paths" : null,
-    showTrails ? "motion trails" : null,
-  ].filter(Boolean);
-
-  return (
-    <p id="solar-scene-description" className="sr-only">
-      Current scene: {cameraModeDescription[cameraMode]}, with {selected?.name ?? "the solar system"} selected
-      {selected ? ` (${formatBodyType(selected.type)})` : ""}. {scale?.label ?? "Current"} scale lens: {scale?.note ?? "custom scale"}.
-      {guides.length > 0 ? ` Visible guides: ${guides.join(", ")}.` : " All scene guides are hidden."} Use Search objects to
-      browse the scene without relying on the canvas.
-    </p>
-  );
-};
-
-const LowInformationRecovery = ({ isMobile }: { isMobile: boolean }) => {
-  const labelDensity = useScaleStore((state) => state.labelDensity);
-  const showGrid = useScaleStore((state) => state.showGrid);
-  const showOrbits = useScaleStore((state) => state.showOrbits);
-  const showTrails = useScaleStore((state) => state.showTrails);
-  const restoreRecommendedView = useUiStore((state) => state.restoreRecommendedView);
-  const lowInformation = labelDensity === "off" && !showGrid && !showOrbits && !showTrails;
-
-  if (!lowInformation) {
-    return null;
-  }
-
-  return (
-    <aside className="low-information-recovery" aria-label="View recovery">
-      <span>
-        <strong>Need your bearings?</strong>
-        Labels and every guide are hidden.
-      </span>
-      <button type="button" onClick={() => restoreRecommendedView(isMobile)}>
-        <RotateCcw size={14} aria-hidden /> Restore view
-      </button>
-    </aside>
-  );
-};
 
 export const App = () => {
   // Start optimistically and let WebGLRenderer be the capability check. Creating and
@@ -512,7 +179,8 @@ export const App = () => {
         powerPreference: "high-performance",
         logarithmicDepthBuffer: true,
       });
-    } catch {
+    } catch (error) {
+      reportClientDiagnostic("webgl-init-failure", error);
       setWebglUnavailable(true);
       return await new Promise<never>(() => undefined);
     }
@@ -532,6 +200,9 @@ export const App = () => {
               </button>
               <button className="reset-time" type="button" onClick={() => window.location.reload()}>
                 Reload
+              </button>
+              <button className="reset-time" type="button" onClick={() => void copyClientDiagnostics()}>
+                Copy diagnostics
               </button>
             </div>
           </section>
@@ -578,6 +249,7 @@ export const App = () => {
               gl.domElement.dataset.contextListenersAttached = "true";
               gl.domElement.addEventListener("webglcontextlost", (event) => {
                 event.preventDefault();
+                reportClientDiagnostic("webgl-context-lost", new Error("WebGL context lost"));
                 setWebglRestoring(true);
                 if (restoreTimerRef.current !== null) {
                   window.clearTimeout(restoreTimerRef.current);
@@ -588,6 +260,7 @@ export const App = () => {
                 }, 6_000);
               });
               gl.domElement.addEventListener("webglcontextrestored", () => {
+                reportClientDiagnostic("webgl-context-restored", new Error("WebGL context restored"));
                 if (restoreTimerRef.current !== null) {
                   window.clearTimeout(restoreTimerRef.current);
                   restoreTimerRef.current = null;
@@ -630,6 +303,9 @@ export const App = () => {
             </button>
             <button className="reset-time" type="button" onClick={() => window.location.reload()}>
               Reload
+            </button>
+            <button className="reset-time" type="button" onClick={() => void copyClientDiagnostics()}>
+              Copy diagnostics
             </button>
           </div>
         </section>

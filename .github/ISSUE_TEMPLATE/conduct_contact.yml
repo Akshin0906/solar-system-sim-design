@@ -1,0 +1,16 @@
+name: Conduct contact request
+description: Ask the maintainer to arrange a private conduct-reporting channel without publishing incident details.
+title: "Conduct contact request"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not name people or describe the incident in this public issue. This form only requests a private contact path. Use GitHub's report and block controls as appropriate for GitHub-hosted behavior.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Public-content check
+      options:
+        - label: I have not included names, private information, or incident details in this issue.
+          required: true

@@ -96,7 +96,7 @@
 
 .experience-mini-copy small {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.3;
   -webkit-line-clamp: 2;
 }
@@ -116,7 +116,7 @@
   background: rgba(245, 241, 232, 0.045);
   color: rgba(245, 241, 232, 0.78);
   font: inherit;
-  font-size: 9.5px;
+  font-size: 10.5px;
   cursor: pointer;
 }
 
@@ -154,7 +154,7 @@
 .experience-story > span,
 .experience-eclipse-readout span {
   color: var(--cyan);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 680;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -252,7 +252,7 @@
 
 .experience-card small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -288,7 +288,7 @@
   align-items: center;
   gap: 6px;
   color: #bfe4e6;
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 680;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -466,7 +466,7 @@
 
 .experience-fidelity small {
   color: var(--muted);
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.35;
 }
 
@@ -477,7 +477,7 @@
   padding: 1px 6px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
-  font-size: 8.5px;
+  font-size: 10.5px;
   font-weight: 680;
   line-height: 1.1;
   white-space: nowrap;

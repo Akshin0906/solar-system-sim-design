@@ -94,7 +94,9 @@ export const SCENARIOS: DoomsdayScenario[] = [
       { key: "finalRadiusAu", label: "Final size", min: 0.4, max: 1.5, step: 0.05, default: 1.1, unit: "AU", help: "How far the surface expands. Past 1 AU it reaches Earth's orbit." },
       { key: "finalMassSolar", label: "Retained mass", min: 0.55, max: 1, step: 0.01, default: 0.668, unit: "M☉", help: "Solar mass remaining at maximum size. The default follows a published tip-of-red-giant estimate; lower mass lets surviving orbits expand farther." },
     ],
-    defaultTimeScaleDaysPerSec: 250,
+    // At 100 days/sec the six-year default swell remains watchable while retaining
+    // more fixed-step headroom than the public 120 days/sec ceiling.
+    defaultTimeScaleDaysPerSec: 100,
     // Grow the Sun's physical radius along an accelerating curve. The integrator's
     // collision detection does the rest: when the swelling surface crosses a planet's
     // orbit, they merge and the planet is consumed — real engulfment, no extra code.

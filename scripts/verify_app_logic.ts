@@ -5,6 +5,7 @@ import type { Vec3 } from "../src/simulation/orbitalElements";
 import { getBodyPositionKm, vectorLength } from "../src/simulation/solveOrbit";
 import { destinationsById, rocketDestinations } from "../src/features/rockets/destinationCatalog";
 import { rocketsById } from "../src/features/rockets/rocketCatalog";
+import { useRocketStore } from "../src/features/rockets/rocketStore";
 import { clearRocketCaches, computeRocketView } from "../src/features/rockets/rocketState";
 import { estimateTransfer } from "../src/features/rockets/transferModel";
 import {
@@ -42,6 +43,7 @@ import {
   type SharedViewState,
 } from "../src/features/share/viewState";
 import { useExperienceStore } from "../src/features/experiences/experienceStore";
+import { useScenarioStore } from "../src/scenarios/scenarioStore";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -193,6 +195,15 @@ const norm360 = (degrees: number) => ((degrees % 360) + 360) % 360;
 const assertClose = (actual: number | undefined, expected: number, tolerance: number, label: string) => {
   assert.notEqual(actual, undefined, `${label} is missing`);
   assert(Math.abs(actual! - expected) <= tolerance, `${label}: expected ${expected}, got ${actual}`);
+};
+
+const assertInitialClockIsStableAndMotionReady = () => {
+  const initialClock = useTimeStore.getState();
+  assert.equal(initialClock.isPaused, true, "the simulator should open on a stable, user-controlled frame");
+  assert.equal(initialClock.preset, "day", "the first Play action should still reveal visible orbital motion");
+  assert.equal(initialClock.timeScale, DAY_SECONDS, "the initial clock preset and scale must agree");
+  assert.equal(initialClock.direction, 1, "the initial clock should move forward");
+  assert.equal(initialClock.transportLocked, false, "the initial transport should remain interactive");
 };
 
 const solveEccentricAnomaly = (meanAnomalyRad: number, eccentricity: number) => {
@@ -1017,6 +1028,156 @@ const assertRocketWatchRestoresClock = () => {
   });
 };
 
+const assertRocketWatchCanRetireInsideScenario = () => {
+  const timeBaseline = useTimeStore.getState();
+  const selectionBaseline = useSelectionStore.getState();
+  const scenarioBaseline = useScenarioStore.getState();
+  const uiBaseline = useUiStore.getState();
+  const originalDateMs = Date.parse("2024-06-01T00:00:00.000Z");
+
+  try {
+    useTimeStore.setState({
+      direction: -1,
+      isPaused: true,
+      preset: "custom",
+      simulationDateMs: originalDateMs,
+      timeScale: 321,
+      transportLocked: false,
+    });
+    useSelectionStore.setState({
+      selectedId: "saturn",
+      cameraMode: "saturn-system",
+      rocketTarget: null,
+      viewSessions: {},
+    });
+
+    useUiStore.getState().beginRocketWatch();
+    useSelectionStore.getState().followRocket([6, 7, 8]);
+    useScenarioStore.getState().start("red-giant");
+    assert.equal(useTimeStore.getState().transportLocked, true);
+    assert.equal(useSelectionStore.getState().cameraMode, "inner");
+
+    useUiStore.getState().endRocketWatch();
+    assert.equal(useUiStore.getState().rocketClockSnapshot, null, "retiring must clear the rocket clock owner");
+    assert.equal(useTimeStore.getState().transportLocked, true, "retiring must leave the scenario lock intact");
+    assert.equal(useSelectionStore.getState().cameraMode, "inner", "retiring must not disturb the live scenario view");
+    assert.equal(useSelectionStore.getState().viewSessions.rocket, undefined, "the nested rocket view must be retired");
+
+    useScenarioStore.getState().stop();
+    const restoredClock = useTimeStore.getState();
+    assert.equal(restoredClock.direction, -1);
+    assert.equal(restoredClock.isPaused, true);
+    assert.equal(restoredClock.preset, "custom");
+    assert.equal(restoredClock.simulationDateMs, originalDateMs);
+    assert.equal(restoredClock.timeScale, 321);
+    assert.equal(restoredClock.transportLocked, false);
+    assert.equal(useSelectionStore.getState().selectedId, "saturn");
+    assert.equal(useSelectionStore.getState().cameraMode, "saturn-system");
+  } finally {
+    if (useScenarioStore.getState().activeScenarioId) {
+      useScenarioStore.getState().stop();
+    }
+    useScenarioStore.setState(scenarioBaseline);
+    useTimeStore.setState(timeBaseline);
+    useSelectionStore.setState(selectionBaseline);
+    useUiStore.setState(uiBaseline);
+  }
+};
+
+const assertScenarioResumesActiveRocketWatch = () => {
+  const timeBaseline = useTimeStore.getState();
+  const selectionBaseline = useSelectionStore.getState();
+  const scenarioBaseline = useScenarioStore.getState();
+  const uiBaseline = useUiStore.getState();
+  const browsingDateMs = Date.parse("2024-06-01T00:00:00.000Z");
+  const rocketDateMs = Date.parse("2024-07-01T00:00:00.000Z");
+
+  try {
+    useTimeStore.setState({
+      direction: -1,
+      isPaused: true,
+      preset: "custom",
+      simulationDateMs: browsingDateMs,
+      timeScale: 321,
+      transportLocked: false,
+    });
+    useSelectionStore.setState({
+      selectedId: "saturn",
+      cameraMode: "saturn-system",
+      rocketTarget: null,
+      viewSessions: {},
+    });
+
+    useUiStore.getState().beginRocketWatch();
+    useTimeStore.setState({
+      direction: 1,
+      isPaused: false,
+      preset: "day",
+      simulationDateMs: rocketDateMs,
+      timeScale: DAY_SECONDS,
+      transportLocked: false,
+    });
+    useSelectionStore.getState().followRocket([6, 7, 8]);
+
+    useScenarioStore.getState().start("red-giant");
+    assert.equal(useTimeStore.getState().transportLocked, true);
+    assert.equal(useSelectionStore.getState().cameraMode, "inner");
+
+    useScenarioStore.getState().stop();
+    const resumedClock = useTimeStore.getState();
+    assert.equal(resumedClock.direction, 1, "scenario exit should resume the rocket clock direction");
+    assert.equal(resumedClock.isPaused, false, "scenario exit should resume rocket playback");
+    assert.equal(resumedClock.preset, "day", "scenario exit should restore the rocket playback preset");
+    assert.equal(resumedClock.simulationDateMs, rocketDateMs, "scenario exit should restore the rocket date");
+    assert.equal(resumedClock.timeScale, DAY_SECONDS, "scenario exit should restore the rocket playback rate");
+    assert.equal(resumedClock.transportLocked, false);
+    assert.equal(useSelectionStore.getState().cameraMode, "rocket-follow");
+    assert.deepEqual(useSelectionStore.getState().rocketTarget?.position, [6, 7, 8]);
+    assert(useUiStore.getState().rocketClockSnapshot, "scenario exit must retain the outer rocket owner");
+    assert(useSelectionStore.getState().viewSessions.rocket, "scenario exit must retain the rocket view session");
+
+    useUiStore.getState().endRocketWatch();
+    const restoredClock = useTimeStore.getState();
+    assert.equal(restoredClock.direction, -1);
+    assert.equal(restoredClock.isPaused, true);
+    assert.equal(restoredClock.preset, "custom");
+    assert.equal(restoredClock.simulationDateMs, browsingDateMs);
+    assert.equal(restoredClock.timeScale, 321);
+    assert.equal(useSelectionStore.getState().selectedId, "saturn");
+    assert.equal(useSelectionStore.getState().cameraMode, "saturn-system");
+  } finally {
+    if (useScenarioStore.getState().activeScenarioId) {
+      useScenarioStore.getState().stop();
+    }
+    useScenarioStore.setState(scenarioBaseline);
+    useTimeStore.setState(timeBaseline);
+    useSelectionStore.setState(selectionBaseline);
+    useUiStore.setState(uiBaseline);
+  }
+};
+
+const assertScenarioPanelOwnsDesktopPanelLane = () => {
+  const uiBaseline = useUiStore.getState();
+  const rocketBaseline = useRocketStore.getState();
+
+  try {
+    useUiStore.setState({ doomsdayPanelOpen: false });
+    useRocketStore.setState({ panelOpen: true });
+    useUiStore.getState().openDoomsdayPanel();
+    assert.equal(useUiStore.getState().doomsdayPanelOpen, true);
+    assert.equal(useRocketStore.getState().panelOpen, false, "scenario controls must replace rocket controls");
+
+    useUiStore.getState().closeDoomsdayPanel();
+    useRocketStore.setState({ panelOpen: true });
+    useUiStore.getState().toggleDoomsdayPanel();
+    assert.equal(useUiStore.getState().doomsdayPanelOpen, true);
+    assert.equal(useRocketStore.getState().panelOpen, false, "scenario toggle must own the shared panel lane");
+  } finally {
+    useUiStore.setState(uiBaseline);
+    useRocketStore.setState(rocketBaseline);
+  }
+};
+
 const assertTimeStoreRejectsInvalidInputsAndStopsAtBounds = () => {
   const baseline = useTimeStore.getState();
   const originalDate = baseline.simulationDateMs;
@@ -1154,6 +1315,7 @@ const assertShareableViewState = () => {
   }
 };
 
+assertInitialClockIsStableAndMotionReady();
 assertBodyDataInvariants();
 assertRocketDestinationCatalog();
 assertPreLaunchRocketDistance();
@@ -1174,6 +1336,9 @@ assertRepeatedBodySelectionIsObservable();
 assertExplicitNavigationAndViewSessions();
 assertRecommendedViewRecovery();
 assertRocketWatchRestoresClock();
+assertScenarioResumesActiveRocketWatch();
+assertRocketWatchCanRetireInsideScenario();
+assertScenarioPanelOwnsDesktopPanelLane();
 assertTimeStoreRejectsInvalidInputsAndStopsAtBounds();
 assertShareableViewState();
 

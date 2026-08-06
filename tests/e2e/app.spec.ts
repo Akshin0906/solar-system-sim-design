@@ -104,6 +104,7 @@ test.describe("desktop", () => {
     await expect(page.locator(".top-bar")).toBeVisible();
     await expect(page.getByRole("complementary")).toContainText("Earth");
     await expect(page.getByRole("region", { name: "Time controls" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
 
     const timeline = page.getByRole("slider", { name: "Timeline" });
     await timeline.evaluate((element) => {
@@ -115,31 +116,65 @@ test.describe("desktop", () => {
     await expect(page.getByText("Orbit positions extrapolated beyond the validated 1800–2050 model")).toBeVisible();
   });
 
-  test("installs the app shell and reloads while offline", async ({ page, context }) => {
+  test("installs a lean app shell and caches visited textures for offline use", async ({ page, context }) => {
     await openApp(page);
-    const serviceWorkerReady = await page.evaluate(async () => {
+    const initialCacheState = await page.evaluate(async () => {
       if (!("serviceWorker" in navigator)) {
-        return false;
+        return null;
       }
       await navigator.serviceWorker.ready;
-      return true;
+      const cacheNames = await caches.keys();
+      const shellCacheName = cacheNames.find(
+        (name) => name.startsWith("solar-system-sim-") && !name.endsWith("-textures-v2"),
+      );
+      const textureCacheName = cacheNames.find((name) => name.endsWith("-textures-v2"));
+      const shellPaths = shellCacheName
+        ? (await (await caches.open(shellCacheName)).keys()).map((request) => new URL(request.url).pathname)
+        : [];
+      const texturePaths = textureCacheName
+        ? (await (await caches.open(textureCacheName)).keys()).map((request) => new URL(request.url).pathname)
+        : [];
+      return { shellCacheName, shellPaths, textureCacheName, texturePaths };
     });
-    expect(serviceWorkerReady).toBe(true);
+    expect(initialCacheState?.shellCacheName).toBeTruthy();
+    expect(initialCacheState?.textureCacheName).toBeTruthy();
+    expect(initialCacheState?.shellPaths.some((path) => path.includes("/textures/"))).toBe(false);
+    expect(initialCacheState?.texturePaths).toEqual([]);
 
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.locator("#main-controls")).toBeVisible();
+    await goToBodyFromSearch(page, "Saturn");
+    await expect
+      .poll(async () =>
+        page.evaluate(async () => {
+          const textureCacheName = (await caches.keys()).find((name) => name.endsWith("-textures-v2"));
+          if (!textureCacheName) {
+            return false;
+          }
+          const requests = await (await caches.open(textureCacheName)).keys();
+          return requests.some((request) => new URL(request.url).pathname.endsWith("/textures/saturn.jpg"));
+        }),
+      )
+      .toBe(true);
+
     await context.setOffline(true);
     try {
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(page.locator("#main-controls")).toBeVisible();
       await expect(page.getByRole("img", { name: "Interactive 3D solar system simulation" })).toBeVisible();
+      await goToBodyFromSearch(page, "Saturn");
     } finally {
       await context.setOffline(false);
     }
   });
 
-  test("keeps icon help hoverable and dismissible", async ({ page }) => {
+  test("keeps icon help hoverable and lets Escape dismiss only the tooltip first", async ({ page }) => {
     await openApp(page);
+    await page.getByRole("button", { name: "Guided experiences", exact: true }).click();
+    await page.getByRole("button", { name: /^Scale Revelation/ }).click();
+    const guidedWatch = page.getByRole("region", { name: "Scale Revelation watch" });
+    await expect(guidedWatch).toBeVisible();
+
     const search = page.getByRole("button", { name: "Search objects" });
     await search.focus();
     const tooltip = page.getByRole("tooltip", { name: /Search objects/ });
@@ -147,6 +182,10 @@ test.describe("desktop", () => {
 
     await page.keyboard.press("Escape");
     await expect(tooltip).toBeHidden();
+    await expect(guidedWatch).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(guidedWatch).toHaveCount(0);
     await page.keyboard.press("Tab");
 
     await search.hover();
@@ -198,7 +237,7 @@ test.describe("desktop", () => {
     await expectNoOverlap(help, page.getByRole("complementary"), "help and object inspector");
   });
 
-  test("ranks an exact Titan match first and selects it with Enter", async ({ page }) => {
+  test("@cross-browser ranks an exact Titan match first and selects it with Enter", async ({ page }) => {
     await openApp(page);
     await selectTitanFromSearch(page);
     await expect(page.getByRole("complementary")).toContainText("Titan");
@@ -425,10 +464,10 @@ test.describe("desktop", () => {
     await expect(canvas).toHaveAttribute("data-camera-pose", composedPose!);
   });
 
-  test("collapses a scenario into a reversible watch mode", async ({ page }) => {
+  test("@cross-browser collapses a scenario into a reversible watch mode", async ({ page }) => {
     await openApp(page);
     await selectTitanFromSearch(page);
-    await page.getByRole("button", { name: "Pause" }).click();
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Open what-if scenarios" }).click();
     await page.getByRole("button", { name: "Sun becomes a red giant" }).click();
@@ -484,6 +523,18 @@ test.describe("desktop", () => {
     await expect(page.getByRole("dialog", { name: "Search and commands" })).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Help and shortcuts" })).toHaveCount(0);
   });
+
+  test("blocks background pointer input while the search dialog is modal", async ({ page }) => {
+    await openApp(page);
+    await page.getByRole("button", { name: "Search objects" }).click();
+    const dialog = page.getByRole("dialog", { name: "Search and commands" });
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+    await page.locator(".command-modal-backdrop").click({ position: { x: 8, y: 300 } });
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  });
 });
 
 test.describe("mobile", () => {
@@ -493,7 +544,7 @@ test.describe("mobile", () => {
     isMobile: true,
   });
 
-  test("renders the mobile transport and canvas", async ({ page }) => {
+  test("@cross-browser renders the mobile transport and canvas", async ({ page }) => {
     await openApp(page);
     await expect(page.locator("#main-controls")).toHaveAttribute("data-mobile", "true");
     await expect(page.getByRole("region", { name: "Time controls" })).toBeVisible();

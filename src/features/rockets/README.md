@@ -12,8 +12,11 @@ active, but it is still approximate: it is not a professional trajectory design 
 - `flightModel.ts`: pure closed-form speed and distance profile for direct/free flight.
 - `orbitalTransfer.ts`: universal-variable Lambert solving and two-body propagation.
 - `transferModel.ts`: dated Hohmann/Lambert plans, patched-conic requirements, and sampled transfer arcs.
-- `rocketState.ts`: derived view model for scene positions, telemetry, status, and
-  transfer visuals.
+- `directFlightPlanning.ts`: bounded direct-intercept and closest-approach planning caches.
+- `transferPlanning.ts`: bounded transfer-plan/scene caches and post-encounter continuation.
+- `rocketPresentation.ts`: public view types, mission labels, and telemetry formatters.
+- `rocketState.ts`: stable public facade and composition layer for derived scene,
+  telemetry, status, and transfer visuals.
 - `rocketStore.ts`: selected and active launch identity.
 - `RocketLauncherPanel.tsx`: compact controls.
 - `RocketTelemetry.tsx`: live readout formatting.

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportClientDiagnostic } from "../observability/clientDiagnostics";
 
 type ErrorBoundaryProps = {
   children: ReactNode;
@@ -29,9 +30,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // A console diagnostic beats a silent white screen for a deployed PWA. This is the
-    // single place app errors are reported; a real telemetry sink could hook in here.
+    // Keep a privacy-conscious, copyable diagnostic locally. Deployments can additionally
+    // provide VITE_ERROR_REPORT_ENDPOINT to receive the same structured payload.
     console.error("Unhandled render error:", error, info.componentStack);
+    reportClientDiagnostic("render-error", error, {
+      componentStack: info.componentStack?.slice(0, 1_200) ?? null,
+    });
     this.props.onError?.(error);
   }
 

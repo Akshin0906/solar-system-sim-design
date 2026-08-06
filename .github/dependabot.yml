@@ -4,7 +4,9 @@ updates:
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 1
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 2
     groups:
       npm-minor-and-patch:
         patterns:
@@ -12,17 +14,22 @@ updates:
         update-types:
           - minor
           - patch
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - version-update:semver-major
+      # Major upgrades remain ungrouped so each breaking change gets its own
+      # compatibility review instead of hiding several migrations in one PR.
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 1
+      time: "09:30"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 2
     groups:
       actions-maintenance:
         patterns:
           - "*"
+        update-types:
+          - minor
+          - patch
+      # Major action upgrades remain individual so permission and behavior
+      # changes are reviewed one migration at a time.

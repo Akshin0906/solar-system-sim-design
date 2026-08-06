@@ -68,8 +68,8 @@ export type IntegratorState = {
   startDateMs: number; // the frozen J2000 date the scenario was launched from
   elapsedSimSeconds: number; // the scenario's own T+ clock
   accumulatorSeconds: number; // leftover sim-time below one fixed step
-  // True on the last frame whose work was capped by MAX_SUBSTEPS_PER_FRAME, i.e.
-  // sim-time advanced slower than the requested scale. Surfaced, never silent.
+  // True when the last frame deferred/dropped requested wall time or a direct integrator
+  // call exceeded MAX_SUBSTEPS_PER_FRAME. Sim-time slowed, but never silently.
   throttled: boolean;
   events: SimEvent[];
   ejectedIds: Set<string>; // bodies already logged as ejected (dedupe)
@@ -100,25 +100,42 @@ export type IntegratorState = {
 // the value back to meaning (an interloper type, a target planet index, …).
 export type ScenarioParamOption = { value: number; label: string };
 
-// A sandbox control in the scenario panel. Numeric params render as a commit-on-release
-// slider (min/max/step). A param with `options` renders as a segmented control instead.
-export type ScenarioParam = {
+type ScenarioParamBase = {
   key: string;
   label: string;
   default: number;
   unit?: string;
   help?: string;
-  // Numeric slider params:
-  min?: number;
-  max?: number;
-  step?: number;
-  // Discrete choice params:
-  options?: ScenarioParamOption[];
 };
+
+// A sandbox control is deliberately discriminated: a range always carries the
+// bounds the store needs to clamp external writes, while a choice accepts only a
+// registered option. Keeping impossible partial combinations out of the type makes
+// registry metadata a reliable validation boundary rather than just UI decoration.
+export type ScenarioRangeParam = ScenarioParamBase & {
+  min: number;
+  max: number;
+  step: number;
+  options?: never;
+};
+
+export type ScenarioChoiceParam = ScenarioParamBase & {
+  options: readonly ScenarioParamOption[];
+  min?: never;
+  max?: never;
+  step?: never;
+};
+
+export type ScenarioParam = ScenarioRangeParam | ScenarioChoiceParam;
+
+// Active scenarios receive a complete registry-derived value map. Keep that map
+// read-only so physics code cannot mutate the Zustand-owned object behind the store's
+// back (the idle store represents the same dynamic record with no own keys).
+export type ScenarioParamValues = Readonly<Record<string, number>>;
 
 export type ScenarioContext = {
   state: IntegratorState;
-  params: Record<string, number>;
+  params: ScenarioParamValues;
   bodiesById: Map<string, CelestialBody>;
 };
 

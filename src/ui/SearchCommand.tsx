@@ -25,6 +25,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { selectableBodies } from "../data";
 import { useRocketStore } from "../features/rockets/rocketStore";
 import { scenarioById } from "../scenarios/registry";
@@ -445,82 +446,86 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   let renderedIndex = -1;
   let lastGroup: CommandItem["group"] | null = null;
 
-  return (
-    <div
-      ref={containerRef}
-      id="search-command-dialog"
-      className="search-popover command-popover"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Search and commands"
-      tabIndex={-1}
-    >
-      <div className="search-input-wrap">
-        <Search size={15} aria-hidden />
-        <input
-          autoFocus
-          value={query}
-          onChange={handleQueryChange}
-          placeholder="Search or run a command"
-          onKeyDown={handleKeyDown}
-          role="combobox"
-          aria-label="Search commands and objects"
-          aria-expanded="true"
-          aria-controls="command-results"
-          aria-activedescendant={visibleItems[safeActiveIndex] ? `command-item-${visibleItems[safeActiveIndex].id}` : undefined}
-        />
-        <button className="icon-button subtle" type="button" onClick={onClose} aria-label="Close search">
-          <X size={15} />
-        </button>
-      </div>
-      <div id="command-results" className="search-results command-results" role="listbox">
-        {visibleItems.length === 0 && (
-          <div className="command-empty">
-            <span>No matches</span>
-            <small>Try a planet, camera mode, or display toggle.</small>
-          </div>
-        )}
-        {visibleItems.map((item) => {
-          renderedIndex += 1;
-          const currentIndex = renderedIndex;
-          const active = renderedIndex === safeActiveIndex;
-          const showGroup = item.group !== lastGroup;
-          lastGroup = item.group;
-
-          return (
-            <div className="command-result-block" key={item.id}>
-              {showGroup && <div className="command-group-label">{item.group}</div>}
-              <button
-                id={`command-item-${item.id}`}
-                className={`search-result command-result ${active ? "active" : ""} ${item.active ? "selected" : ""}`.trim()}
-                type="button"
-                role="option"
-                tabIndex={-1}
-                ref={active ? activeItemRef : undefined}
-                aria-selected={active}
-                onMouseEnter={() => setActiveIndex(currentIndex)}
-                onClick={() => executeItem(item)}
-              >
-                <span className="command-result-icon" aria-hidden>
-                  {item.icon}
-                </span>
-                <span className="command-result-copy">
-                  <span>{item.title}</span>
-                  <small>{item.subtitle}</small>
-                  {item.active && <span className="sr-only">Currently active.</span>}
-                </span>
-                {item.shortcut && <kbd>{item.shortcut}</kbd>}
-                {item.active && <span className="command-active-dot" aria-hidden />}
-              </button>
+  return createPortal(
+    <div className="command-modal-root">
+      <div className="command-modal-backdrop" onClick={onClose} aria-hidden />
+      <div
+        ref={containerRef}
+        id="search-command-dialog"
+        className="search-popover command-popover"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search and commands"
+        tabIndex={-1}
+      >
+        <div className="search-input-wrap">
+          <Search size={15} aria-hidden />
+          <input
+            autoFocus
+            value={query}
+            onChange={handleQueryChange}
+            placeholder="Search or run a command"
+            onKeyDown={handleKeyDown}
+            role="combobox"
+            aria-label="Search commands and objects"
+            aria-expanded="true"
+            aria-controls="command-results"
+            aria-activedescendant={visibleItems[safeActiveIndex] ? `command-item-${visibleItems[safeActiveIndex].id}` : undefined}
+          />
+          <button className="icon-button subtle" type="button" onClick={onClose} aria-label="Close search">
+            <X size={15} />
+          </button>
+        </div>
+        <div id="command-results" className="search-results command-results" role="listbox">
+          {visibleItems.length === 0 && (
+            <div className="command-empty">
+              <span>No matches</span>
+              <small>Try a planet, camera mode, or display toggle.</small>
             </div>
-          );
-        })}
-        {resultsTruncated && (
-          <p className="command-overflow" role="note">
-            Showing {visibleItems.length} of {totalFilteredCount} — refine your search to narrow results.
-          </p>
-        )}
+          )}
+          {visibleItems.map((item) => {
+            renderedIndex += 1;
+            const currentIndex = renderedIndex;
+            const active = renderedIndex === safeActiveIndex;
+            const showGroup = item.group !== lastGroup;
+            lastGroup = item.group;
+
+            return (
+              <div className="command-result-block" key={item.id}>
+                {showGroup && <div className="command-group-label">{item.group}</div>}
+                <button
+                  id={`command-item-${item.id}`}
+                  className={`search-result command-result ${active ? "active" : ""} ${item.active ? "selected" : ""}`.trim()}
+                  type="button"
+                  role="option"
+                  tabIndex={-1}
+                  ref={active ? activeItemRef : undefined}
+                  aria-selected={active}
+                  onMouseEnter={() => setActiveIndex(currentIndex)}
+                  onClick={() => executeItem(item)}
+                >
+                  <span className="command-result-icon" aria-hidden>
+                    {item.icon}
+                  </span>
+                  <span className="command-result-copy">
+                    <span>{item.title}</span>
+                    <small>{item.subtitle}</small>
+                    {item.active && <span className="sr-only">Currently active.</span>}
+                  </span>
+                  {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                  {item.active && <span className="command-active-dot" aria-hidden />}
+                </button>
+              </div>
+            );
+          })}
+          {resultsTruncated && (
+            <p className="command-overflow" role="note">
+              Showing {visibleItems.length} of {totalFilteredCount} — refine your search to narrow results.
+            </p>
+          )}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
