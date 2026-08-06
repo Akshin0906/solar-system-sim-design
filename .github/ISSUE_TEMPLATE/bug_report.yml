@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible product, browser, or scientific-model defect.
+title: "Bug: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Do not include secrets or vulnerability details here; follow SECURITY.md for security reports.
+  - type: input
+    id: build
+    attributes:
+      label: Build identity
+      description: Paste the commit from the live `/build-info.json`, or the local Git commit.
+      placeholder: 40-character commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser and version, operating system, device, and GPU when relevant.
+      placeholder: Safari 19, iOS 19, iPhone 16
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Include the starting body/view, relevant settings, and the smallest reliable sequence.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include non-sensitive console output, screenshots, or recordings when useful.
+    validations:
+      required: true
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Reproduction frequency
+      options:
+        - Every time
+        - Intermittent
+        - Once
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Note reduced motion, zoom/text scaling, extensions, offline state, or service-worker resets.

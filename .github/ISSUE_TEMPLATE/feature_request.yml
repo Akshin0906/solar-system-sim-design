@@ -1,0 +1,37 @@
+name: Product or model proposal
+description: Suggest a focused improvement to the experience, model, or verification.
+title: "Proposal: "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This repository welcomes focused feedback but is not currently accepting unsolicited code contributions.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or opportunity
+      description: Describe the user, scientific, accessibility, or engineering need before proposing an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Explain the smallest useful outcome and how a reviewer could verify it.
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Tradeoffs and evidence
+      description: Include primary sources for scientific claims and note performance, accessibility, or browser costs.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: I checked that this is not already documented or reported.
+          required: true
+        - label: I am proposing an educational visualization, not professional mission-planning or observatory accuracy.
+          required: false

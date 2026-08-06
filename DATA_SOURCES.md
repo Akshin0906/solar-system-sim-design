@@ -150,6 +150,11 @@ evolution and reports the mass-loss assumption explicitly.
 Curated texture assets live in `public/textures/`.  They are static public assets
 with procedural fallback textures so the app remains usable offline.
 
+The entries below record scientific provenance. See
+[`ASSET_ATTRIBUTION.md`](ASSET_ATTRIBUTION.md) for the file-by-file rights and
+credit inventory, including the governing NASA and JPL usage policies, before
+reusing any committed media.
+
 - `earth.jpg`: NASA Science 3D Resources "Earth (A)".
 - `venus.jpg`: NASA Magellan-derived radar mosaic.
 - `mars.jpg`: Viking imagery processed at USGS.

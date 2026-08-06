@@ -8,18 +8,29 @@ The project combines deterministic model verification with browser-level interac
 | --- | --- |
 | `npm run lint` | TypeScript, React Hooks, and JSX accessibility rules. |
 | `npm run typecheck` | Application, verification scripts, Playwright config, and browser tests. |
-| `npm test` | App-state invariants, rocket sweeps, scenario conservation/stability, and service-worker ownership. |
+| `npm run test:unit` | Node unit tests for production render-quality and scenario-input validation, with scoped 100% line, branch, and function coverage gates. |
+| `npm test` | Unit tests, app-state invariants, rocket sweeps, scenario conservation/stability, and service-worker ownership. |
+| `npm run verify:performance` | Production cold-asset budgets and the maximum-fragment live integrator workload. |
 | `npm run verify:math` | Orbits, JPL comparisons, coordinate frames, orientations, scale/camera math, transfers, scenarios, texture budgets, and experiences. |
 | `npm run build` | Root-path production bundle and generated service worker. |
-| `npm run build:github` | GitHub Pages bundle at `/solar-system-sim-design/`. |
-| `npm run test:e2e` | Chromium desktop/mobile, normal and reduced motion, WebKit smoke, console errors, and offline reload. |
+| `npm run build:github` | Complete Pages artifact at `/solar-system-sim-design/`, including build identity and final service worker. |
+| `npm run test:e2e` | Chromium desktop/mobile, normal and reduced motion, Firefox/WebKit cross-browser checks, console errors, and offline reload. |
+| `npm run test:e2e:pages` | Build and test the exact repository-prefix artifact, including generated provenance and service-worker assets. |
 | `npm run check` | Full static, model, behavior, and production-build gate. |
-| `npm run check:release` | `check` plus the browser suite. |
+| `npm run check:release` | `check` plus a fresh Pages-prefix build tested by the browser suite. |
+
+The unit coverage threshold intentionally applies only to
+`src/scene/renderQuality.ts` and `src/scenarios/scenarioValidation.ts`. Node's
+built-in coverage maps those modules back to their TypeScript sources reliably in
+this repository. The focused 100% gate protects the boundary, clamping, choice,
+projection, LOD, and geometry-sharing branches exercised there without presenting
+that number as whole-application coverage; stateful simulations and browser behavior
+remain covered by the deterministic and Playwright suites listed above.
 
 Install the Playwright browsers once before a local release run:
 
 ```bash
-npx playwright install chromium webkit
+npx playwright install chromium firefox webkit
 npm run check:release
 ```
 
@@ -55,11 +66,24 @@ Use a 390 × 844 viewport and also spot-check a narrow 320 × 568 viewport.
 
 1. Build the exact Pages artifact with `npm run build:github`.
 2. Serve it from the production preview server at the repository prefix.
-3. Confirm the manifest, PNG icons, hashed JavaScript/CSS, textures, and service worker return successfully.
+3. Confirm the manifest, PNG icons, hashed JavaScript/CSS, textures, service worker,
+   and `build-info.json` return successfully.
 4. Load once online, wait for the service worker, disable the network, and reload.
-5. Restore the network and verify no stale cache serves a previous asset manifest.
+5. Restore the network and verify no stale cache serves a previous asset manifest
+   or a previous release's bytes for a changed same-path texture. Runtime texture
+   keys include each file's SHA-256 identity, so unchanged visited textures remain
+   reusable while superseded identities are pruned.
 
-GitHub Actions performs these checks on pull requests and pushes to `main`. A successful push uploads the already-tested Pages artifact, deploys it, and verifies the live HTML, manifest, and service worker endpoints.
+GitHub Actions performs these checks on pull requests and pushes to `main`. A
+successful push checks the tip of `main` before uploading the already-tested Pages
+artifact and checks it again immediately before deployment. An out-of-order stale
+run completes without deploying. The deployment then verifies the live HTML,
+manifest, service worker, and generated build identity against the repository,
+ref, workflow commit, clean-worktree state, and run URL.
+
+The same `npm run build:github` command is the supported local artifact flow. Its
+`build-info.json` records the local `HEAD`; a dirty worktree is explicitly marked
+with `"dirty": true` rather than being presented as an exact committed artifact.
 
 ## Reporting failures
 
@@ -69,3 +93,14 @@ When a check fails, separate product defects from environment failures:
 - A browser assertion or console error is an app defect unless the trace shows a browser/GPU startup failure.
 - A browser-engine installation, runner GPU, or preview transport failure is infrastructure; reproduce locally before changing product behavior.
 - A Pages-only failure usually points to the repository base path, service-worker scope, or stale deployment cache.
+
+### Client diagnostics
+
+Render failures, uncaught browser errors, rejected promises, WebGL initialization
+failures, context loss, and service-worker registration failures are recorded as a
+bounded, privacy-conscious diagnostic list in session storage. Recovery screens
+expose a **Copy diagnostics** action so a visitor can attach the build identifier,
+browser, viewport, path, and truncated stack to a bug report. URL query/hash state
+is stripped, and saved preferences are never read into the report.
+
+Deployments that provide a same-origin `VITE_ERROR_REPORT_ENDPOINT` also send the same JSON record with `navigator.sendBeacon`. Same-origin enforcement preserves the app's restrictive connection policy. The endpoint is optional: reporting failures never block recovery, and the application does not collect diagnostics remotely unless that build-time setting is explicitly configured. See [`.env.example`](../.env.example) for the opt-in setting.
