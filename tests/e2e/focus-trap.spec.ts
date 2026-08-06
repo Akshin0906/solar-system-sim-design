@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 const appPath = process.env.PLAYWRIGHT_APP_PATH ?? "/";
 const runtimeProblems = new WeakMap<Page, string[]>();
@@ -20,6 +20,54 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(async ({ page }) => {
   expect(runtimeProblems.get(page) ?? [], "the app should not emit console or page errors").toEqual([]);
 });
+
+const markFocusCandidates = async (dialog: Locator, closeLabel: string) => {
+  await dialog.evaluate((container, label) => {
+    const candidates = container.querySelectorAll<HTMLElement>(
+      "a[href], button, input, select, textarea, summary, [contenteditable], [tabindex]",
+    );
+    candidates.forEach((candidate, index) => {
+      candidate.dataset.focusTestId ||= `focus-candidate-${index}`;
+    });
+    Array.from(container.querySelectorAll<HTMLElement>("button"))
+      .find((button) => button.getAttribute("aria-label") === label)
+      ?.setAttribute("data-focus-cycle-start", "true");
+  }, closeLabel);
+};
+
+const completeFocusCycle = async (
+  page: Page,
+  dialog: Locator,
+  key: "Tab" | "Shift+Tab",
+) => {
+  const visited: string[] = [];
+  let remainingAttempts = 60;
+  while (remainingAttempts > 0) {
+    remainingAttempts -= 1;
+    await page.keyboard.press(key);
+    const focus = await dialog.evaluate((container) => {
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const closedDetails = active?.closest("details:not([open])") ?? null;
+      const visibleSummary = closedDetails?.querySelector(":scope > summary") ?? null;
+      return {
+        id: active?.dataset.focusTestId ?? "no-focus-id",
+        inside: Boolean(active && container.contains(active)),
+        excluded:
+          Boolean(active?.closest("[data-focus-trap-excluded='true']")) ||
+          Boolean(closedDetails && active !== visibleSummary),
+        atStart: active?.dataset.focusCycleStart === "true",
+      };
+    });
+    expect(focus.inside, `${key} focus must remain inside the modal`).toBe(true);
+    expect(focus.excluded, `${key} must skip hidden, inert, and collapsed descendants`).toBe(false);
+    if (focus.atStart) {
+      return visited;
+    }
+    expect(visited, `${key} must not loop before returning to the first control`).not.toContain(focus.id);
+    visited.push(focus.id);
+  }
+  throw new Error(`${key} did not complete a focus cycle`);
+};
 
 test.describe("modal focus management", () => {
   test.use({ viewport: { width: 390, height: 844 } });
@@ -95,38 +143,11 @@ test.describe("modal focus management", () => {
         }
       });
 
-      const readFocus = () =>
-        dialog.evaluate((container) => {
-          const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          return {
-            id: active?.dataset.focusTestId ?? "no-focus-id",
-            inside: Boolean(active && container.contains(active)),
-            excluded: Boolean(active?.closest("[data-focus-trap-excluded='true']")),
-            atStart: active?.dataset.focusCycleStart === "true",
-          };
-        });
+      await markFocusCandidates(dialog, "Close View settings");
 
-      const completeCycle = async (key: "Tab" | "Shift+Tab") => {
-        const visited: string[] = [];
-        let remainingAttempts = 40;
-        while (remainingAttempts > 0) {
-          remainingAttempts -= 1;
-          await page.keyboard.press(key);
-          const focus = await readFocus();
-          expect(focus.inside, `${key} focus must remain inside the modal`).toBe(true);
-          expect(focus.excluded, `${key} must skip hidden, inert, and collapsed descendants`).toBe(false);
-          if (focus.atStart) {
-            return visited;
-          }
-          expect(visited, `${key} must not loop before returning to the first control`).not.toContain(focus.id);
-          visited.push(focus.id);
-        }
-        throw new Error(`${key} did not complete a focus cycle`);
-      };
-
-      const forward = await completeCycle("Tab");
+      const forward = await completeFocusCycle(page, dialog, "Tab");
       expect(forward).toContain("injected-summary");
-      const reverse = await completeCycle("Shift+Tab");
+      const reverse = await completeFocusCycle(page, dialog, "Shift+Tab");
       expect(reverse[0], "reverse tabbing must wrap from the first control to the last").toBe(
         "injected-summary",
       );
@@ -139,4 +160,35 @@ test.describe("modal focus management", () => {
       await expect(trigger, "closing the modal must restore focus to its invoking control").toBeFocused();
     },
   );
+
+  test("@cross-browser traps focus in the actual mobile rocket preview", async ({ page }) => {
+    await page.goto(appPath);
+    await expect(page.locator("#main-controls")).toBeVisible();
+
+    const trigger = page.getByRole("button", { name: "Rocket preview" });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Rocket preview" });
+    const closeButton = dialog.getByRole("button", { name: "Close Rocket preview" });
+    await expect(closeButton).toBeFocused();
+
+    const collapsedDescendants = dialog.locator(
+      "details:not([open]) a[href], details:not([open]) button, details:not([open]) input, " +
+        "details:not([open]) select, details:not([open]) textarea, details:not([open]) [tabindex]",
+    );
+    expect(
+      await collapsedDescendants.count(),
+      "the real rocket sheet must contain collapsed controls that exercise the original defect",
+    ).toBeGreaterThan(0);
+
+    await markFocusCandidates(dialog, "Close Rocket preview");
+    const forward = await completeFocusCycle(page, dialog, "Tab");
+    const reverse = await completeFocusCycle(page, dialog, "Shift+Tab");
+    expect([...reverse].sort(), "the real rocket sheet must keep a symmetric focus cycle").toEqual(
+      [...forward].sort(),
+    );
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger, "closing the rocket modal must restore focus to its trigger").toBeFocused();
+  });
 });

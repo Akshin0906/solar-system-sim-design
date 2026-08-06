@@ -132,8 +132,10 @@ Share links serialize a validated, bounded view state. Imported views are tempor
 - TypeScript runs in strict mode with unused-symbol checks.
 - ESLint covers TypeScript, React Hooks, and JSX accessibility.
 - Pure TypeScript and Python verifiers exercise orbital math, frames, ephemeris snapshots, scale transforms, transfers, scenarios, and rendering budgets.
-- Playwright tests the same base-path artifact deployed to GitHub Pages in Chromium,
-  Firefox, and WebKit, including desktop, mobile, reduced-motion, and offline paths.
+- Playwright tests the same base-path artifact deployed to GitHub Pages. Chromium
+  carries the complete desktop and mobile suite plus offline and reduced-motion smoke
+  coverage; targeted search, scenario-restoration, mobile, focus, and rendering checks
+  repeat in Firefox and WebKit.
 - CI pins third-party actions by commit SHA, audits the complete dependency tree, and uses least-privilege permissions.
 
 See [Quality and release checks](QUALITY.md) for the complete validation workflow.

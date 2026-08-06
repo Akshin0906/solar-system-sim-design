@@ -10,10 +10,11 @@ on:
 permissions: {}
 
 concurrency:
-  # Pull requests isolate their checks by ref. Every deploy-capable run shares one
-  # group because GitHub Pages is a single environment. A newer run cancels an older
-  # run, and the explicit remote-main freshness gate rejects out-of-order stale SHAs.
-  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'deployment' }}
+  # Pull requests and feature-branch dispatches isolate their checks by ref. Every
+  # deploy-capable main run shares one group because GitHub Pages is a single
+  # environment. A newer main run cancels an older one, and the explicit remote-main
+  # freshness gate rejects out-of-order stale SHAs.
+  group: pages-${{ github.ref == 'refs/heads/main' && 'deployment' || github.ref }}
   cancel-in-progress: true
 
 jobs:

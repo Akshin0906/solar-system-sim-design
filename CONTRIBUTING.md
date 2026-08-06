@@ -45,3 +45,16 @@ add an independent verifier where practical. UI changes should include keyboard,
 reduced-motion, responsive, and browser considerations. New media must include
 provenance and an evidence-backed rights status in
 [ASSET_ATTRIBUTION.md](ASSET_ATTRIBUTION.md).
+
+## Dependency maintenance
+
+Dependabot checks npm packages and GitHub Actions monthly. Compatible minor and
+patch updates are grouped; major upgrades remain separate so each breaking change
+can be reviewed against its upstream migration guide, release notes, and security
+advisories. Dependency pull requests are never merged solely because they are
+automated: they must pass `npm run check:release`, and major GitHub Actions updates
+also require an explicit permission and immutable-SHA review.
+
+Security alerts are triaged when they arrive rather than waiting for the monthly
+maintenance window. A security-relevant major may be prioritized immediately, with
+the compatibility decision and any temporary mitigation recorded in its pull request.

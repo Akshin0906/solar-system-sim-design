@@ -81,6 +81,12 @@ run completes without deploying. The deployment then verifies the live HTML,
 manifest, service worker, and generated build identity against the repository,
 ref, workflow commit, clean-worktree state, and run URL.
 
+Pull requests and feature-branch validation runs have ref-isolated concurrency;
+deploy-capable `main` runs share a single cancelling group. GitHub CodeQL default
+setup separately scans JavaScript/TypeScript, Python, and workflow definitions on
+pull requests, `main`, and its scheduled cadence. A release requires both the
+application gate and code scanning to complete successfully on the released commit.
+
 The same `npm run build:github` command is the supported local artifact flow. Its
 `build-info.json` records the local `HEAD`; a dirty worktree is explicitly marked
 with `"dirty": true` rather than being presented as an exact committed artifact.
