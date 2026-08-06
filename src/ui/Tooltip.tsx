@@ -23,6 +23,8 @@ export const Tooltip = ({ label, children }: { label: string; children: TooltipC
 
     const dismissOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         setDismissed(true);
       }
     };

@@ -42,6 +42,9 @@ type ExperienceState = {
   activeStop: DirectorStop | null;
   eclipse: ModeledSolarEclipse | null;
   notice: string | null;
+  // Explicit restoration state makes session ownership observable and lets tests
+  // reset the store without leaking module-global state between runs.
+  sessionSnapshot: ExperienceSnapshot | null;
   startTour: (tourId: AuthoredTourId) => void;
   startEclipseChase: () => void;
   nextStop: () => void;
@@ -54,7 +57,6 @@ type ExperienceState = {
 };
 
 const ECLIPSE_WATCH_LEAD_MS = 6 * 60 * 60 * 1_000;
-let sessionSnapshot: ExperienceSnapshot | null = null;
 
 const captureSnapshot = (): ExperienceSnapshot => {
   const time = useTimeStore.getState();
@@ -77,9 +79,7 @@ const captureSnapshot = (): ExperienceSnapshot => {
   };
 };
 
-const restoreSnapshot = () => {
-  const snapshot = sessionSnapshot;
-  sessionSnapshot = null;
+const restoreSnapshot = (snapshot: ExperienceSnapshot | null) => {
   if (!snapshot || useTimeStore.getState().transportLocked) {
     return;
   }
@@ -165,6 +165,7 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
   activeStop: null,
   eclipse: null,
   notice: null,
+  sessionSnapshot: null,
 
   startTour: (tourId) => {
     const conflict = sessionConflict();
@@ -178,10 +179,11 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
       return;
     }
 
-    if (sessionSnapshot) {
-      restoreSnapshot();
+    const previousSnapshot = get().sessionSnapshot;
+    if (previousSnapshot) {
+      restoreSnapshot(previousSnapshot);
     }
-    sessionSnapshot = captureSnapshot();
+    const sessionSnapshot = captureSnapshot();
     useSelectionStore.getState().beginViewSession("experience");
     configureExperiencePresentation();
     const firstStop = tour.stops[0];
@@ -193,6 +195,7 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
       activeStop: firstStop,
       eclipse: null,
       notice: null,
+      sessionSnapshot,
     });
   },
 
@@ -208,10 +211,11 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
       return;
     }
 
-    if (sessionSnapshot) {
-      restoreSnapshot();
+    const previousSnapshot = get().sessionSnapshot;
+    if (previousSnapshot) {
+      restoreSnapshot(previousSnapshot);
     }
-    sessionSnapshot = captureSnapshot();
+    const sessionSnapshot = captureSnapshot();
     useSelectionStore.getState().beginViewSession("experience");
     configureExperiencePresentation();
     const stop = eclipseStop(event);
@@ -227,6 +231,7 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
       activeStop: stop,
       eclipse: event,
       notice: null,
+      sessionSnapshot,
     });
   },
 
@@ -275,7 +280,7 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
   },
 
   stop: () => {
-    restoreSnapshot();
+    restoreSnapshot(get().sessionSnapshot);
     set({
       activeExperienceId: null,
       activeTourId: null,
@@ -283,6 +288,7 @@ export const useExperienceStore = create<ExperienceState>((set, get) => ({
       activeStop: null,
       eclipse: null,
       notice: null,
+      sessionSnapshot: null,
     });
   },
 

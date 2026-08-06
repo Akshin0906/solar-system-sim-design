@@ -6,18 +6,21 @@ type RenderQualityState = {
   setMeasuredFactor: (factor: number) => void;
 };
 
-export const clampRenderQuality = (factor: number) => MathUtils.clamp(factor, 0.5, 1);
+export const clampRenderQuality = (factor: number) =>
+  Number.isFinite(factor) ? MathUtils.clamp(factor, 0.5, 1) : 0.5;
 
 export const useRenderQualityStore = create<RenderQualityState>((set) => ({
-  // Start conservatively and let sustained measured throughput earn expensive DPR and
-  // post-processing. Assuming top quality before the first sample can make the first
-  // software-rendered frame so costly that the monitor never gets a chance to adapt.
-  measuredFactor: 0.5,
+  // Demand rendering has no meaningful idle FPS. Start at a balanced quality and let
+  // active playback/scenario sampling earn full detail or regress sustained overload.
+  measuredFactor: 0.75,
   setMeasuredFactor: (measuredFactor) => set({ measuredFactor: clampRenderQuality(measuredFactor) }),
 }));
 
 export const combinedRenderQuality = (interactionFactor: number, measuredFactor: number) =>
   Math.min(clampRenderQuality(interactionFactor), clampRenderQuality(measuredFactor));
+
+export const performanceFactorToRenderQuality = (factor: number) =>
+  Number.isFinite(factor) ? 0.5 + MathUtils.clamp(factor, 0, 1) * 0.5 : 0.5;
 
 export type SphereLodLevel = "impostor" | "low" | "medium" | "high";
 

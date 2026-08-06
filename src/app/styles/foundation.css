@@ -1,0 +1,160 @@
+:root {
+  color-scheme: dark;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+    Arial, sans-serif;
+  color: #f5f1e8;
+  background: #090907;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  --surface: rgba(18, 18, 15, 0.78);
+  --surface-strong: rgba(23, 22, 18, 0.9);
+  --hairline: rgba(245, 241, 232, 0.13);
+  --hairline-strong: rgba(245, 241, 232, 0.2);
+  --muted: rgba(245, 241, 232, 0.62);
+  --quiet: rgba(245, 241, 232, 0.6);
+  --gold: #d9ad69;
+  --cyan: #8fc7cc;
+  --clay: #c9745c;
+  --radius: 8px;
+  --focus: rgba(143, 199, 204, 0.75);
+  --app-viewport-height: 100vh;
+  --mobile-control-bottom: max(8px, env(safe-area-inset-bottom));
+}
+@supports (height: 100svh) {
+  :root {
+    --app-viewport-height: 100svh;
+  }
+}
+
+@supports (height: 100dvh) {
+  :root {
+    --app-viewport-height: 100dvh;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+button,
+select,
+input {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+/* One consistent keyboard-focus ring for every control. */
+:where(button, select, input, [role="button"], .instrument-select-trigger):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* We manage focus visibility via :focus-visible; suppress the native ring only
+   on pointer focus for the controls that previously hard-cleared their outline. */
+.search-input-wrap input:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.app-shell {
+  position: relative;
+  width: 100vw;
+  height: var(--app-viewport-height);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(217, 173, 105, 0.08), transparent 28%),
+    #090907;
+}
+
+.skip-link {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: 10px;
+  z-index: 100;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius);
+  background: var(--surface-strong);
+  color: #f5f1e8;
+  text-decoration: none;
+  transform: translateY(-150%);
+  transition: transform 160ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.app-shell::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  content: "";
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.28), transparent 22%, transparent 74%, rgba(0, 0, 0, 0.38)),
+    radial-gradient(ellipse at center, transparent 46%, rgba(0, 0, 0, 0.26) 100%);
+  mix-blend-mode: multiply;
+}
+
+.solar-canvas {
+  position: absolute !important;
+  inset: 0;
+}
+
+.solar-canvas:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
+}
+
+.ui-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.top-bar,
+.scale-controls,
+.object-inspector,
+.time-controls,
+.search-popover,
+.help-popover,
+.instrument-select-menu,
+.rocket-panel,
+.rocket-watch-hud,
+.scenario-watch-hud,
+.low-information-recovery {
+  pointer-events: auto;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(18px) saturate(125%);
+}

@@ -66,6 +66,7 @@ type SelectionState = {
   restoreCameraPose: (pose: CameraPose, expectedMode?: CameraMode) => void;
   acknowledgeCameraRestore: (revision: number) => void;
   beginViewSession: (sessionId: ViewSessionId) => void;
+  foldViewSessionInto: (sessionId: ViewSessionId, parentSessionId: ViewSessionId) => void;
   restoreViewSession: (sessionId: ViewSessionId) => void;
   resetRecommendedView: () => void;
 };
@@ -193,6 +194,21 @@ export const useSelectionStore = create<SelectionState>((set) => ({
           },
         },
       };
+    }),
+  // Session owners can be nested (for example, a scenario launched while a rocket
+  // watch is active). If the inner owner is retired while the outer owner still has
+  // control, make the outer session restore the inner owner's original baseline
+  // without disturbing the currently visible outer view.
+  foldViewSessionInto: (sessionId, parentSessionId) =>
+    set((state) => {
+      const snapshot = state.viewSessions[sessionId];
+      if (!snapshot || !state.viewSessions[parentSessionId]) {
+        return state;
+      }
+
+      const viewSessions = { ...state.viewSessions, [parentSessionId]: snapshot };
+      delete viewSessions[sessionId];
+      return { viewSessions };
     }),
   restoreViewSession: (sessionId) =>
     set((state) => {

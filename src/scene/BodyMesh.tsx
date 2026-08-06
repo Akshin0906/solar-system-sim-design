@@ -1,18 +1,10 @@
-import { Html } from "@react-three/drei";
 import { ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import {
-  AdditiveBlending,
-  BackSide,
-  CanvasTexture,
   Color,
-  DoubleSide,
-  LinearFilter,
   Matrix4,
   PerspectiveCamera,
   Quaternion,
-  SRGBColorSpace,
-  TextureLoader,
   UniformsLib,
   UniformsUtils,
   Vector3,
@@ -20,16 +12,17 @@ import {
   type Mesh,
   type MeshStandardMaterial,
   type Sprite,
-  type Texture,
 } from "three";
 import type { CelestialBody } from "../simulation/orbitalElements";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { getBodyOrientationAxes } from "../simulation/orientation";
 import { getBodySceneRadius, type ScaleMode } from "../simulation/units";
-import { SCENE_HTML_Z_INDEX_RANGE } from "../ui/htmlLayering";
+import { BodyLabel, useBodyLabelButton } from "./BodyLabel";
+import { BodyVisualLayers } from "./BodyVisualLayers";
+import { BODY_RING_CONFIG_BY_ID } from "./bodyPresentationResources";
 import { MIN_FIT_RADIUS, visualRadiusForBody } from "./cameraFraming";
-import { BODY_LABEL_DISTANCE_FACTOR, getBodyLabelScale } from "./labelScaling";
+import { getBodyLabelScale } from "./labelScaling";
 import {
   createBodyBumpTexture,
   createBodyRoughnessTexture,
@@ -37,11 +30,17 @@ import {
   createImageDerivedRoughnessTexture,
   createRingTexture,
   createSurfaceTexture,
-  configurePlanetTexture,
   getEmphasisOpacity,
   getVisualProfile,
   type BodyEmphasis,
 } from "./planetVisuals";
+import {
+  configureOptionalTexture,
+  createCoronaTexture,
+  getSharedImpostorDiscTexture,
+  useBodyImageTexture,
+  useIdleTexture,
+} from "./bodyTextureLifecycle";
 import type { ScenePositionsRef } from "./scenePositions";
 import {
   getSharedSphereLodGeometries,
@@ -54,15 +53,9 @@ import {
 import {
   createSolarLightingUniforms,
   patchSolarLitMaterial,
-  SOLAR_LIT_PROGRAM_KEY,
   updateSolarLightingUniforms,
 } from "./materials/solarLighting";
-import {
-  createRingMaterialUniforms,
-  ringFragmentShader,
-  ringVertexShader,
-  updateRingMaterialUniforms,
-} from "./materials/ringMaterial";
+import { createRingMaterialUniforms, updateRingMaterialUniforms } from "./materials/ringMaterial";
 
 type BodyMeshProps = {
   body: CelestialBody;
@@ -73,291 +66,6 @@ type BodyMeshProps = {
   showLabel: boolean;
   labelSuppressed?: boolean;
   emphasis: BodyEmphasis;
-};
-
-const ringConfigById = {
-  saturn: {
-    innerRadius: 1.32,
-    outerRadius: 2.72,
-    opacity: 0.54,
-    rotationZ: 0,
-  },
-  uranus: {
-    innerRadius: 1.42,
-    outerRadius: 2.1,
-    opacity: 0.34,
-    rotationZ: Math.PI / 2.8,
-  },
-} as const;
-
-const labelStyle = {
-  transform: "translate3d(-50%, -50%, 0) scale(var(--body-label-scale, 1))",
-  transformOrigin: "center center",
-};
-
-const atmosphereVertexShader = `
-  #include <common>
-  #include <logdepthbuf_pars_vertex>
-  #include <fog_pars_vertex>
-  varying vec3 vNormal;
-  varying vec3 vWorldPosition;
-
-  void main() {
-    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-    vec4 mvPosition = viewMatrix * worldPosition;
-    vWorldPosition = worldPosition.xyz;
-    vNormal = normalize(mat3(modelMatrix) * normal);
-    gl_Position = projectionMatrix * mvPosition;
-    #include <logdepthbuf_vertex>
-    #include <fog_vertex>
-  }
-`;
-
-const atmosphereFragmentShader = `
-  #include <common>
-  #include <logdepthbuf_pars_fragment>
-  #include <fog_pars_fragment>
-  uniform vec3 glowColor;
-  uniform vec3 sunsetColor;
-  uniform vec3 solarPosition;
-  uniform float opacity;
-  uniform float power;
-  varying vec3 vNormal;
-  varying vec3 vWorldPosition;
-
-  void main() {
-    #include <logdepthbuf_fragment>
-    vec3 normal = normalize(vNormal);
-    vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
-    vec3 solarDirection = normalize(solarPosition - vWorldPosition);
-    float rim = pow(1.0 - abs(dot(normal, viewDirection)), power);
-    float sunward = dot(normal, solarDirection);
-    float daylight = smoothstep(-0.2, 0.26, sunward);
-    float twilight = smoothstep(-0.34, -0.02, sunward) * (1.0 - smoothstep(0.04, 0.42, sunward));
-    float phase = 0.72 + 0.28 * pow(abs(dot(viewDirection, -solarDirection)), 2.0);
-    vec3 scatteringColor = mix(glowColor, sunsetColor, twilight * 0.62);
-    float fade = smoothstep(0.015, 0.92, rim) * mix(0.055, 1.0, daylight) * phase;
-    gl_FragColor = vec4(scatteringColor, fade * opacity);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-    #include <fog_fragment>
-  }
-`;
-
-const createCoronaTexture = () => {
-  const canvas = document.createElement("canvas");
-  canvas.width = 192;
-  canvas.height = 192;
-  const context = canvas.getContext("2d");
-
-  if (context) {
-    const gradient = context.createRadialGradient(96, 96, 8, 96, 96, 96);
-    gradient.addColorStop(0, "rgba(255, 224, 166, 0.32)");
-    gradient.addColorStop(0.34, "rgba(247, 178, 96, 0.18)");
-    gradient.addColorStop(0.7, "rgba(247, 178, 96, 0.055)");
-    gradient.addColorStop(1, "rgba(247, 178, 96, 0)");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }
-
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  return texture;
-};
-
-const createImpostorDiscTexture = () => {
-  const canvas = document.createElement("canvas");
-  canvas.width = 48;
-  canvas.height = 48;
-  const context = canvas.getContext("2d");
-  if (context) {
-    const gradient = context.createRadialGradient(19, 16, 1, 24, 24, 22);
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1)");
-    gradient.addColorStop(0.72, "rgba(226, 231, 238, 1)");
-    gradient.addColorStop(0.92, "rgba(92, 101, 116, 0.92)");
-    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, canvas.width, canvas.height);
-  }
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  return texture;
-};
-
-let sharedImpostorDiscTexture: Texture | undefined;
-const getSharedImpostorDiscTexture = () => {
-  sharedImpostorDiscTexture ??= createImpostorDiscTexture();
-  return sharedImpostorDiscTexture;
-};
-
-const configureOptionalTexture = (
-  texture: Texture | undefined,
-  maxAnisotropy: number,
-  repeatHorizontally = true,
-) => texture ? configurePlanetTexture(texture, maxAnisotropy, repeatHorizontally) : undefined;
-
-const solarProgramCacheKey = () => SOLAR_LIT_PROGRAM_KEY;
-
-type BodyImageTextureState = {
-  texture?: Texture;
-  status: "deferred" | "unavailable" | "loading" | "loaded" | "failed";
-};
-
-const useBodyImageTexture = (url: string | undefined, maxAnisotropy: number, enabled: boolean) => {
-  const [state, setState] = useState<BodyImageTextureState>(() => ({
-    status: url ? (enabled ? "loading" : "deferred") : "unavailable",
-  }));
-
-  useEffect(() => {
-    if (!url) {
-      setState({ status: "unavailable" });
-      return undefined;
-    }
-    if (!enabled) {
-      setState({ status: "deferred" });
-      return undefined;
-    }
-
-    setState({ status: "loading" });
-    let disposed = false;
-    const loader = new TextureLoader();
-    const loadedTexture = loader.load(
-      url,
-      (nextTexture) => {
-        if (disposed) {
-          nextTexture.dispose();
-          return;
-        }
-
-        nextTexture.colorSpace = SRGBColorSpace;
-        configurePlanetTexture(nextTexture, maxAnisotropy);
-        setState({ status: "loaded", texture: nextTexture });
-      },
-      undefined,
-      () => {
-        if (!disposed) {
-          setState({ status: "failed" });
-        }
-      },
-    );
-
-    return () => {
-      disposed = true;
-      loadedTexture.dispose();
-    };
-  }, [enabled, maxAnisotropy, url]);
-
-  return state;
-};
-
-type IdleTextureJob = {
-  cancelled: boolean;
-  run: () => void;
-};
-
-const idleTextureJobs: IdleTextureJob[] = [];
-let idleTextureCallbackId: number | undefined;
-let idleTextureFallbackId: number | undefined;
-
-// Procedural maps are deliberately hydrated one at a time. Scheduling every body's
-// surface/material jobs with the same forced timeout caused them all to expire together,
-// turning the "idle" work into a long main-thread freeze just after startup.
-const scheduleNextIdleTextureJob = () => {
-  if (
-    typeof window === "undefined" ||
-    idleTextureJobs.length === 0 ||
-    idleTextureCallbackId !== undefined ||
-    idleTextureFallbackId !== undefined
-  ) {
-    return;
-  }
-
-  const runOne = (deadline?: IdleDeadline) => {
-    idleTextureCallbackId = undefined;
-    idleTextureFallbackId = undefined;
-
-    // A callback can arrive at the end of an idle slice. Yield instead of starting a
-    // monolithic pixel loop with virtually no budget left.
-    if (deadline && !deadline.didTimeout && deadline.timeRemaining() < 4) {
-      scheduleNextIdleTextureJob();
-      return;
-    }
-
-    let nextJob = idleTextureJobs.shift();
-    while (nextJob?.cancelled) {
-      nextJob = idleTextureJobs.shift();
-    }
-
-    try {
-      nextJob?.run();
-    } finally {
-      scheduleNextIdleTextureJob();
-    }
-  };
-
-  if ("requestIdleCallback" in window && typeof window.requestIdleCallback === "function") {
-    // Do not force a timeout: the scene already renders a calibrated flat material while
-    // maps are pending, so visual refinement must never outrank input responsiveness.
-    idleTextureCallbackId = window.requestIdleCallback(runOne);
-  } else {
-    idleTextureFallbackId = window.setTimeout(() => runOne(), 0);
-  }
-};
-
-const enqueueIdleTextureJob = (run: () => void) => {
-  const job: IdleTextureJob = { cancelled: false, run };
-  idleTextureJobs.push(job);
-  scheduleNextIdleTextureJob();
-  return () => {
-    job.cancelled = true;
-  };
-};
-
-const useIdleTexture = (
-  factory: () => Texture | undefined,
-  dependencies: readonly unknown[],
-  enabled = true,
-) => {
-  const [texture, setTexture] = useState<Texture>();
-
-  useEffect(() => {
-    if (!enabled) {
-      setTexture(undefined);
-      return undefined;
-    }
-
-    let disposed = false;
-    let createdTexture: Texture | undefined;
-    setTexture(undefined);
-
-    const load = () => {
-      const nextTexture = factory();
-      if (disposed) {
-        nextTexture?.dispose();
-        return;
-      }
-      createdTexture = nextTexture;
-      setTexture(nextTexture);
-    };
-
-    const cancelJob = enqueueIdleTextureJob(load);
-
-    return () => {
-      disposed = true;
-      cancelJob();
-      createdTexture?.dispose();
-    };
-    // The dependency list is intentionally supplied by the caller because these
-    // texture factories are body-specific and expensive. Callers also include the
-    // enabled predicate in this list whenever it can change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, dependencies);
-
-  return texture;
 };
 
 export const BodyMesh = memo(({
@@ -377,8 +85,6 @@ export const BodyMesh = memo(({
   const impostorRef = useRef<Sprite>(null);
   const selectionCueRef = useRef<Group>(null);
   const labelRef = useRef<HTMLDivElement>(null);
-  const labelButtonRef = useRef<HTMLButtonElement>(null);
-  const detachLabelButtonRef = useRef<(() => void) | null>(null);
   const objectWorldPosition = useMemo(() => new Vector3(), []);
   const cameraWorldPosition = useMemo(() => new Vector3(), []);
   const orientationMatrix = useMemo(() => new Matrix4(), []);
@@ -410,6 +116,7 @@ export const BodyMesh = memo(({
   const hydrateTextureDetails = textureDetailsRequestedRef.current;
   const selectBody = useSelectionStore((state) => state.selectBody);
   const focusBody = useSelectionStore((state) => state.focusBody);
+  const attachLabelButton = useBodyLabelButton(body.id, selectBody, focusBody);
   const maxAnisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy());
   const interactionQualityFactor = useThree((state) => state.performance.current);
   const measuredQualityFactor = useRenderQualityStore((state) => state.measuredFactor);
@@ -474,7 +181,7 @@ export const BodyMesh = memo(({
   const selectionRingRadius = visualRadius * 1.15;
   const selectionTubeRadius = Math.max(visualRadius * 0.014, MIN_FIT_RADIUS * 0.04);
   const labelOffset = visualRadius * 1.45;
-  const ringConfig = ringConfigById[body.id as keyof typeof ringConfigById];
+  const ringConfig = BODY_RING_CONFIG_BY_ID[body.id as keyof typeof BODY_RING_CONFIG_BY_ID];
   const ringTexture = useIdleTexture(
     () => ringConfig
       ? configureOptionalTexture(createRingTexture(body, ringConfig.innerRadius / ringConfig.outerRadius), maxAnisotropy, false)
@@ -507,16 +214,6 @@ export const BodyMesh = memo(({
     () => createRingMaterialUniforms(ringTexture, (ringConfig?.opacity ?? 0) * emphasisOpacity),
     [emphasisOpacity, ringConfig?.opacity, ringTexture],
   );
-  const labelClassName = [
-    "body-label",
-    selected ? "selected" : "",
-    emphasis === "muted" ? "quiet-label" : "",
-    emphasis === "related" ? "related-label" : "",
-    labelSuppressed ? "suppressed-label" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   useEffect(() => () => coronaTexture?.dispose(), [coronaTexture]);
 
   // The surface material is now kept mounted across async texture loads (stable key, not the
@@ -531,53 +228,6 @@ export const BodyMesh = memo(({
       material.needsUpdate = true;
     }
   }, [surfaceTexture, bumpTexture, roughnessTexture]);
-
-  const attachLabelButton = useCallback(
-    (button: HTMLButtonElement | null) => {
-      detachLabelButtonRef.current?.();
-      detachLabelButtonRef.current = null;
-      labelButtonRef.current = button;
-
-      if (!button) {
-        return;
-      }
-
-      const stop = (event: Event) => {
-        event.stopPropagation();
-      };
-      const select = (event: Event) => {
-        stop(event);
-        selectBody(body.id);
-      };
-      const focus = (event: Event) => {
-        stop(event);
-        focusBody(body.id);
-      };
-      const selectFromKeyboard = (event: KeyboardEvent) => {
-        if (event.key !== "Enter" && event.key !== " ") {
-          return;
-        }
-
-        event.preventDefault();
-        select(event);
-      };
-      const stoppedEvents = ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend", "dblclick"];
-
-      stoppedEvents.forEach((eventName) => button.addEventListener(eventName, stop, true));
-      button.addEventListener("click", select, true);
-      button.addEventListener("dblclick", focus, true);
-      button.addEventListener("keydown", selectFromKeyboard, true);
-      detachLabelButtonRef.current = () => {
-        stoppedEvents.forEach((eventName) => button.removeEventListener(eventName, stop, true));
-        button.removeEventListener("click", select, true);
-        button.removeEventListener("dblclick", focus, true);
-        button.removeEventListener("keydown", selectFromKeyboard, true);
-      };
-    },
-    [body.id, focusBody, selectBody],
-  );
-
-  useEffect(() => () => detachLabelButtonRef.current?.(), []);
 
   useFrame(({ camera, size }) => {
     const position = positionsRef.current[body.id];
@@ -640,17 +290,20 @@ export const BodyMesh = memo(({
         currentLodRef.current,
       );
 
-      if (nextLod !== currentLodRef.current) {
-        currentLodRef.current = nextLod;
-        if (meshRef.current && nextLod !== "impostor") {
-          meshRef.current.geometry = lodGeometries[nextLod];
-        }
+      currentLodRef.current = nextLod;
+      if (
+        meshRef.current &&
+        nextLod !== "impostor" &&
+        meshRef.current.geometry !== lodGeometries[nextLod]
+      ) {
+        meshRef.current.geometry = lodGeometries[nextLod];
       }
 
       // React can reapply the JSX `visible` defaults when selection, camera mode, or
       // measured quality changes even if the projected-size LOD itself did not cross a
       // threshold. Keep visibility authoritative every frame; only the more expensive
-      // geometry swap needs to remain conditional on an actual LOD transition.
+      // geometry swap is likewise guarded by resource identity above because a React
+      // commit can reapply declarative props without changing the resolved LOD.
       if (detailRef.current) {
         detailRef.current.visible = nextLod !== "impostor";
       }
@@ -692,147 +345,47 @@ export const BodyMesh = memo(({
 
   return (
     <group ref={groupRef} onClick={handleClick} onDoubleClick={handleDoubleClick}>
-      {body.type === "star" && (
-        <sprite scale={[renderRadius * 5.2, renderRadius * 5.2, 1]}>
-          <spriteMaterial
-            map={coronaTexture}
-            color="#ffd08a"
-            transparent
-            opacity={0.95 * emphasisOpacity}
-            blending={AdditiveBlending}
-            depthWrite={false}
-          />
-        </sprite>
-      )}
-      {body.type !== "star" && (
-        <sprite ref={impostorRef} visible={!selected} scale={[renderRadius * 2.1, renderRadius * 2.1, 1]}>
-          <spriteMaterial
-            map={impostorTexture}
-            color={visual.baseColor}
-            transparent
-            opacity={emphasisOpacity}
-            alphaTest={0.08}
-            depthWrite={false}
-          />
-        </sprite>
-      )}
-      <group ref={detailRef} rotation={[0, 0, tiltRad]} visible={selected || body.type === "star"}>
-        <mesh ref={meshRef} geometry={selected ? lodGeometries.high : lodGeometries.low} scale={renderRadius}>
-          {body.type === "star" ? (
-            <meshBasicMaterial
-              key="surface-material"
-              map={surfaceTexture}
-              color={surfaceTexture ? visual.baseColor : "#ffd08a"}
-              toneMapped={false}
-              transparent={isTransparent}
-              opacity={emphasisOpacity}
-            />
-          ) : (
-            <meshStandardMaterial
-              key="surface-material"
-              map={surfaceTexture}
-              color={surfaceTexture ? "#ffffff" : visual.baseColor}
-              roughness={visual.roughness}
-              metalness={visual.metalness ?? 0.015}
-              bumpMap={bumpTexture}
-              bumpScale={(visual.bumpScale ?? 0) * emphasisOpacity}
-              roughnessMap={roughnessTexture}
-              emissive={visual.emissive ?? (body.type === "dwarfPlanet" ? "#080806" : "#000000")}
-              transparent={isTransparent}
-              opacity={emphasisOpacity}
-              depthWrite={!isTransparent}
-              onBeforeCompile={patchSolarMaterial}
-              customProgramCacheKey={solarProgramCacheKey}
-            />
-          )}
-        </mesh>
-        {cloudTexture && (
-          <mesh ref={cloudRef}>
-            <sphereGeometry args={[cloudRadius, 48, 32]} />
-            <meshStandardMaterial
-              map={cloudTexture}
-              color="#ffffff"
-              roughness={0.92}
-              transparent
-              opacity={(visual.cloudOpacity ?? 0.16) * emphasisOpacity}
-              depthWrite={false}
-              alphaTest={0.02}
-              onBeforeCompile={patchSolarMaterial}
-              customProgramCacheKey={solarProgramCacheKey}
-            />
-          </mesh>
-        )}
-        {visual.atmosphereColor && atmosphereUniforms && (
-          <mesh>
-            <sphereGeometry args={[atmosphereRadius, 64, 40]} />
-            <shaderMaterial
-              uniforms={atmosphereUniforms}
-              vertexShader={atmosphereVertexShader}
-              fragmentShader={atmosphereFragmentShader}
-              transparent
-              side={BackSide}
-              blending={AdditiveBlending}
-              depthWrite={false}
-              fog
-            />
-          </mesh>
-        )}
-        {ringConfig && (
-          <mesh rotation={[Math.PI / 2, 0, ringConfig.rotationZ]}>
-            <ringGeometry args={[renderRadius * ringConfig.innerRadius, renderRadius * ringConfig.outerRadius, 192, 3]} />
-            <shaderMaterial
-              uniforms={ringUniforms}
-              vertexShader={ringVertexShader}
-              fragmentShader={ringFragmentShader}
-              side={DoubleSide}
-              transparent
-              depthWrite={false}
-              fog
-            />
-          </mesh>
-        )}
-      </group>
-      {selected && (
-        <group ref={selectionCueRef}>
-          <mesh renderOrder={12}>
-            <torusGeometry args={[selectionRingRadius, selectionTubeRadius, 6, 96]} />
-            <meshBasicMaterial
-              color="#f3dfb6"
-              transparent
-              opacity={0.5}
-              depthTest={false}
-              depthWrite={false}
-              toneMapped={false}
-            />
-          </mesh>
-        </group>
-      )}
+      <BodyVisualLayers
+        body={body}
+        selected={selected}
+        tiltRad={tiltRad}
+        renderRadius={renderRadius}
+        cloudRadius={cloudRadius}
+        atmosphereRadius={atmosphereRadius}
+        selectionRingRadius={selectionRingRadius}
+        selectionTubeRadius={selectionTubeRadius}
+        emphasisOpacity={emphasisOpacity}
+        isTransparent={isTransparent}
+        visual={visual}
+        lodGeometries={lodGeometries}
+        coronaTexture={coronaTexture}
+        impostorTexture={impostorTexture}
+        surfaceTexture={surfaceTexture}
+        bumpTexture={bumpTexture}
+        roughnessTexture={roughnessTexture}
+        cloudTexture={cloudTexture}
+        atmosphereUniforms={atmosphereUniforms}
+        ringConfig={ringConfig}
+        ringUniforms={ringUniforms}
+        patchSolarMaterial={patchSolarMaterial}
+        detailRef={detailRef}
+        meshRef={meshRef}
+        cloudRef={cloudRef}
+        impostorRef={impostorRef}
+        selectionCueRef={selectionCueRef}
+      />
       {showLabel && (
-        <Html
-          ref={labelRef}
-          position={[0, labelOffset, 0]}
-          center
-          distanceFactor={mode === "real" ? undefined : BODY_LABEL_DISTANCE_FACTOR}
-          zIndexRange={SCENE_HTML_Z_INDEX_RANGE}
-          className="body-label-anchor"
-          style={labelStyle}
-        >
-          <button
-            ref={attachLabelButton}
-            className={labelClassName}
-            type="button"
-            // Labels stay mouse/click-selectable but are kept OUT of the keyboard tab
-            // order: otherwise ~14 tiny, arbitrarily-positioned scene buttons sit ahead
-            // of the toolbar in an order unrelated to visual layout. Keyboard selection
-            // is handled by the command palette instead.
-            tabIndex={-1}
-            aria-hidden={labelSuppressed ? "true" : undefined}
-            aria-label={`Select ${body.name}`}
-            data-body-id={body.id}
-          >
-            {body.name}
-          </button>
-        </Html>
+        <BodyLabel
+          bodyId={body.id}
+          bodyName={body.name}
+          mode={mode}
+          offset={labelOffset}
+          selected={selected}
+          emphasis={emphasis}
+          suppressed={labelSuppressed}
+          labelRef={labelRef}
+          attachButton={attachLabelButton}
+        />
       )}
     </group>
   );

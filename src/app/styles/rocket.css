@@ -1,0 +1,706 @@
+.rocket-panel {
+  /* The scale/view stack ends at ~370px at 1280x720; keep this second
+     left-rail surface below it and scroll its body in shorter viewports. */
+  --rocket-panel-top: 318px;
+  position: absolute;
+  left: 16px;
+  top: var(--rocket-panel-top);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(284px, calc(100vw - 32px));
+  padding: 12px;
+  border-radius: var(--radius);
+  max-height: calc(var(--app-viewport-height) - var(--rocket-panel-top) - 16px);
+  overflow: hidden;
+}
+.scale-controls:has(.view-layer-disclosure[open]) ~ .rocket-panel {
+  --rocket-panel-top: 382px;
+}
+
+.rocket-panel-body {
+  display: grid;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-color: var(--hairline-strong) transparent;
+  scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), rgba(0, 0, 0, 0.4));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 18px), rgba(0, 0, 0, 0.4));
+}
+
+.rocket-panel.watching {
+  border-color: rgba(217, 173, 105, 0.36);
+}
+
+.rocket-setup-fields,
+.rocket-reconfigure > .rocket-setup-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.rocket-reconfigure {
+  border-top: 1px solid var(--hairline);
+}
+
+.rocket-reconfigure > summary,
+.doomsday-tuning > summary,
+.doomsday-science > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 2px;
+  color: rgba(245, 241, 232, 0.82);
+  font-size: 11.5px;
+  font-weight: 620;
+  cursor: pointer;
+  list-style: none;
+}
+
+.rocket-reconfigure > summary::-webkit-details-marker,
+.doomsday-tuning > summary::-webkit-details-marker,
+.doomsday-science > summary::-webkit-details-marker {
+  display: none;
+}
+
+.rocket-reconfigure[open] > summary,
+.doomsday-tuning[open] > summary,
+.doomsday-science[open] > summary {
+  color: var(--cyan);
+}
+
+.rocket-watch-hud {
+  position: absolute;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: calc(var(--mobile-control-bottom) + 140px);
+  left: max(10px, env(safe-area-inset-left));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 10px;
+  padding: 10px 10px 9px 12px;
+  border-color: rgba(217, 173, 105, 0.42);
+  border-radius: var(--radius);
+}
+
+.rocket-watch-kicker,
+.rocket-watch-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.rocket-watch-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--gold);
+}
+
+.rocket-watch-hud > strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.rocket-watch-actions {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rocket-panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rocket-panel-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rocket-panel-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--hairline-strong);
+}
+
+.rocket-panel-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.rocket-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.rocket-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--gold);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.rocket-icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rocket-icon-button:hover {
+  border-color: var(--hairline-strong);
+  background: rgba(245, 241, 232, 0.1);
+}
+
+.rocket-select {
+  display: block;
+}
+
+.rocket-select .instrument-select-trigger {
+  min-height: 40px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.rocket-arrival-control {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.rocket-arrival-label {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 620;
+}
+
+.rocket-arrival-segments {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.rocket-arrival-segments button {
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: rgba(245, 241, 232, 0.04);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.rocket-arrival-segments button:hover {
+  border-color: var(--hairline-strong);
+  color: rgba(245, 241, 232, 0.9);
+}
+
+.rocket-arrival-segments button:disabled {
+  border-color: var(--hairline);
+  background: rgba(245, 241, 232, 0.025);
+  color: var(--quiet);
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.rocket-arrival-segments button.selected {
+  border-color: rgba(143, 199, 204, 0.46);
+  background: rgba(143, 199, 204, 0.14);
+  color: #bfe4e6;
+}
+
+.rocket-dot {
+  width: 9px;
+  height: 9px;
+  border: 1px solid rgba(245, 241, 232, 0.34);
+  border-radius: 999px;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.rocket-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rocket-kicker {
+  color: var(--cyan);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.rocket-badge {
+  padding: 2px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.rocket-badge.real,
+.rocket-badge.proven {
+  border-color: rgba(143, 199, 204, 0.4);
+  background: rgba(143, 199, 204, 0.14);
+  color: #bfe4e6;
+}
+
+.rocket-badge.estimated,
+.rocket-badge.development,
+.rocket-badge.curve-illustrative {
+  border-color: rgba(217, 173, 105, 0.42);
+  background: rgba(217, 173, 105, 0.16);
+  color: #f3d49a;
+}
+
+.rocket-badge.speculative,
+.rocket-badge.concept,
+.rocket-badge.curve-notional {
+  border-color: rgba(201, 116, 92, 0.46);
+  background: rgba(201, 116, 92, 0.16);
+  color: #e9a88f;
+}
+
+.rocket-evidence-summary {
+  display: grid;
+  gap: 9px;
+}
+
+.rocket-claim-grid {
+  display: grid;
+  gap: 7px;
+}
+
+.rocket-claim-grid > div {
+  padding: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(245, 241, 232, 0.035);
+}
+
+.rocket-claim-grid span,
+.rocket-c3-benchmark strong {
+  display: block;
+  margin-bottom: 3px;
+  color: rgba(245, 241, 232, 0.82);
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.rocket-claim-grid p {
+  margin: 0;
+  color: var(--quiet);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.rocket-evidence-details,
+.rocket-c3-context {
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.rocket-evidence-details > summary,
+.rocket-c3-context > summary {
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.rocket-evidence-details[open],
+.rocket-c3-context[open] {
+  padding-bottom: 8px;
+}
+
+.rocket-evidence-details[open] > summary,
+.rocket-c3-context[open] > summary {
+  color: rgba(245, 241, 232, 0.9);
+}
+
+.rocket-evidence-details > :not(summary),
+.rocket-c3-context > :not(summary) {
+  margin-right: 8px;
+  margin-left: 8px;
+}
+
+.rocket-benchmark-list,
+.rocket-source-list {
+  display: grid;
+  gap: 7px;
+  padding: 0;
+  list-style: none;
+}
+
+.rocket-benchmark-list li,
+.rocket-source-list li,
+.rocket-c3-benchmark {
+  display: grid;
+  gap: 2px;
+}
+
+.rocket-benchmark-list strong,
+.rocket-benchmark-list span,
+.rocket-source-list a,
+.rocket-c3-benchmark span,
+.rocket-c3-benchmark a {
+  color: rgba(245, 241, 232, 0.86);
+  font-size: 12px;
+}
+
+.rocket-benchmark-list small,
+.rocket-source-list span,
+.rocket-c3-benchmark small {
+  color: var(--quiet);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.rocket-source-list a,
+.rocket-c3-benchmark a {
+  color: var(--cyan);
+  text-underline-offset: 2px;
+}
+
+.rocket-evidence-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.rocket-model-contract {
+  padding: 8px;
+  border: 1px solid rgba(217, 173, 105, 0.3);
+  border-radius: 7px;
+  background: rgba(217, 173, 105, 0.08);
+}
+
+.rocket-model-contract.physical {
+  border-color: rgba(143, 199, 204, 0.3);
+  background: rgba(143, 199, 204, 0.08);
+}
+
+.rocket-model-contract strong {
+  display: block;
+  margin-bottom: 3px;
+  color: rgba(245, 241, 232, 0.9);
+  font-size: 12px;
+}
+
+.rocket-model-contract p {
+  margin: 0;
+  color: var(--quiet);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.rocket-capability-disclaimer {
+  padding-left: 8px;
+  border-left: 2px solid rgba(217, 173, 105, 0.38);
+}
+
+.rocket-c3-benchmark {
+  padding: 7px;
+  border: 1px solid rgba(143, 199, 204, 0.2);
+  border-radius: 6px;
+  background: rgba(143, 199, 204, 0.05);
+}
+
+.rocket-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rocket-status-dest {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rocket-status {
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.rocket-status.pre-launch,
+.rocket-status.coast {
+  border-color: rgba(245, 241, 232, 0.2);
+  background: rgba(245, 241, 232, 0.07);
+  color: rgba(245, 241, 232, 0.82);
+}
+
+.rocket-status.burn {
+  border-color: rgba(217, 173, 105, 0.42);
+  background: rgba(217, 173, 105, 0.14);
+  color: #f3d49a;
+}
+
+.rocket-status.transfer,
+.rocket-status.approach,
+.rocket-status.arrived {
+  border-color: rgba(143, 199, 204, 0.46);
+  background: rgba(143, 199, 204, 0.16);
+  color: #bfe4e6;
+}
+
+.rocket-blurb {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.rocket-launch-button,
+.rocket-reset-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.rocket-launch-button {
+  border: 1px solid rgba(217, 173, 105, 0.48);
+  background: rgba(217, 173, 105, 0.18);
+  color: #ffe0a5;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.rocket-launch-button:hover {
+  background: rgba(217, 173, 105, 0.26);
+}
+
+.rocket-launch-button.predicted-miss {
+  border-color: rgba(201, 116, 92, 0.58);
+  background: rgba(201, 116, 92, 0.16);
+  color: #f2b29b;
+}
+
+.rocket-launch-button.predicted-miss:hover {
+  background: rgba(201, 116, 92, 0.24);
+}
+
+.rocket-launch-button:disabled {
+  border-color: var(--hairline);
+  background: rgba(245, 241, 232, 0.04);
+  color: var(--quiet);
+  cursor: not-allowed;
+}
+
+.rocket-launch-button:active,
+.rocket-reset-button:active {
+  transform: translateY(1px);
+}
+
+.rocket-launch-advisory {
+  margin: -2px 2px 0;
+  color: var(--quiet);
+  font-size: 11.5px;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.rocket-launch-advisory.predicted-miss {
+  color: #e9a88f;
+}
+
+.rocket-reset-button {
+  border: 1px solid var(--hairline);
+  background: rgba(245, 241, 232, 0.055);
+  color: rgba(245, 241, 232, 0.86);
+  font-size: 12px;
+}
+
+.rocket-reset-button:hover {
+  border-color: var(--hairline-strong);
+  background: rgba(245, 241, 232, 0.1);
+}
+
+.rocket-reset-button.active {
+  border-color: rgba(143, 199, 204, 0.46);
+  background: rgba(143, 199, 204, 0.14);
+  color: #bfe4e6;
+}
+
+.rocket-telemetry {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.rocket-transfer-preview {
+  border-color: rgba(143, 199, 204, 0.28);
+  background: rgba(14, 43, 48, 0.22);
+}
+
+.rocket-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 640;
+}
+
+.rocket-window {
+  padding: 2px 7px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 680;
+  letter-spacing: 0.02em;
+}
+
+.rocket-window.excellent,
+.rocket-window.good {
+  border-color: rgba(143, 199, 204, 0.48);
+  background: rgba(143, 199, 204, 0.16);
+  color: #bfe4e6;
+}
+
+.rocket-window.fair {
+  border-color: rgba(217, 173, 105, 0.46);
+  background: rgba(217, 173, 105, 0.14);
+  color: #f3d49a;
+}
+
+.rocket-window.poor {
+  border-color: rgba(201, 116, 92, 0.46);
+  background: rgba(201, 116, 92, 0.16);
+  color: #e9a88f;
+}
+
+.rocket-telemetry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.rocket-telemetry-head strong {
+  display: block;
+  font-size: 14px;
+  font-weight: 640;
+}
+
+.rocket-note {
+  margin: 0;
+  color: var(--quiet);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* Inline text-button affordance inside a note (e.g. "play forward" on the pre-launch hint). */
+.rocket-inline-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cyan);
+  font: inherit;
+  font-weight: 640;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.rocket-inline-action:hover,
+.rocket-inline-action:focus-visible {
+  color: #f5f1e8;
+}
+
+.rocket-concept-note {
+  padding: 7px 8px;
+  border: 1px solid rgba(143, 199, 204, 0.24);
+  border-radius: 7px;
+  background: rgba(143, 199, 204, 0.08);
+  color: var(--muted);
+}
+
+.rocket-readout {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.rocket-readout div {
+  display: grid;
+  grid-template-columns: minmax(94px, 0.9fr) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+}
+
+.rocket-readout dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rocket-readout dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: rgba(245, 241, 232, 0.92);
+  font-size: 12px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rocket-scene-label {
+  padding: 2px 7px;
+  border: 1px solid rgba(217, 173, 105, 0.34);
+  border-radius: 6px;
+  background: rgba(28, 22, 12, 0.66);
+  color: #f3d9a6;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  user-select: none;
+}

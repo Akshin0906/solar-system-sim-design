@@ -24,7 +24,7 @@ type TimeState = {
   setTransportLocked: (transportLocked: boolean) => void;
 };
 
-const defaultPreset = TIME_PRESETS[2];
+const defaultPreset = TIME_PRESETS.find((preset) => preset.id === "day") ?? TIME_PRESETS[0];
 const j2000Ms = Date.parse(J2000_EPOCH);
 
 export const SIMULATION_WINDOW_DAYS = 365.256 * 100;
@@ -44,7 +44,10 @@ const clampSimulationDateMs = (simulationDateMs: number) =>
 const clampTimeScale = (timeScale: number) => clamp(timeScale, MIN_TIME_SCALE, MAX_TIME_SCALE);
 
 export const useTimeStore = create<TimeState>((set, get) => ({
-  isPaused: false,
+  // A stable opening frame is easier to inspect and more respectful of visitors who
+  // prefer reduced motion. The day-per-second preset remains one click away for a
+  // visually useful demonstration once the visitor chooses Play.
+  isPaused: true,
   simulationDateMs: Date.now(),
   timeScale: defaultPreset.secondsPerSecond,
   direction: 1,
