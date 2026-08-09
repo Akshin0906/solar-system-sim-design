@@ -30,6 +30,12 @@ import { selectableBodies } from "../data";
 import { useRocketStore } from "../features/rockets/rocketStore";
 import { scenarioById } from "../scenarios/registry";
 import { useScenarioStore } from "../scenarios/scenarioStore";
+import {
+  activateCameraMode,
+  followBodyFromInteraction,
+  goToBodyFromInteraction,
+  selectBodyFromInteraction,
+} from "../simulation/cameraInteractions";
 import { useScaleStore } from "../simulation/scaleStore";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
@@ -68,10 +74,6 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
   const isMobile = useIsMobile();
   const selectedId = useSelectionStore((state) => state.selectedId);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
-  const selectBody = useSelectionStore((state) => state.selectBody);
-  const goToBody = useSelectionStore((state) => state.goToBody);
-  const followBody = useSelectionStore((state) => state.followBody);
-  const setCameraMode = useSelectionStore((state) => state.setCameraMode);
   const isPaused = useTimeStore((state) => state.isPaused);
   const togglePaused = useTimeStore((state) => state.togglePaused);
   const jumpToNow = useTimeStore((state) => state.jumpToNow);
@@ -175,7 +177,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera focus selected body",
         icon: <Crosshair size={16} />,
         active: cameraMode === "focus",
-        action: () => goToBody(selectedId),
+        action: () => goToBodyFromInteraction(selectedId),
       },
       {
         id: "camera-follow",
@@ -185,7 +187,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera follow selected body track",
         icon: <LocateFixed size={16} />,
         active: cameraMode === "follow",
-        action: () => followBody(selectedId),
+        action: () => followBodyFromInteraction(selectedId),
       },
       {
         id: "camera-overview",
@@ -195,7 +197,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera overview all system",
         icon: <Eye size={16} />,
         active: cameraMode === "overview",
-        action: () => setCameraMode("overview"),
+        action: () => activateCameraMode("overview"),
       },
       {
         id: "camera-inner",
@@ -205,7 +207,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera inner planets mercury venus earth mars",
         icon: <Orbit size={16} />,
         active: cameraMode === "inner",
-        action: () => setCameraMode("inner"),
+        action: () => activateCameraMode("inner"),
       },
       {
         id: "camera-outer",
@@ -215,7 +217,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera outer planets jupiter saturn uranus neptune",
         icon: <Route size={16} />,
         active: cameraMode === "outer",
-        action: () => setCameraMode("outer"),
+        action: () => activateCameraMode("outer"),
       },
       {
         id: "toggle-grid",
@@ -256,8 +258,8 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         icon: <Orbit size={16} />,
         active: cameraMode === "earth-moon",
         action: () => {
-          selectBody("earth");
-          setCameraMode("earth-moon");
+          selectBodyFromInteraction("earth");
+          activateCameraMode("earth-moon");
         },
       },
       {
@@ -269,8 +271,8 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         icon: <Orbit size={16} />,
         active: cameraMode === "jupiter-system",
         action: () => {
-          selectBody("jupiter");
-          setCameraMode("jupiter-system");
+          selectBodyFromInteraction("jupiter");
+          activateCameraMode("jupiter-system");
         },
       },
       {
@@ -282,8 +284,8 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         icon: <Orbit size={16} />,
         active: cameraMode === "saturn-system",
         action: () => {
-          selectBody("saturn");
-          setCameraMode("saturn-system");
+          selectBodyFromInteraction("saturn");
+          activateCameraMode("saturn-system");
         },
       },
       {
@@ -294,7 +296,7 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: "camera preset kuiper belt pluto eris haumea makemake outer objects",
         icon: <Route size={16} />,
         active: cameraMode === "kuiper-belt",
-        action: () => setCameraMode("kuiper-belt"),
+        action: () => activateCameraMode("kuiper-belt"),
       },
       ...selectableBodies.map((body) => ({
         id: `body-${body.id}`,
@@ -304,24 +306,20 @@ export const SearchCommand = ({ open, onClose, restoreFocusRef }: SearchCommandP
         keywords: `${body.name} ${body.type} ${body.parentId ?? ""}`,
         icon: <CircleDot size={16} />,
         active: body.id === selectedId,
-        action: () => goToBody(body.id),
+        action: () => goToBodyFromInteraction(body.id),
       })),
     ],
     [
       cameraMode,
       activeScenarioId,
       activeScenarioName,
-      followBody,
-      goToBody,
       isMobile,
       isPaused,
       jumpToNow,
       openDoomsdayPanel,
       openSheet,
       restoreRecommendedView,
-      selectBody,
       selectedId,
-      setCameraMode,
       setRocketPanelOpen,
       setShowGrid,
       setShowOrbits,

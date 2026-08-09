@@ -1,4 +1,5 @@
 import { ChevronDown, Eye, Layers, RotateCcw, Tags } from "lucide-react";
+import { activateCameraMode, selectBodyFromInteraction } from "../simulation/cameraInteractions";
 import { SCALE_MODES, type LabelDensity, type ScaleMode } from "../simulation/units";
 import { useScaleStore } from "../simulation/scaleStore";
 import { type CameraMode, useSelectionStore } from "../simulation/selectionStore";
@@ -57,8 +58,6 @@ export const ScaleControls = () => {
   const setShowOrbits = useScaleStore((state) => state.setShowOrbits);
   const setShowTrails = useScaleStore((state) => state.setShowTrails);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
-  const setCameraMode = useSelectionStore((state) => state.setCameraMode);
-  const selectBody = useSelectionStore((state) => state.selectBody);
   const isMobile = useIsMobile();
   const activeSheet = useUiStore((state) => state.activeSheet);
   const closeSheet = useUiStore((state) => state.closeSheet);
@@ -90,15 +89,15 @@ export const ScaleControls = () => {
 
   const selectCameraPreset = (value: string) => {
     if (value === "earth-moon") {
-      selectBody("earth");
+      selectBodyFromInteraction("earth");
     } else if (value === "jupiter-system") {
-      selectBody("jupiter");
+      selectBodyFromInteraction("jupiter");
     } else if (value === "saturn-system") {
-      selectBody("saturn");
+      selectBodyFromInteraction("saturn");
     }
 
     if (value !== "custom") {
-      setCameraMode(value as CameraPresetId);
+      activateCameraMode(value as CameraPresetId);
     }
   };
 
