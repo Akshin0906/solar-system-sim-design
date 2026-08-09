@@ -44,6 +44,13 @@ import {
 } from "../src/features/share/viewState";
 import { useExperienceStore } from "../src/features/experiences/experienceStore";
 import { useScenarioStore } from "../src/scenarios/scenarioStore";
+import {
+  activateCameraMode,
+  focusBodyFromInteraction,
+  followBodyFromInteraction,
+  goToBodyFromInteraction,
+  selectBodyFromInteraction,
+} from "../src/simulation/cameraInteractions";
 
 const J2000_MS = Date.parse("2000-01-01T12:00:00.000Z");
 const CHECK_DATE = new Date("2026-06-14T00:00:00.000Z");
@@ -882,6 +889,82 @@ const assertRepeatedBodySelectionIsObservable = () => {
   });
 };
 
+const assertCameraInteractionsPauseActiveMotion = () => {
+  const timeBaseline = useTimeStore.getState();
+  const selectionBaseline = useSelectionStore.getState();
+  const scenarioBaseline = useScenarioStore.getState();
+  const inspectionDateMs = Date.parse("2026-08-08T12:00:00.000Z");
+
+  try {
+    useTimeStore.setState({
+      direction: -1,
+      isPaused: false,
+      preset: "custom",
+      simulationDateMs: inspectionDateMs,
+      timeScale: 12_345,
+      transportLocked: false,
+    });
+    useSelectionStore.setState({ selectedId: "earth", cameraMode: "overview", rocketTarget: null });
+
+    for (const cameraMode of [
+      "focus",
+      "follow",
+      "moons",
+      "observer",
+      "earth-moon",
+      "jupiter-system",
+      "saturn-system",
+    ] as const) {
+      useTimeStore.setState({ isPaused: false });
+      activateCameraMode(cameraMode);
+      const time = useTimeStore.getState();
+      assert.equal(time.isPaused, true, `${cameraMode} should pause a user-started inspection`);
+      assert.equal(time.direction, -1, `${cameraMode} should preserve playback direction`);
+      assert.equal(time.preset, "custom", `${cameraMode} should preserve the speed preset`);
+      assert.equal(time.simulationDateMs, inspectionDateMs, `${cameraMode} should preserve the current date`);
+      assert.equal(time.timeScale, 12_345, `${cameraMode} should preserve the playback rate`);
+    }
+
+    useSelectionStore.setState({ cameraMode: "focus" });
+    useTimeStore.setState({ isPaused: false });
+    activateCameraMode("focus");
+    assert.equal(useTimeStore.getState().isPaused, true, "restarting the active Focus mode should pause again");
+
+    for (const navigate of [
+      () => goToBodyFromInteraction("mars"),
+      () => focusBodyFromInteraction("venus"),
+      () => followBodyFromInteraction("jupiter"),
+    ]) {
+      useTimeStore.setState({ isPaused: false });
+      navigate();
+      assert.equal(useTimeStore.getState().isPaused, true, "alternate body-inspection entries should pause");
+    }
+
+    useSelectionStore.setState({ cameraMode: "observer" });
+    useTimeStore.setState({ isPaused: false });
+    selectBodyFromInteraction("saturn");
+    assert.equal(useTimeStore.getState().isPaused, true, "retargeting an active inspection should pause");
+
+    useSelectionStore.setState({ cameraMode: "overview" });
+    useTimeStore.setState({ isPaused: false });
+    selectBodyFromInteraction("earth");
+    assert.equal(useTimeStore.getState().isPaused, false, "ordinary overview selection should keep playing");
+    activateCameraMode("overview");
+    assert.equal(useTimeStore.getState().isPaused, false, "the overview should remain a playback view");
+    useSelectionStore.getState().followRocket([3, 4, 5]);
+    assert.equal(useTimeStore.getState().isPaused, false, "rocket Follow should keep mission playback running");
+
+    useTimeStore.setState({ isPaused: true, transportLocked: true });
+    useScenarioStore.setState({ activeScenarioId: "red-giant", status: "running" });
+    activateCameraMode("observer");
+    assert.equal(useScenarioStore.getState().status, "paused", "manual inspection should pause scenario T+ motion");
+  } finally {
+    useScenarioStore.setState(scenarioBaseline);
+    useTimeStore.setState(timeBaseline);
+    useSelectionStore.setState(selectionBaseline);
+  }
+};
+
 const assertExplicitNavigationAndViewSessions = () => {
   const baseline = useSelectionStore.getState();
   useSelectionStore.setState({
@@ -1289,6 +1372,9 @@ const assertShareableViewState = () => {
     });
     applySharedViewState(shared);
     assert.equal(persistedWrites.length, 0, "opening a shared link must not overwrite saved view preferences");
+    applySharedViewState({ ...shared, cameraMode: "observer", isPaused: false });
+    assert.equal(useTimeStore.getState().isPaused, false, "a shared inspection should honor explicit playback state");
+    assert.equal(persistedWrites.length, 0, "opening a playing shared view must also avoid preference writes");
     useScaleStore.getState().setShowGrid(true);
     assert.equal(persistedWrites.length, 1, "an explicit view change should still persist preferences");
 
@@ -1333,6 +1419,7 @@ assertRuntimeUiMathHelpers();
 assertSearchRanking();
 assertTransientUiMutualExclusion();
 assertRepeatedBodySelectionIsObservable();
+assertCameraInteractionsPauseActiveMotion();
 assertExplicitNavigationAndViewSessions();
 assertRecommendedViewRecovery();
 assertRocketWatchRestoresClock();

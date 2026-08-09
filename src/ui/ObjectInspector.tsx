@@ -1,6 +1,7 @@
 import { ChevronUp, Crosshair, LocateFixed, Satellite, Telescope, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { bodies, bodiesById, childBodiesByParentId } from "../data";
+import { activateCameraMode, selectBodyFromInteraction } from "../simulation/cameraInteractions";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { estimateOrbitalSpeedKmS, getOrbitRadiusKm } from "../simulation/solveOrbit";
@@ -86,8 +87,6 @@ export const ObjectInspector = () => {
   const selectedId = useSelectionStore((state) => state.selectedId);
   const selectionRevision = useSelectionStore((state) => state.selectionRevision);
   const cameraMode = useSelectionStore((state) => state.cameraMode);
-  const setCameraMode = useSelectionStore((state) => state.setCameraMode);
-  const selectBody = useSelectionStore((state) => state.selectBody);
   const isMobile = useIsMobile();
   const inspectorPresented = useUiStore((state) => state.inspectorPresented);
   const activeSheet = useUiStore((state) => state.activeSheet);
@@ -164,7 +163,7 @@ export const ObjectInspector = () => {
       {moons.length > 0 && (
         <div className="moon-list">
           {moons.slice(0, 6).map((moon) => (
-            <button key={moon.id} type="button" onClick={() => selectBody(moon.id)}>
+            <button key={moon.id} type="button" onClick={() => selectBodyFromInteraction(moon.id)}>
               {moon.name}
             </button>
           ))}
@@ -178,7 +177,7 @@ export const ObjectInspector = () => {
       <button
         className={cameraMode === "focus" ? "active" : ""}
         type="button"
-        onClick={() => setCameraMode("focus")}
+        onClick={() => activateCameraMode("focus")}
         aria-pressed={cameraMode === "focus"}
       >
         <Crosshair size={15} />
@@ -187,7 +186,7 @@ export const ObjectInspector = () => {
       <button
         className={cameraMode === "follow" ? "active" : ""}
         type="button"
-        onClick={() => setCameraMode("follow")}
+        onClick={() => activateCameraMode("follow")}
         aria-pressed={cameraMode === "follow"}
       >
         <LocateFixed size={15} />
@@ -197,7 +196,7 @@ export const ObjectInspector = () => {
         <button
           className={cameraMode === "moons" ? "active" : ""}
           type="button"
-          onClick={() => setCameraMode("moons")}
+          onClick={() => activateCameraMode("moons")}
           aria-pressed={cameraMode === "moons"}
         >
           <Satellite size={15} />
@@ -208,7 +207,7 @@ export const ObjectInspector = () => {
         <button
           className={cameraMode === "observer" ? "active" : ""}
           type="button"
-          onClick={() => setCameraMode("observer")}
+          onClick={() => activateCameraMode("observer")}
           aria-pressed={cameraMode === "observer"}
         >
           <Telescope size={15} />

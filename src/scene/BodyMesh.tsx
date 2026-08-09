@@ -14,6 +14,7 @@ import {
   type Sprite,
 } from "three";
 import type { CelestialBody } from "../simulation/orbitalElements";
+import { focusBodyFromInteraction, selectBodyFromInteraction } from "../simulation/cameraInteractions";
 import { useSelectionStore } from "../simulation/selectionStore";
 import { useTimeStore } from "../simulation/timeStore";
 import { getBodyOrientationAxes } from "../simulation/orientation";
@@ -114,9 +115,7 @@ export const BodyMesh = memo(({
     textureDetailsRequestedRef.current = true;
   }
   const hydrateTextureDetails = textureDetailsRequestedRef.current;
-  const selectBody = useSelectionStore((state) => state.selectBody);
-  const focusBody = useSelectionStore((state) => state.focusBody);
-  const attachLabelButton = useBodyLabelButton(body.id, selectBody, focusBody);
+  const attachLabelButton = useBodyLabelButton(body.id, selectBodyFromInteraction, focusBodyFromInteraction);
   const maxAnisotropy = useThree((state) => state.gl.capabilities.getMaxAnisotropy());
   const interactionQualityFactor = useThree((state) => state.performance.current);
   const measuredQualityFactor = useRenderQualityStore((state) => state.measuredFactor);
@@ -335,12 +334,12 @@ export const BodyMesh = memo(({
 
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    selectBody(body.id);
+    selectBodyFromInteraction(body.id);
   };
 
   const handleDoubleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    focusBody(body.id);
+    focusBodyFromInteraction(body.id);
   };
 
   return (

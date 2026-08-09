@@ -116,6 +116,53 @@ test.describe("desktop", () => {
     await expect(page.getByText("Orbit positions extrapolated beyond the validated 1800–2050 model")).toBeVisible();
   });
 
+  test("pauses user-started body inspections while preserving playback views", async ({ page }) => {
+    await openApp(page);
+    await page.getByRole("radio", { name: "Real", exact: true }).click();
+
+    const resume = async () => {
+      await page.getByRole("button", { name: "Play", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+    };
+    const expectActionPauses = async (actionName: "Focus" | "Follow" | "Moons" | "Observe") => {
+      await resume();
+      const action = page.getByRole("button", { name: actionName, exact: true });
+      await action.click();
+      await expect(action).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+    };
+
+    await expectActionPauses("Focus");
+    await expectActionPauses("Focus");
+    await expectActionPauses("Follow");
+    await expectActionPauses("Moons");
+    await expectActionPauses("Observe");
+
+    await resume();
+    await page.getByRole("button", { name: "Moon", exact: true }).click();
+    await expect(page.locator(".focus-title strong")).toHaveText("Moon");
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+    await resume();
+    const cameraPreset = page.getByRole("combobox", { name: "Camera preset" });
+    await cameraPreset.click();
+    await page.getByRole("option", { name: /^Jupiter system/ }).click();
+    await expect(cameraPreset).toContainText("Jupiter system");
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+
+    await resume();
+    await cameraPreset.click();
+    await page.getByRole("option", { name: /^Solar system/ }).click();
+    await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Search objects" }).click();
+    const search = page.getByRole("combobox", { name: "Search commands and objects" });
+    await search.fill("Mars");
+    await search.press("Enter");
+    await expect(page.locator(".focus-title strong")).toHaveText("Mars");
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeVisible();
+  });
+
   test("installs a lean app shell and caches visited textures for offline use", async ({ page, context }) => {
     await openApp(page);
     const initialCacheState = await page.evaluate(async () => {
