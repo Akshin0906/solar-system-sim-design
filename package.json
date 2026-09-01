@@ -47,29 +47,29 @@
   "dependencies": {
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.4.0",
-    "@react-three/postprocessing": "^3.0.4",
-    "lucide-react": "^1.28.0",
+    "@react-three/postprocessing": "^3.1.1",
+    "lucide-react": "^1.37.0",
     "postprocessing": "^6.39.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.185.1",
-    "zustand": "^5.0.2"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.61.1",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.1",
-    "@types/react-dom": "^19.0.2",
-    "@vitejs/plugin-react": "^6.0.5",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
     "eslint": "^9.39.5",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^16.5.0",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.66.0",
-    "vite": "^8.2.0"
+    "typescript-eslint": "^8.68.0",
+    "vite": "^8.2.2"
   },
   "license": "UNLICENSED"
 }
